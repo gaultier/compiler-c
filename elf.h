@@ -173,7 +173,7 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
     PG_ASSERT(24 == sb.len);
 
     // Program entry offset.
-    u64 program_entry_offset = program_headers[0].p_vaddr;
+    u64 program_entry_offset = program_headers[0].p_vaddr + page_size;
     pg_byte_buffer_append_u64_within_capacity(&sb, program_entry_offset);
 
     // Program header table offset.
