@@ -119,9 +119,25 @@ typedef struct {
 } Amd64Section;
 PG_SLICE(Amd64Section) Amd64SectionSlice;
 
+typedef enum {
+  AMD64_CONSTANT_KIND_NONE,
+  AMD64_CONSTANT_KIND_U64,
+  AMD64_CONSTANT_KIND_BYTES,
+} Amd64ConstantKind;
+
+typedef struct {
+  PgString name;
+  Amd64ConstantKind kind;
+  union {
+    u64 n64;
+    PgString bytes;
+  };
+} Amd64Constant;
+PG_SLICE(Amd64Constant) Amd64ConstantSlice;
+
 typedef struct {
   Amd64SectionSlice text;
-  // TODO: data, rodata, etc.
+  Amd64ConstantSlice data, rodata;
 
   PgString file_name;
 } Amd64Program;

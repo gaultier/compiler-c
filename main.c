@@ -57,12 +57,25 @@ int main() {
       .instructions = {.data = (Amd64Instruction *)ops,
                        .len = PG_STATIC_ARRAY_LEN(ops)},
   };
+  Amd64Constant rodata[] = {
+      {
+          .name = PG_S("hello_world"),
+          .kind = AMD64_CONSTANT_KIND_BYTES,
+          .bytes = PG_S("Hello, world!"),
+      },
+  };
+
   Amd64Program program = {
       .file_name = PG_S("asm.bin"),
       .text =
           {
               .data = &section_start,
               .len = 1,
+          },
+      .rodata =
+          {
+              .data = rodata,
+              .len = PG_STATIC_ARRAY_LEN(rodata),
           },
   };
 
