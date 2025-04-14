@@ -234,10 +234,13 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   // MOV reg64, imm64 | B8 +rq iq | Move an 64-bit immediate value into a 64-bit
   // register.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind) {
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind &&
+      instruction.src.immediate <= UINT32_MAX) {
     *PG_DYN_PUSH(sb, allocator) =
         0xb8 + amd64_encode_register_value(instruction.dst.reg);
-    pg_string_builder_append_u64(sb, instruction.src.immediate, allocator);
+    pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+
+    // TODO: Prefix to do 64 bits immediate.
 
     return;
   }
