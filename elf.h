@@ -47,8 +47,6 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
   // The program text is also padded to the next page size.
   // Afterwards comes the .rodata (not padded).
 
-  program.vm_start = 1 << 22;
-
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;
 

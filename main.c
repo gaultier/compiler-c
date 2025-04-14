@@ -1,6 +1,18 @@
 #include "elf.h"
 
 int main() {
+  u64 vm_start = 1 << 22;
+  u64 rodata_offset = 0x2000;
+
+  Amd64Constant rodata[] = {
+      {
+          .name = PG_S("hello_world"),
+          .kind = AMD64_CONSTANT_KIND_BYTES,
+          .bytes = PG_S("Hello, world!"),
+          // TODO: Should it be backpatched?
+          .address_absolute = vm_start + rodata_offset + 0x00,
+      },
+  };
   const Amd64Instruction ops[] = {
       {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
@@ -28,7 +40,7 @@ int main() {
                   .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
                   .effective_address =
                       {
-                          .displacement = 0x402000 // FIXME,
+                          .displacement = (u32)rodata[0].address_absolute,
                       },
               },
       },
@@ -63,16 +75,10 @@ int main() {
       .instructions = {.data = (Amd64Instruction *)ops,
                        .len = PG_STATIC_ARRAY_LEN(ops)},
   };
-  Amd64Constant rodata[] = {
-      {
-          .name = PG_S("hello_world"),
-          .kind = AMD64_CONSTANT_KIND_BYTES,
-          .bytes = PG_S("Hello, world!"),
-      },
-  };
 
   Amd64Program program = {
       .file_name = PG_S("asm.bin"),
+      .vm_start = vm_start,
       .text =
           {
               .data = &section_start,
