@@ -236,8 +236,12 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
       AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind &&
       instruction.src.immediate <= UINT32_MAX) {
+    u8 rex = 0b100'1000;
+    *PG_DYN_PUSH(sb, allocator) = rex;
+
+    u8 opcode = 0xb8;
     *PG_DYN_PUSH(sb, allocator) =
-        0xb8 + amd64_encode_register_value(instruction.dst.reg);
+        opcode + amd64_encode_register_value(instruction.dst.reg);
     pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
 
     // TODO: Prefix to do 64 bits immediate.
@@ -249,13 +253,15 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   // memory operand to a 64-bit destination register.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
-    *PG_DYN_PUSH(sb, allocator) = 0x8b;
+    u8 rex = 0b100'1000;
+    *PG_DYN_PUSH(sb, allocator) = rex;
+
+    u8 opcode = 0x8b;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
     u8 modrm = (0b11 << 6) |
                (u8)(amd64_encode_register_value(instruction.dst.reg) << 3) |
                (u8)(amd64_encode_register_value(instruction.src.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
-    // + amd64_encode_register_value(instruction.dst.reg)
-    // pg_string_builder_append_u64(sb, instruction.src.immediate, allocator);
 
     return;
   }
@@ -281,9 +287,22 @@ static void amd64_encode_instruction_ret(Pgu8Dyn *sb,
 static void amd64_encode_instruction_add(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
-  (void)sb;
-  (void)instruction;
-  (void)allocator;
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_ADD == instruction.kind);
+
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
+    u8 rex = 0b100'1000;
+    *PG_DYN_PUSH(sb, allocator) = rex;
+    u8 opcode = 0x03;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    u8 modrm = (0b11 << 6) |
+               (u8)(amd64_encode_register_value(instruction.dst.reg) << 3) |
+               (u8)(amd64_encode_register_value(instruction.src.reg) & 0b111);
+    *PG_DYN_PUSH(sb, allocator) = modrm;
+    return;
+  }
+  PG_ASSERT(0 && "todo");
 }
 static void amd64_encode_instruction_syscall(Pgu8Dyn *sb,
                                              Amd64Instruction instruction,
