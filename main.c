@@ -66,6 +66,15 @@ int main() {
               },
       },
       {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rdi},
+          .src =
+              {
+                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                  .immediate = 0 /* exit code */,
+              },
+      },
+      {
           .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
       },
   };
