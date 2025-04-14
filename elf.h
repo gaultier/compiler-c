@@ -77,6 +77,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
   PgString elf_strings[] = {
       PG_S(".shstrtab"),
       PG_S(".text"),
+      PG_S(".rodata"),
+      PG_S(".data"),
   };
   PgStringSlice elf_strings_slice = {
       .data = elf_strings,
@@ -89,10 +91,27 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
     strings_size += elf_string.len + 1 /* Null terminator */;
   }
 
+  u64 rodata_size = 0;
+  for (u64 i = 0; i < program.rodata.len; i++) {
+    Amd64Constant constant = PG_SLICE_AT(program.rodata, i);
+    switch (constant.kind) {
+    case AMD64_CONSTANT_KIND_NONE:
+      PG_ASSERT(0);
+    case AMD64_CONSTANT_KIND_U64:
+      rodata_size += sizeof(u64);
+      break;
+    case AMD64_CONSTANT_KIND_BYTES:
+      rodata_size += constant.bytes.len;
+      break;
+    default:
+      PG_ASSERT(0);
+    }
+  }
+
   ElfSectionHeader section_headers[] = {
       // Null
       {0},
-      // Code
+      // Text (code).
       {
           .name = 11,
           .type = ElfSectionHeaderTypeProgBits,
@@ -100,16 +119,29 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
           .addr = vm_start + page_size,
           .offset = page_size,
           .size = program_encoded.len,
-          .align = 1,
+          .align = 16,
       },
 
-      // Strings
+      // Rodata.
+      {
+          .name = 17,
+          .type = ElfSectionHeaderTypeProgBits,
+          .flags = ElfSectionHeaderFlagAlloc,
+          .addr =
+              vm_start + page_size + PG_ROUNDUP(program_encoded.len, page_size),
+          .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
+          .size = rodata_size,
+          .align = 16,
+      },
+
+      // Strings.
       {
           .name = 1,
           .type = ElfSectionHeaderTypeStrTab,
           .flags = 0,
           .addr = 0,
-          .offset = page_size + program_encoded.len,
+          .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size) +
+                    rodata_size,
           .size = strings_size,
           .align = 1,
       },
@@ -141,11 +173,12 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
 
     // Section header table offset.
     u64 section_header_table_offset =
-        page_size + program_encoded.len + strings_size;
+        page_size /* program headers with padding */ +
+        PG_ROUNDUP(program_encoded.len, page_size) + rodata_size + strings_size;
     pg_byte_buffer_append_u64_within_capacity(&sb, section_header_table_offset);
 
     pg_byte_buffer_append_u32_within_capacity(&sb, 0); // Flags.
-                                                       //
+
     PG_ASSERT(52 == sb.len);
 
     pg_byte_buffer_append_u16_within_capacity(&sb, 64); // Elf header size.
@@ -167,7 +200,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
         PG_STATIC_ARRAY_LEN(
             section_headers)); // Number of entries in the section header table.
 
-    u16 section_header_string_table_index = 2;
+    u16 section_header_string_table_index =
+        PG_STATIC_ARRAY_LEN(section_headers) - 1;
     pg_byte_buffer_append_u16_within_capacity(
         &sb, section_header_string_table_index); // Section index in the section
                                                  // header table.
@@ -186,7 +220,33 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0;
   }
 
+  // Text.
   PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, program_encoded);
+
+  // Pad.
+  for (u64 i = program_encoded.len;
+       i < PG_ROUNDUP(program_encoded.len, page_size); i++) {
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0;
+  }
+
+  // Rodata.
+  for (u64 i = 0; i < program.rodata.len; i++) {
+    Amd64Constant constant = PG_SLICE_AT(program.rodata, i);
+    switch (constant.kind) {
+    case AMD64_CONSTANT_KIND_NONE:
+      PG_ASSERT(0);
+    case AMD64_CONSTANT_KIND_U64:
+      pg_byte_buffer_append_u64_within_capacity(&sb, constant.n64);
+      break;
+    case AMD64_CONSTANT_KIND_BYTES:
+      PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, constant.bytes);
+      break;
+    default:
+      PG_ASSERT(0);
+    }
+  }
+
+  // Strings.
   *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0; // Null string.
 
   for (u64 i = 0; i < PG_STATIC_ARRAY_LEN(elf_strings); i++) {

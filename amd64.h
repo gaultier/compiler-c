@@ -127,6 +127,7 @@ typedef enum {
 
 typedef struct {
   PgString name;
+  u64 address_absolute;
   Amd64ConstantKind kind;
   union {
     u64 n64;
