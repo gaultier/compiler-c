@@ -316,6 +316,7 @@ static void amd64_encode_instruction_ret(Pgu8Dyn *sb,
   (void)instruction;
   (void)allocator;
 }
+
 static void amd64_encode_instruction_add(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
@@ -343,6 +344,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
   }
   PG_ASSERT(0 && "todo");
 }
+
 static void amd64_encode_instruction_syscall(Pgu8Dyn *sb,
                                              Amd64Instruction instruction,
                                              PgAllocator *allocator) {
