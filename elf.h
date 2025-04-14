@@ -126,50 +126,49 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 1; // Little-endian.
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 1; // ELF header version = 1.
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0; // OS ABI, 0 = System V.
-    pg_string_builder_append_u64_within_capacity(&sb, 0); // Padding.
-    pg_string_builder_append_u16_within_capacity(&sb, 2); // Type: Executable.
-    pg_string_builder_append_u16_within_capacity(&sb, 0x3e); // ISA x86_64.
-    pg_string_builder_append_u32_within_capacity(&sb, 1);    // ELF version = 1.
+    pg_byte_buffer_append_u64_within_capacity(&sb, 0);    // Padding.
+    pg_byte_buffer_append_u16_within_capacity(&sb, 2);    // Type: Executable.
+    pg_byte_buffer_append_u16_within_capacity(&sb, 0x3e); // ISA x86_64.
+    pg_byte_buffer_append_u32_within_capacity(&sb, 1);    // ELF version = 1.
     PG_ASSERT(24 == sb.len);
 
     // Program entry offset.
     u64 program_entry_offset = program_headers[1].p_vaddr;
-    pg_string_builder_append_u64_within_capacity(&sb, program_entry_offset);
+    pg_byte_buffer_append_u64_within_capacity(&sb, program_entry_offset);
 
     // Program header table offset.
-    pg_string_builder_append_u64_within_capacity(&sb, elf_header_size);
+    pg_byte_buffer_append_u64_within_capacity(&sb, elf_header_size);
 
     // Section header table offset.
     u64 section_header_table_offset =
         page_size + program_encoded.len + strings_size;
-    pg_string_builder_append_u64_within_capacity(&sb,
-                                                 section_header_table_offset);
+    pg_byte_buffer_append_u64_within_capacity(&sb, section_header_table_offset);
 
-    pg_string_builder_append_u32_within_capacity(&sb, 0); // Flags.
-                                                          //
+    pg_byte_buffer_append_u32_within_capacity(&sb, 0); // Flags.
+                                                       //
     PG_ASSERT(52 == sb.len);
 
-    pg_string_builder_append_u16_within_capacity(&sb, 64); // Elf header size.
-    pg_string_builder_append_u16_within_capacity(
+    pg_byte_buffer_append_u16_within_capacity(&sb, 64); // Elf header size.
+    pg_byte_buffer_append_u16_within_capacity(
         &sb,
         sizeof(
             ElfProgramHeader)); // Size of an entry in the program header table.
-    pg_string_builder_append_u16_within_capacity(
+    pg_byte_buffer_append_u16_within_capacity(
         &sb,
         PG_STATIC_ARRAY_LEN(
             program_headers)); // Number of entries in the program header table.
 
-    pg_string_builder_append_u16_within_capacity(
+    pg_byte_buffer_append_u16_within_capacity(
         &sb,
         sizeof(
             ElfSectionHeader)); // Size of an entry in the section header table.
-    pg_string_builder_append_u16_within_capacity(
+    pg_byte_buffer_append_u16_within_capacity(
         &sb,
         PG_STATIC_ARRAY_LEN(
             section_headers)); // Number of entries in the section header table.
 
     u16 section_header_string_table_index = 2;
-    pg_string_builder_append_u16_within_capacity(
+    pg_byte_buffer_append_u16_within_capacity(
         &sb, section_header_string_table_index); // Section index in the section
                                                  // header table.
 
