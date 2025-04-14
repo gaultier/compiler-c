@@ -139,6 +139,7 @@ PG_SLICE(Amd64Constant) Amd64ConstantSlice;
 typedef struct {
   Amd64SectionSlice text;
   Amd64ConstantSlice data, rodata;
+  u64 vm_start;
 
   PgString file_name;
 } Amd64Program;
@@ -320,9 +321,11 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
 static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
+                                         Amd64Program program,
                                          PgAllocator *allocator) {
   (void)sb;
   (void)instruction;
+  (void)program;
   (void)allocator;
 }
 
@@ -371,6 +374,7 @@ static void amd64_encode_instruction_syscall(Pgu8Dyn *sb,
 }
 
 static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
+                                     Amd64Program program,
                                      PgAllocator *allocator) {
   switch (instruction.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
@@ -382,7 +386,7 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
     amd64_encode_instruction_add(sb, instruction, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LEA:
-    amd64_encode_instruction_lea(sb, instruction, allocator);
+    amd64_encode_instruction_lea(sb, instruction, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_RET:
     amd64_encode_instruction_ret(sb, instruction, allocator);
@@ -397,10 +401,10 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
 }
 
 static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
-                                 PgAllocator *allocator) {
+                                 Amd64Program program, PgAllocator *allocator) {
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction instruction = PG_SLICE_AT(section.instructions, i);
-    amd64_encode_instruction(sb, instruction, allocator);
+    amd64_encode_instruction(sb, instruction, program, allocator);
   }
 }
 
@@ -411,7 +415,7 @@ static PgString amd64_encode_program_text(Amd64Program program,
 
   for (u64 i = 0; i < program.text.len; i++) {
     Amd64Section section = PG_SLICE_AT(program.text, i);
-    amd64_encode_section(&sb, section, allocator);
+    amd64_encode_section(&sb, section, program, allocator);
   }
 
   return PG_DYN_SLICE(PgString, sb);

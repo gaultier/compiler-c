@@ -39,7 +39,8 @@ static_assert(64 == sizeof(ElfSectionHeader));
 
 [[nodiscard]]
 static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
-  u64 vm_start = 1 << 22;
+  program.vm_start = 1 << 22;
+
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;
 
@@ -50,8 +51,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
       {
           .type = ElfProgramHeaderTypeLoad,
           .p_offset = page_size,
-          .p_vaddr = vm_start + page_size,
-          .p_paddr = vm_start + page_size,
+          .p_vaddr = program.vm_start + page_size,
+          .p_paddr = program.vm_start + page_size,
           .p_filesz =
               elf_header_size + program_headers_len * sizeof(ElfProgramHeader),
           .p_memsz =
@@ -69,10 +70,10 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
           .p_memsz = elf_header_size +
                      program_headers_len * sizeof(ElfProgramHeader) +
                      PG_ROUNDUP(program_encoded.len, page_size),
-          .p_vaddr =
-              vm_start + page_size + PG_ROUNDUP(program_encoded.len, page_size),
-          .p_paddr =
-              vm_start + page_size + PG_ROUNDUP(program_encoded.len, page_size),
+          .p_vaddr = program.vm_start + page_size +
+                     PG_ROUNDUP(program_encoded.len, page_size),
+          .p_paddr = program.vm_start + page_size +
+                     PG_ROUNDUP(program_encoded.len, page_size),
           .flags = ElfProgramHeaderFlagsReadable,
           .alignment = page_size,
       },
@@ -120,7 +121,7 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
           .name = 11,
           .type = ElfSectionHeaderTypeProgBits,
           .flags = ElfSectionHeaderFlagExecInstr | ElfSectionHeaderFlagAlloc,
-          .addr = vm_start + page_size,
+          .addr = program.vm_start + page_size,
           .offset = page_size,
           .size = program_encoded.len,
           .align = 16,
@@ -131,8 +132,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
           .name = 17,
           .type = ElfSectionHeaderTypeProgBits,
           .flags = ElfSectionHeaderFlagAlloc,
-          .addr =
-              vm_start + page_size + PG_ROUNDUP(program_encoded.len, page_size),
+          .addr = program.vm_start + page_size +
+                  PG_ROUNDUP(program_encoded.len, page_size),
           .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
           .size = rodata_size,
           .align = 16,
