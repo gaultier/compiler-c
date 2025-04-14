@@ -259,6 +259,9 @@ static const u8 AMD64_REX_MASK_X = 0b0000'0010;
 // TODO: document.
 static const u8 AMD64_REX_MASK_B = 0b0000'0001;
 
+static const u8 AMD64_SIB_INDEX_NONE = 0b101'000;
+static const u8 AMD64_SIB_BASE_DISP32 = 0b101;
+
 static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
@@ -346,11 +349,11 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
 
     u8 modrm = (0b00 << 6) |
                (u8)(amd64_encode_register_value(instruction.dst.reg) << 3) |
-               0b101;
+               0b100 /* sib + disp32 */;
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
-    /* u8 sib = 0b101; */
-    /* *PG_DYN_PUSH(sb, allocator) = sib; */
+    u8 sib = AMD64_SIB_INDEX_NONE | AMD64_SIB_BASE_DISP32;
+    *PG_DYN_PUSH(sb, allocator) = sib;
 
     pg_byte_buffer_append_u32_within_capacity(
         sb, instruction.src.effective_address.displacement);
