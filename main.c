@@ -1,5 +1,4 @@
-#include "amd64.h"
-#include "asm.h"
+#include "elf.h"
 
 int main() {
   const Amd64Instruction ops[] = {
@@ -67,18 +66,11 @@ int main() {
           },
   };
 
-  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgString program_encoded = amd64_encode_program_text(program, allocator);
-
-  for (u64 i = 0; i < program_encoded.len; i++) {
-    printf("%#x ", PG_SLICE_AT(program_encoded, i));
-  }
-
-  PgError err_write =
-      pg_file_write_full(program.file_name, program_encoded, allocator);
+  PgError err_write = elf_write_exe(program, allocator);
   if (err_write) {
     fprintf(stderr, "failed to write to file %.*s: %u\n",
             (i32)program.file_name.len, program.file_name.data, err_write);
