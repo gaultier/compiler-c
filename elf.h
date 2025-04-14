@@ -79,7 +79,7 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
       },
       {
           .type = ElfProgramHeaderTypeLoad,
-          .p_offset = PG_ROUNDUP(program_encoded.len, page_size),
+          .p_offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
           .p_filesz = rodata_size,
           .p_memsz = rodata_size,
           .p_vaddr = program.vm_start + page_size +
@@ -165,7 +165,7 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
     PG_ASSERT(24 == sb.len);
 
     // Program entry offset.
-    u64 program_entry_offset = program_headers[1].p_vaddr;
+    u64 program_entry_offset = program_headers[0].p_vaddr;
     pg_byte_buffer_append_u64_within_capacity(&sb, program_entry_offset);
 
     // Program header table offset.
