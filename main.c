@@ -50,7 +50,7 @@ int main() {
           .src =
               {
                   .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 13,
+                  .immediate = 13 /* msg length */,
               },
       },
       {
