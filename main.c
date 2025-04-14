@@ -58,12 +58,22 @@ int main() {
       .instructions = {.data = (Amd64Instruction *)ops,
                        .len = PG_STATIC_ARRAY_LEN(ops)},
   };
+  Amd64Program program = {
+      .file_name = PG_S("asm.bin"),
+      .text =
+          {
+              .data = &section_start,
+              .len = 1,
+          },
+  };
 
   PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_KiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgString section_to_string = amd64_dump_section(section_start, allocator);
+  PgString program_encoded = amd64_encode_program_text(program, allocator);
 
-  printf("%.*s\n", (i32)section_to_string.len, section_to_string.data);
+  for (u64 i = 0; i < program_encoded.len; i++) {
+    printf("%#x ", PG_SLICE_AT(program_encoded, i));
+  }
 }
