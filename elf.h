@@ -39,6 +39,14 @@ static_assert(64 == sizeof(ElfSectionHeader));
 
 [[nodiscard]]
 static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
+  // The ELF header and program headers take less than a page size but are
+  // padded with zeroes to occupy one page. Then comes the program text. This
+  // page gets loaded as well as the program text in one swoop, but the
+  // entrypoint is at `vm_start + page_size` to skip over the ELF header and
+  // program headers.
+  // The program text is also padded to the next page size.
+  // Afterwards comes the .rodata (not padded).
+
   program.vm_start = 1 << 22;
 
   u64 page_size = 0x1000;
