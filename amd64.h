@@ -226,6 +226,21 @@ static u8 amd64_encode_register_value(Register reg) {
   return PG_SLICE_AT(amd64_register_to_encoded_value_slice, reg.value);
 }
 
+[[nodiscard]]
+static bool amd64_is_register_64_bits_only(Register reg) {
+  return amd64_encode_register_value(reg) > 0b111;
+}
+
+static const u8 AMD64_REX_DEFAULT = 0b0100'0000;
+// Enable use of 64 operand size.
+static const u8 AMD64_REX_MASK_W = 0b0000'1000;
+// Enable use of 64 bits registers in ModRM.
+static const u8 AMD64_REX_MASK_R = 0b0000'0100;
+// Enable use of 64 bits registers in SIB.
+static const u8 AMD64_REX_MASK_X = 0b0000'0010;
+// TODO: document.
+static const u8 AMD64_REX_MASK_B = 0b0000'0001;
+
 static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
@@ -234,17 +249,28 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   // MOV reg64, imm64 | B8 +rq iq | Move an 64-bit immediate value into a 64-bit
   // register.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind &&
-      instruction.src.immediate <= UINT32_MAX) {
-    u8 rex = 0b0100'0100;
-    *PG_DYN_PUSH(sb, allocator) = rex;
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind) {
+    u8 rex = AMD64_REX_DEFAULT;
+    if (instruction.src.immediate > UINT32_MAX) {
+      rex |= AMD64_REX_MASK_W;
+    }
+    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+      rex |= AMD64_REX_MASK_B;
+    }
+
+    if (AMD64_REX_DEFAULT != rex) {
+      *PG_DYN_PUSH(sb, allocator) = rex;
+    }
 
     u8 opcode = 0xb8;
     *PG_DYN_PUSH(sb, allocator) =
         opcode + amd64_encode_register_value(instruction.dst.reg);
-    pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
 
-    // TODO: Prefix to do 64 bits immediate.
+    if (instruction.src.immediate <= UINT32_MAX) {
+      pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+    } else {
+      pg_byte_buffer_append_u64(sb, instruction.src.immediate, allocator);
+    }
 
     return;
   }
@@ -253,7 +279,13 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   // memory operand to a 64-bit destination register.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
-    u8 rex = 0b100'1100;
+    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
+    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+      rex |= AMD64_REX_MASK_B;
+    }
+    if (amd64_is_register_64_bits_only(instruction.src.reg)) {
+      rex |= AMD64_REX_MASK_R;
+    }
     *PG_DYN_PUSH(sb, allocator) = rex;
 
     u8 opcode = 0x8b;
@@ -291,8 +323,15 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
 
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
-    u8 rex = 0b100'1000;
+    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
+    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+      rex |= AMD64_REX_MASK_B;
+    }
+    if (amd64_is_register_64_bits_only(instruction.src.reg)) {
+      rex |= AMD64_REX_MASK_R;
+    }
     *PG_DYN_PUSH(sb, allocator) = rex;
+
     u8 opcode = 0x03;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
