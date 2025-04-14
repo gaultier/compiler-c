@@ -46,15 +46,33 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
 
   PgString program_encoded = amd64_encode_program_text(program, allocator);
 
-  const u64 program_headers_len = 2;
+  u64 rodata_size = 0;
+  {
+    for (u64 i = 0; i < program.rodata.len; i++) {
+      Amd64Constant constant = PG_SLICE_AT(program.rodata, i);
+      switch (constant.kind) {
+      case AMD64_CONSTANT_KIND_NONE:
+        PG_ASSERT(0);
+      case AMD64_CONSTANT_KIND_U64:
+        rodata_size += sizeof(u64);
+        break;
+      case AMD64_CONSTANT_KIND_BYTES:
+        rodata_size += constant.bytes.len;
+        break;
+      default:
+        PG_ASSERT(0);
+      }
+    }
+  }
+
   ElfProgramHeader program_headers[] = {
       {
           .type = ElfProgramHeaderTypeLoad,
           .p_offset = page_size,
           .p_vaddr = program.vm_start,
           .p_paddr = program.vm_start,
-          .p_filesz = elf_header_size,
-          .p_memsz = elf_header_size,
+          .p_filesz = page_size + program_encoded.len,
+          .p_memsz = page_size + program_encoded.len,
           .flags =
               ElfProgramHeaderFlagsExecutable | ElfProgramHeaderFlagsReadable,
           .alignment = page_size,
@@ -62,12 +80,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
       {
           .type = ElfProgramHeaderTypeLoad,
           .p_offset = PG_ROUNDUP(program_encoded.len, page_size),
-          .p_filesz = elf_header_size +
-                      program_headers_len * sizeof(ElfProgramHeader) +
-                      PG_ROUNDUP(program_encoded.len, page_size),
-          .p_memsz = elf_header_size +
-                     program_headers_len * sizeof(ElfProgramHeader) +
-                     PG_ROUNDUP(program_encoded.len, page_size),
+          .p_filesz = rodata_size,
+          .p_memsz = rodata_size,
           .p_vaddr = program.vm_start + page_size +
                      PG_ROUNDUP(program_encoded.len, page_size),
           .p_paddr = program.vm_start + page_size +
@@ -92,23 +106,6 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
   for (u64 i = 0; i < elf_strings_slice.len; i++) {
     PgString elf_string = PG_SLICE_AT(elf_strings_slice, i);
     strings_size += elf_string.len + 1 /* Null terminator */;
-  }
-
-  u64 rodata_size = 0;
-  for (u64 i = 0; i < program.rodata.len; i++) {
-    Amd64Constant constant = PG_SLICE_AT(program.rodata, i);
-    switch (constant.kind) {
-    case AMD64_CONSTANT_KIND_NONE:
-      PG_ASSERT(0);
-    case AMD64_CONSTANT_KIND_U64:
-      rodata_size += sizeof(u64);
-      break;
-    case AMD64_CONSTANT_KIND_BYTES:
-      rodata_size += constant.bytes.len;
-      break;
-    default:
-      PG_ASSERT(0);
-    }
   }
 
   ElfSectionHeader section_headers[] = {
