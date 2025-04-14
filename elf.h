@@ -51,12 +51,10 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
       {
           .type = ElfProgramHeaderTypeLoad,
           .p_offset = page_size,
-          .p_vaddr = program.vm_start + page_size,
-          .p_paddr = program.vm_start + page_size,
-          .p_filesz =
-              elf_header_size + program_headers_len * sizeof(ElfProgramHeader),
-          .p_memsz =
-              elf_header_size + program_headers_len * sizeof(ElfProgramHeader),
+          .p_vaddr = program.vm_start,
+          .p_paddr = program.vm_start,
+          .p_filesz = elf_header_size,
+          .p_memsz = elf_header_size,
           .flags =
               ElfProgramHeaderFlagsExecutable | ElfProgramHeaderFlagsReadable,
           .alignment = page_size,
