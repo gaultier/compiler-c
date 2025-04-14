@@ -8,25 +8,7 @@ int main() {
           .src =
               {
                   .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 3,
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rbx},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 5,
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_ADD,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rax},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_REGISTER,
-                  .reg = amd64_rbx,
+                  .immediate = 1 /* write(2) */,
               },
       },
       {
@@ -34,9 +16,33 @@ int main() {
           .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rdi},
           .src =
               {
-                  .kind = AMD64_OPERAND_KIND_REGISTER,
-                  .reg = amd64_rax,
+                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                  .immediate = 1 /* stdout */,
               },
+      },
+      {
+          .kind = AMD64_INSTRUCTION_KIND_LEA,
+          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rsi},
+          .src =
+              {
+                  .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+                  .effective_address =
+                      {
+                          .displacement = 0x402000 // FIXME,
+                      },
+              },
+      },
+      {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rdx},
+          .src =
+              {
+                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                  .immediate = 13,
+              },
+      },
+      {
+          .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
       },
       {
           .kind = AMD64_INSTRUCTION_KIND_MOV,

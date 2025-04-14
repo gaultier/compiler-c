@@ -1,30 +1,30 @@
 #pragma once
 #include "asm.h"
 
-static const Register amd64_rax = {0};
-static const Register amd64_rbx = {1};
-static const Register amd64_rcx = {2};
-static const Register amd64_rdx = {3};
-static const Register amd64_rdi = {4};
-static const Register amd64_rsi = {5};
-static const Register amd64_r8 = {6};
-static const Register amd64_r9 = {7};
-static const Register amd64_r10 = {8};
-static const Register amd64_r11 = {9};
-static const Register amd64_r12 = {10};
-static const Register amd64_r13 = {11};
-static const Register amd64_r14 = {12};
-static const Register amd64_r15 = {13};
-static const Register amd64_rsp = {14};
-static const Register amd64_rbp = {15};
+static const Register amd64_rax = {1};
+static const Register amd64_rbx = {2};
+static const Register amd64_rcx = {3};
+static const Register amd64_rdx = {4};
+static const Register amd64_rdi = {5};
+static const Register amd64_rsi = {6};
+static const Register amd64_r8 = {7};
+static const Register amd64_r9 = {8};
+static const Register amd64_r10 = {9};
+static const Register amd64_r11 = {10};
+static const Register amd64_r12 = {11};
+static const Register amd64_r13 = {12};
+static const Register amd64_r14 = {13};
+static const Register amd64_r15 = {14};
+static const Register amd64_rsp = {15};
+static const Register amd64_rbp = {16};
 
-static const PgString amd64_register_to_string[16] = {
-    [0] = PG_S("rax"),  [1] = PG_S("rbx"),  [2] = PG_S("rcx"),
-    [3] = PG_S("rdx"),  [4] = PG_S("rdi"),  [5] = PG_S("rsi"),
-    [6] = PG_S("r8"),   [7] = PG_S("r9"),   [8] = PG_S("r10"),
-    [9] = PG_S("r11"),  [10] = PG_S("r12"), [11] = PG_S("r13"),
-    [12] = PG_S("r14"), [13] = PG_S("r15"), [14] = PG_S("rsp"),
-    [15] = PG_S("rbp"),
+static const PgString amd64_register_to_string[16 + 1] = {
+    [0] = PG_S("UNREACHABLE"), [1] = PG_S("rax"),  [2] = PG_S("rbx"),
+    [3] = PG_S("rcx"),         [4] = PG_S("rdx"),  [5] = PG_S("rdi"),
+    [6] = PG_S("rsi"),         [7] = PG_S("r8"),   [8] = PG_S("r9"),
+    [9] = PG_S("r10"),         [10] = PG_S("r11"), [11] = PG_S("r12"),
+    [12] = PG_S("r13"),        [13] = PG_S("r14"), [14] = PG_S("r15"),
+    [15] = PG_S("rsp"),        [16] = PG_S("rbp"),
 };
 
 static const PgStringSlice amd64_register_to_string_slice = {
@@ -32,11 +32,11 @@ static const PgStringSlice amd64_register_to_string_slice = {
     .len = PG_STATIC_ARRAY_LEN(amd64_register_to_string),
 };
 
-static const u8 amd64_register_to_encoded_value[16] = {
-    [0] = 0b0000,  [1] = 0b0011,  [2] = 0b0001,  [3] = 0b0010,
-    [4] = 0b0111,  [5] = 0b0110,  [6] = 0b1000,  [7] = 0b1001,
-    [8] = 0b1010,  [9] = 0b1011,  [10] = 0b1100, [11] = 0b1101,
-    [12] = 0b1110, [13] = 0b1111, [14] = 0b0100, [15] = 0b0101,
+static const u8 amd64_register_to_encoded_value[16 + 1] = {
+    [0] = 0,       [1] = 0b0000,  [2] = 0b0011,  [3] = 0b0001,  [4] = 0b0010,
+    [5] = 0b0111,  [6] = 0b0110,  [7] = 0b1000,  [8] = 0b1001,  [9] = 0b1010,
+    [10] = 0b1011, [11] = 0b1100, [12] = 0b1101, [13] = 0b1110, [14] = 0b1111,
+    [15] = 0b0100, [16] = 0b0101,
 };
 
 static const Pgu8Slice amd64_register_to_encoded_value_slice = {
@@ -79,8 +79,8 @@ typedef enum {
 typedef struct {
   Register base;
   Register index;
-  u64 scale;
-  u64 displacement;
+  u8 scale;
+  u32 displacement;
 } Amd64EffectiveAddress;
 
 typedef struct {
@@ -324,9 +324,39 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
                                          Amd64Program program,
                                          PgAllocator *allocator) {
   (void)sb;
-  (void)instruction;
   (void)program;
   (void)allocator;
+
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_LEA == instruction.kind);
+  PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
+  PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.src.kind);
+
+  u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
+  if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    rex |= AMD64_REX_MASK_B;
+  }
+  *PG_DYN_PUSH(sb, allocator) = rex;
+
+  u8 opcode = 0x8d;
+  *PG_DYN_PUSH(sb, allocator) = opcode;
+
+  if (0 == instruction.src.effective_address.base.value &&
+      0 == instruction.src.effective_address.index.value) {
+    PG_ASSERT(0 == instruction.src.effective_address.scale);
+
+    u8 modrm = (0b00 << 6) |
+               (u8)(amd64_encode_register_value(instruction.dst.reg) << 3) |
+               0b101;
+    *PG_DYN_PUSH(sb, allocator) = modrm;
+
+    /* u8 sib = 0b101; */
+    /* *PG_DYN_PUSH(sb, allocator) = sib; */
+
+    pg_byte_buffer_append_u32_within_capacity(
+        sb, instruction.src.effective_address.displacement);
+    return;
+  }
+  PG_ASSERT(0 && "todo");
 }
 
 static void amd64_encode_instruction_ret(Pgu8Dyn *sb,
@@ -412,6 +442,7 @@ static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
 static PgString amd64_encode_program_text(Amd64Program program,
                                           PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
+  PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
 
   for (u64 i = 0; i < program.text.len; i++) {
     Amd64Section section = PG_SLICE_AT(program.text, i);
