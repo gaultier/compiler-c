@@ -138,7 +138,7 @@ PG_SLICE(Amd64Constant) Amd64ConstantSlice;
 
 typedef struct {
   Amd64SectionSlice text;
-  Amd64ConstantSlice data, rodata;
+  Amd64ConstantSlice rodata;
   u64 vm_start;
 
   PgString file_name;
