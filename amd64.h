@@ -307,9 +307,9 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
 static void amd64_encode_instruction_syscall(Pgu8Dyn *sb,
                                              Amd64Instruction instruction,
                                              PgAllocator *allocator) {
-  (void)sb;
-  (void)instruction;
-  (void)allocator;
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_SYSCALL == instruction.kind);
+
+  PG_DYN_APPEND_SLICE(sb, PG_S("\x0f\x05"), allocator);
 }
 
 static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
