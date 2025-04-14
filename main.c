@@ -76,4 +76,12 @@ int main() {
   for (u64 i = 0; i < program_encoded.len; i++) {
     printf("%#x ", PG_SLICE_AT(program_encoded, i));
   }
+
+  PgError err_write =
+      pg_file_write_full(program.file_name, program_encoded, allocator);
+  if (err_write) {
+    fprintf(stderr, "failed to write to file %.*s: %u\n",
+            (i32)program.file_name.len, program.file_name.data, err_write);
+    return 1;
+  }
 }

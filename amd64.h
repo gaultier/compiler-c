@@ -236,7 +236,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
       AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind &&
       instruction.src.immediate <= UINT32_MAX) {
-    u8 rex = 0b100'1000;
+    u8 rex = 0b0100'0100;
     *PG_DYN_PUSH(sb, allocator) = rex;
 
     u8 opcode = 0xb8;
@@ -253,7 +253,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   // memory operand to a 64-bit destination register.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
-    u8 rex = 0b100'1000;
+    u8 rex = 0b100'1100;
     *PG_DYN_PUSH(sb, allocator) = rex;
 
     u8 opcode = 0x8b;
