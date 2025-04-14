@@ -1,6 +1,34 @@
+#include "ast.h"
 #include "elf.h"
+#include "submodules/cstd/lib.c"
 
 int main() {
+  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  AstNode *ast_node_lit_3 = pg_arena_new(&arena, AstNode, 1);
+  ast_node_lit_3->kind = AST_NODE_KIND_U64;
+  ast_node_lit_3->n64 = 3;
+
+  AstNode *ast_node_lit_5 = pg_arena_new(&arena, AstNode, 1);
+  ast_node_lit_5->kind = AST_NODE_KIND_U64;
+  ast_node_lit_5->n64 = 5;
+
+  AstNode *ast_node_add = pg_arena_new(&arena, AstNode, 1);
+  ast_node_add->kind = AST_NODE_KIND_ADD;
+  ast_node_add->operand1 = ast_node_lit_3;
+  ast_node_add->operand2 = ast_node_lit_5;
+
+  AstNode *ast_node_lit_60 = pg_arena_new(&arena, AstNode, 1);
+  ast_node_lit_3->kind = AST_NODE_KIND_U64;
+  ast_node_lit_3->n64 = 60;
+
+  AstNode *ast_node_syscall = pg_arena_new(&arena, AstNode, 1);
+  ast_node_syscall->kind = AST_NODE_KIND_SYSCALL;
+  ast_node_syscall->operand1 = ast_node_lit_60;
+  ast_node_syscall->operand2 = ast_node_add;
+
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
 
@@ -99,10 +127,6 @@ int main() {
               .len = PG_STATIC_ARRAY_LEN(rodata),
           },
   };
-
-  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
-  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
-  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   PgError err_write = elf_write_exe(program, allocator);
   if (err_write) {

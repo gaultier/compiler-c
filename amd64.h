@@ -106,6 +106,7 @@ typedef struct {
   Amd64Operand dst, src;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
+PG_DYN(Amd64Instruction) Amd64InstructionDyn;
 
 typedef enum {
   AMD64_SECTION_FLAG_NONE = 0,
@@ -118,6 +119,7 @@ typedef struct {
   Amd64InstructionSlice instructions;
 } Amd64Section;
 PG_SLICE(Amd64Section) Amd64SectionSlice;
+PG_DYN(Amd64Section) Amd64SectionDyn;
 
 typedef enum {
   AMD64_CONSTANT_KIND_NONE,
@@ -135,6 +137,7 @@ typedef struct {
   };
 } Amd64Constant;
 PG_SLICE(Amd64Constant) Amd64ConstantSlice;
+PG_DYN(Amd64Constant) Amd64ConstantDyn;
 
 typedef struct {
   Amd64SectionSlice text;
