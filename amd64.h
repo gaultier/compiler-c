@@ -81,19 +81,30 @@ typedef struct {
 } Amd64Operand;
 
 typedef enum {
-  AMD64_OP_KIND_NONE,
-  AMD64_OP_KIND_MOV,
-  AMD64_OP_KIND_ADD,
-  AMD64_OP_KIND_LEA,
-  AMD64_OP_KIND_RET,
-  AMD64_OP_KIND_SYSCALL,
-} Amd64OpKind;
+  AMD64_INSTRUCTION_KIND_NONE,
+  AMD64_INSTRUCTION_KIND_MOV,
+  AMD64_INSTRUCTION_KIND_ADD,
+  AMD64_INSTRUCTION_KIND_LEA,
+  AMD64_INSTRUCTION_KIND_RET,
+  AMD64_INSTRUCTION_KIND_SYSCALL,
+} Amd64InstructionKind;
 
 typedef struct {
-  Amd64OpKind kind;
+  Amd64InstructionKind kind;
   Amd64Operand dst, src;
-} Amd64Op;
-PG_SLICE(Amd64Op) Amd64OpSlice;
+} Amd64Instruction;
+PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
+
+typedef enum {
+  AMD64_SECTION_FLAG_NONE = 0,
+  AMD64_SECTION_FLAG_GLOBAL = 1 << 0,
+} Amd64SectionFlag;
+
+typedef struct {
+  PgString name;
+  Amd64SectionFlag flags;
+  Amd64InstructionSlice instructions;
+} Amd64Section;
 
 static void amd64_dump_register(Register reg, Pgu8Dyn *sb,
                                 PgAllocator *allocator) {
@@ -130,29 +141,41 @@ static void amd64_dump_operand(Amd64Operand operand, Pgu8Dyn *sb,
   }
 }
 
-static PgString amd64_dump_ops(Amd64OpSlice ops, PgAllocator *allocator) {
+static PgString amd64_dump_section(Amd64Section section,
+                                   PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
+  PG_DYN_APPEND_SLICE(&sb, PG_S("BITS 64\n"), allocator);
+  PG_DYN_APPEND_SLICE(&sb, PG_S("CPU X64\n"), allocator);
 
-  for (u64 i = 0; i < ops.len; i++) {
-    Amd64Op op = PG_SLICE_AT(ops, i);
+  if (AMD64_SECTION_FLAG_GLOBAL & section.flags) {
+    PG_DYN_APPEND_SLICE(&sb, PG_S("global "), allocator);
+    PG_DYN_APPEND_SLICE(&sb, section.name, allocator);
+    PG_DYN_APPEND_SLICE(&sb, PG_S(":\n"), allocator);
+  }
+
+  PG_DYN_APPEND_SLICE(&sb, section.name, allocator);
+  PG_DYN_APPEND_SLICE(&sb, PG_S(":\n"), allocator);
+
+  for (u64 i = 0; i < section.instructions.len; i++) {
+    Amd64Instruction instruction = PG_SLICE_AT(section.instructions, i);
 
     // TODO: Validate operands?
-    switch (op.kind) {
-    case AMD64_OP_KIND_NONE:
+    switch (instruction.kind) {
+    case AMD64_INSTRUCTION_KIND_NONE:
       PG_ASSERT(0);
-    case AMD64_OP_KIND_MOV:
+    case AMD64_INSTRUCTION_KIND_MOV:
       PG_DYN_APPEND_SLICE(&sb, PG_S("mov "), allocator);
       break;
-    case AMD64_OP_KIND_ADD:
+    case AMD64_INSTRUCTION_KIND_ADD:
       PG_DYN_APPEND_SLICE(&sb, PG_S("add "), allocator);
       break;
-    case AMD64_OP_KIND_LEA:
+    case AMD64_INSTRUCTION_KIND_LEA:
       PG_DYN_APPEND_SLICE(&sb, PG_S("lea "), allocator);
       break;
-    case AMD64_OP_KIND_RET:
+    case AMD64_INSTRUCTION_KIND_RET:
       PG_DYN_APPEND_SLICE(&sb, PG_S("ret "), allocator);
       break;
-    case AMD64_OP_KIND_SYSCALL:
+    case AMD64_INSTRUCTION_KIND_SYSCALL:
       PG_DYN_APPEND_SLICE(&sb, PG_S("syscall "), allocator);
       break;
     default:
@@ -160,15 +183,15 @@ static PgString amd64_dump_ops(Amd64OpSlice ops, PgAllocator *allocator) {
       break;
     }
 
-    if (AMD64_OPERAND_KIND_NONE != op.dst.kind) {
-      amd64_dump_operand(op.dst, &sb, allocator);
+    if (AMD64_OPERAND_KIND_NONE != instruction.dst.kind) {
+      amd64_dump_operand(instruction.dst, &sb, allocator);
     }
 
-    if (AMD64_OPERAND_KIND_NONE != op.src.kind) {
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE != op.dst.kind);
+    if (AMD64_OPERAND_KIND_NONE != instruction.src.kind) {
+      PG_ASSERT(AMD64_OPERAND_KIND_NONE != instruction.dst.kind);
 
       PG_DYN_APPEND_SLICE(&sb, PG_S(", "), allocator);
-      amd64_dump_operand(op.src, &sb, allocator);
+      amd64_dump_operand(instruction.src, &sb, allocator);
     }
 
     *PG_DYN_PUSH(&sb, allocator) = '\n';
