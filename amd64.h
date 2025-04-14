@@ -291,8 +291,8 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
     u8 opcode = 0x89;
     *PG_DYN_PUSH(sb, allocator) = opcode;
     u8 modrm = (0b11 << 6) |
-               (u8)(amd64_encode_register_value(instruction.dst.reg) << 3) |
-               (u8)(amd64_encode_register_value(instruction.src.reg) & 0b111);
+               (u8)(amd64_encode_register_value(instruction.src.reg) << 3) |
+               (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
     return;
