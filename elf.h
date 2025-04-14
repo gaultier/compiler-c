@@ -68,7 +68,7 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
   ElfProgramHeader program_headers[] = {
       {
           .type = ElfProgramHeaderTypeLoad,
-          .p_offset = page_size,
+          .p_offset = 0,
           .p_vaddr = program.vm_start,
           .p_paddr = program.vm_start,
           .p_filesz = page_size + program_encoded.len,
