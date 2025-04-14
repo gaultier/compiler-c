@@ -45,34 +45,38 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
 
   PgString program_encoded = amd64_encode_program_text(program, allocator);
 
+  const u64 program_headers_len = 2;
   ElfProgramHeader program_headers[] = {
-      {
-          .type = ElfProgramHeaderTypeLoad,
-          .p_offset = 0,
-          .p_vaddr = vm_start,
-          .p_paddr = vm_start,
-          .flags = ElfProgramHeaderFlagsReadable,
-          .alignment = page_size,
-      },
       {
           .type = ElfProgramHeaderTypeLoad,
           .p_offset = page_size,
           .p_vaddr = vm_start + page_size,
           .p_paddr = vm_start + page_size,
-          .p_filesz = (u64)(program_encoded.len),
-          .p_memsz = (u64)(program_encoded.len),
+          .p_filesz =
+              elf_header_size + program_headers_len * sizeof(ElfProgramHeader),
+          .p_memsz =
+              elf_header_size + program_headers_len * sizeof(ElfProgramHeader),
           .flags =
               ElfProgramHeaderFlagsExecutable | ElfProgramHeaderFlagsReadable,
           .alignment = page_size,
       },
+      {
+          .type = ElfProgramHeaderTypeLoad,
+          .p_offset = PG_ROUNDUP(program_encoded.len, page_size),
+          .p_filesz = elf_header_size +
+                      program_headers_len * sizeof(ElfProgramHeader) +
+                      PG_ROUNDUP(program_encoded.len, page_size),
+          .p_memsz = elf_header_size +
+                     program_headers_len * sizeof(ElfProgramHeader) +
+                     PG_ROUNDUP(program_encoded.len, page_size),
+          .p_vaddr =
+              vm_start + page_size + PG_ROUNDUP(program_encoded.len, page_size),
+          .p_paddr =
+              vm_start + page_size + PG_ROUNDUP(program_encoded.len, page_size),
+          .flags = ElfProgramHeaderFlagsReadable,
+          .alignment = page_size,
+      },
   };
-
-  u64 program_headers_size_unpadded =
-      elf_header_size +
-      PG_STATIC_ARRAY_LEN(program_headers) * sizeof(ElfProgramHeader);
-  // Backpatch.
-  program_headers[0].p_filesz = program_headers_size_unpadded;
-  program_headers[0].p_memsz = program_headers_size_unpadded;
 
   PgString elf_strings[] = {
       PG_S(".shstrtab"),
