@@ -275,8 +275,8 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
     return;
   }
 
-  // MOV reg64, reg/mem64 | 8B /r | Move the contents of a 64-bit register or
-  // memory operand to a 64-bit destination register.
+  // MOV reg/mem64, reg64 | 89 /r | Move the contents of a 64-bit register to a
+  // 64-bit destination register or memory operand.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
@@ -288,7 +288,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
 
-    u8 opcode = 0x8b;
+    u8 opcode = 0x89;
     *PG_DYN_PUSH(sb, allocator) = opcode;
     u8 modrm = (0b11 << 6) |
                (u8)(amd64_encode_register_value(instruction.dst.reg) << 3) |
