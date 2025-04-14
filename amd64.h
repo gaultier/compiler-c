@@ -259,7 +259,9 @@ static const u8 AMD64_REX_MASK_X = 0b0000'0010;
 // TODO: document.
 static const u8 AMD64_REX_MASK_B = 0b0000'0001;
 
+// No index register.
 static const u8 AMD64_SIB_INDEX_NONE = 0b101'000;
+// Base is not a register but a u32 displacement value.
 static const u8 AMD64_SIB_BASE_DISP32 = 0b101;
 
 static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
