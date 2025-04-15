@@ -661,6 +661,16 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
         .dst = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 1), ir_idx,
                                          var_ranges),
     };
+
+    PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
+    IrVar var = {ir_idx};
+    Amd64IrVarRange var_range = {
+        .reg = instruction.dst.reg,
+        .var = var,
+        .start = ir_idx,
+    };
+    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+
     *PG_DYN_PUSH(instructions, allocator) = instruction;
   } break;
   case IR_KIND_LOAD: {
