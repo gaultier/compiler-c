@@ -32,6 +32,7 @@ PG_DYN(IrValue) IrValueDyn;
 typedef struct {
   IrKind kind;
   IrValueDyn operands;
+  Origin origin;
 } Ir;
 PG_SLICE(Ir) IrSlice;
 PG_DYN(Ir) IrDyn;

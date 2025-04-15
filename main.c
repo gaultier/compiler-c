@@ -39,8 +39,12 @@ int main() {
   *PG_DYN_PUSH(&ast_node_syscall->operands, allocator) = *ast_node_lit_60;
   *PG_DYN_PUSH(&ast_node_syscall->operands, allocator) = *ast_node_add_4_add;
 
+  AstNode *root = ast_node_syscall;
+  ast_print(*root, 0);
+  puts("------------");
+
   IrDyn irs = {0};
-  ast_to_ir(*ast_node_syscall, &irs, allocator);
+  ast_to_ir(*root, &irs, allocator);
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, irs);
   irs_print(irs_slice);
 

@@ -114,6 +114,7 @@ typedef enum {
 typedef struct {
   Amd64InstructionKind kind;
   Amd64Operand dst, src;
+  Origin origin;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
