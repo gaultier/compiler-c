@@ -192,7 +192,39 @@ static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
 
   AstNodeDyn operands = {0};
 
-  // TODO: parse operands;
+  while (*tokens_consumed < tokens.len) {
+    LexToken token = PG_SLICE_AT(tokens, *tokens_consumed);
+    if (LEX_TOKEN_KIND_PAREN_RIGHT == token.kind) {
+      break;
+    }
+
+    AstNode *operand =
+        ast_parse_expr(tokens, errors, tokens_consumed, allocator);
+    if (!operand) {
+      *PG_DYN_PUSH(errors, allocator) = (Error){
+          .kind = ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND,
+          .origin = token.origin,
+      };
+      return nullptr;
+    }
+    *PG_DYN_PUSH(&operands, allocator) = *operand;
+
+    *tokens_consumed += 1;
+    LexToken token_after = PG_SLICE_AT(tokens, *tokens_consumed);
+    if (LEX_TOKEN_KIND_PAREN_RIGHT == token_after.kind) {
+      break;
+    }
+    if (LEX_TOKEN_KIND_COMMA == token_after.kind) {
+      *tokens_consumed += 1;
+      break;
+    }
+
+    *PG_DYN_PUSH(errors, allocator) = (Error){
+        .kind = ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA,
+        .origin = token_after.origin,
+    };
+    return nullptr;
+  }
 
   {
     LexToken token_right_paren = PG_SLICE_AT(tokens, *tokens_consumed);

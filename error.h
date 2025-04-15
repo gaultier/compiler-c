@@ -10,6 +10,7 @@ typedef enum {
   ERROR_KIND_PARSE_SYSCALL_MISSING_LEFT_PAREN,
   ERROR_KIND_PARSE_SYSCALL_MISSING_RIGHT_PAREN,
   ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA,
+  ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND,
   ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS,
   ERROR_KIND_PARSE_STATEMENT,
 } ErrorKind;
@@ -45,6 +46,9 @@ static void error_print(Error err) {
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA:
     printf("missing comma in syscall arguments\n");
+    break;
+  case ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND:
+    printf("missing syscall argument\n");
     break;
   case ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS:
     printf("missing second operand in binary operation\n");
