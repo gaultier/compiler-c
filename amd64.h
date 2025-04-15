@@ -555,10 +555,9 @@ amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, u32 ir_idx,
   // TODO: Spill.
   PG_ASSERT(reg_alloc->available.len > 0 && "todo");
 
-  RegisterSlice regs = PG_DYN_SLICE(RegisterSlice, reg_alloc->available);
+  Register res = PG_SLICE_AT(reg_alloc->available, 0);
 
-  Register res = PG_SLICE_AT(regs, 0);
-  PG_SLICE_SWAP_REMOVE(&regs, 0);
+  PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
   *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = res;
 
   Amd64IrVarRange var_range = {
