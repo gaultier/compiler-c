@@ -45,6 +45,7 @@ int main() {
   amd64_dump_instructions(
       &sb, PG_DYN_SLICE(Amd64InstructionSlice, instructions), allocator);
   PgString s = PG_DYN_SLICE(PgString, sb);
+  puts("------------");
   write(1, s.data, s.len);
 
   u64 vm_start = 1 << 22;
