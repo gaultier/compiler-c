@@ -148,9 +148,20 @@ typedef struct {
   PgString file_name;
 } Amd64Program;
 
+// Track in which machine register is a var stored in given range.
+typedef struct {
+  // Ir indices.
+  u32 start, end;
+  IrVar var;
+  Register reg;
+} Amd64IrVarRange;
+PG_SLICE(Amd64IrVarRange) Amd64IrVarRangeSlice;
+PG_DYN(Amd64IrVarRange) Amd64IrVarRangeDyn;
+
 typedef struct {
   RegisterDyn available;
   RegisterDyn taken;
+  Amd64IrVarRangeDyn var_ranges;
 } Amd64RegisterAllocator;
 
 static void amd64_dump_register(Register reg, Pgu8Dyn *sb,
@@ -188,6 +199,51 @@ static void amd64_dump_operand(Amd64Operand operand, Pgu8Dyn *sb,
   }
 }
 
+static void amd64_dump_instructions(Pgu8Dyn *sb,
+                                    Amd64InstructionSlice instructions,
+                                    PgAllocator *allocator) {
+  for (u64 i = 0; i < instructions.len; i++) {
+    Amd64Instruction instruction = PG_SLICE_AT(instructions, i);
+
+    // TODO: Validate operands?
+    switch (instruction.kind) {
+    case AMD64_INSTRUCTION_KIND_NONE:
+      PG_ASSERT(0);
+    case AMD64_INSTRUCTION_KIND_MOV:
+      PG_DYN_APPEND_SLICE(sb, PG_S("mov "), allocator);
+      break;
+    case AMD64_INSTRUCTION_KIND_ADD:
+      PG_DYN_APPEND_SLICE(sb, PG_S("add "), allocator);
+      break;
+    case AMD64_INSTRUCTION_KIND_LEA:
+      PG_DYN_APPEND_SLICE(sb, PG_S("lea "), allocator);
+      break;
+    case AMD64_INSTRUCTION_KIND_RET:
+      PG_DYN_APPEND_SLICE(sb, PG_S("ret "), allocator);
+      break;
+    case AMD64_INSTRUCTION_KIND_SYSCALL:
+      PG_DYN_APPEND_SLICE(sb, PG_S("syscall "), allocator);
+      break;
+    default:
+      PG_ASSERT(0);
+      break;
+    }
+
+    if (AMD64_OPERAND_KIND_NONE != instruction.dst.kind) {
+      amd64_dump_operand(instruction.dst, sb, allocator);
+    }
+
+    if (AMD64_OPERAND_KIND_NONE != instruction.src.kind) {
+      PG_ASSERT(AMD64_OPERAND_KIND_NONE != instruction.dst.kind);
+
+      PG_DYN_APPEND_SLICE(sb, PG_S(", "), allocator);
+      amd64_dump_operand(instruction.src, sb, allocator);
+    }
+
+    *PG_DYN_PUSH(sb, allocator) = '\n';
+  }
+}
+
 [[maybe_unused]] [[nodiscard]]
 static PgString amd64_dump_section(Amd64Section section,
                                    PgAllocator *allocator) {
@@ -204,47 +260,7 @@ static PgString amd64_dump_section(Amd64Section section,
   PG_DYN_APPEND_SLICE(&sb, section.name, allocator);
   PG_DYN_APPEND_SLICE(&sb, PG_S(":\n"), allocator);
 
-  for (u64 i = 0; i < section.instructions.len; i++) {
-    Amd64Instruction instruction = PG_SLICE_AT(section.instructions, i);
-
-    // TODO: Validate operands?
-    switch (instruction.kind) {
-    case AMD64_INSTRUCTION_KIND_NONE:
-      PG_ASSERT(0);
-    case AMD64_INSTRUCTION_KIND_MOV:
-      PG_DYN_APPEND_SLICE(&sb, PG_S("mov "), allocator);
-      break;
-    case AMD64_INSTRUCTION_KIND_ADD:
-      PG_DYN_APPEND_SLICE(&sb, PG_S("add "), allocator);
-      break;
-    case AMD64_INSTRUCTION_KIND_LEA:
-      PG_DYN_APPEND_SLICE(&sb, PG_S("lea "), allocator);
-      break;
-    case AMD64_INSTRUCTION_KIND_RET:
-      PG_DYN_APPEND_SLICE(&sb, PG_S("ret "), allocator);
-      break;
-    case AMD64_INSTRUCTION_KIND_SYSCALL:
-      PG_DYN_APPEND_SLICE(&sb, PG_S("syscall "), allocator);
-      break;
-    default:
-      PG_ASSERT(0);
-      break;
-    }
-
-    if (AMD64_OPERAND_KIND_NONE != instruction.dst.kind) {
-      amd64_dump_operand(instruction.dst, &sb, allocator);
-    }
-
-    if (AMD64_OPERAND_KIND_NONE != instruction.src.kind) {
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE != instruction.dst.kind);
-
-      PG_DYN_APPEND_SLICE(&sb, PG_S(", "), allocator);
-      amd64_dump_operand(instruction.src, &sb, allocator);
-    }
-
-    *PG_DYN_PUSH(&sb, allocator) = '\n';
-  }
-
+  amd64_dump_instructions(&sb, section.instructions, allocator);
   return PG_DYN_SLICE(PgString, sb);
 }
 
@@ -466,8 +482,30 @@ static PgString amd64_encode_program_text(Amd64Program program,
   return PG_DYN_SLICE(PgString, sb);
 }
 
-static Amd64Operand
-amd64_ir_value_to_operand(IrValue val, Amd64RegisterAllocator *reg_alloc) {
+[[nodiscard]]
+static Amd64IrVarRange amd64_locate_ir_var_range(Amd64IrVarRangeSlice ranges,
+                                                 IrVar var, u32 current_pos) {
+  for (u64 i = 0; i < ranges.len; i++) {
+    Amd64IrVarRange range = PG_SLICE_AT(ranges, i);
+
+    if (range.var.value != var.value) {
+      continue;
+    }
+    if (current_pos < range.start) {
+      continue;
+    }
+
+    if (0 != range.end && current_pos >= range.end) {
+      continue;
+    }
+
+    return range;
+  }
+  PG_ASSERT(0);
+}
+
+static Amd64Operand amd64_ir_value_to_operand(IrValue val, u32 ir_idx,
+                                              Amd64IrVarRangeSlice ranges) {
   switch (val.kind) {
   case IR_VALUE_KIND_NONE:
     PG_ASSERT(0);
@@ -479,47 +517,112 @@ amd64_ir_value_to_operand(IrValue val, Amd64RegisterAllocator *reg_alloc) {
   case IR_VALUE_KIND_VAR:
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = {},
+        .reg = amd64_locate_ir_var_range(ranges, val.var, ir_idx).reg,
     };
   default:
     PG_ASSERT(0);
   }
 }
 
-static void amd64_ir_to_asm(IrSlice irs, u32 i,
+[[nodiscard]] static Amd64RegisterAllocator
+amd64_make_register_allocator(PgAllocator *allocator) {
+  Amd64RegisterAllocator reg_alloc = {0};
+  PG_DYN_ENSURE_CAP(&reg_alloc.taken, 16, allocator);
+  PG_DYN_ENSURE_CAP(&reg_alloc.available, 16, allocator);
+
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rax;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rbx;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rcx;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rdx;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rdi;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rsi;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r8;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r9;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r10;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r11;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r12;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r13;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r14;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r15;
+
+  return reg_alloc;
+}
+
+[[nodiscard]]
+static Register
+amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, u32 ir_idx,
+                                IrVar var, PgAllocator *allocator) {
+  // TODO: Spill.
+  PG_ASSERT(reg_alloc->available.len > 0 && "todo");
+
+  RegisterSlice regs = PG_DYN_SLICE(RegisterSlice, reg_alloc->available);
+
+  Register res = PG_SLICE_AT(regs, 0);
+  PG_SLICE_SWAP_REMOVE(&regs, 0);
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = res;
+
+  Amd64IrVarRange var_range = {
+      .reg = res,
+      .var = var,
+      .start = ir_idx,
+      .end = 0,
+  };
+  *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+
+  return res;
+}
+
+static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
                             Amd64InstructionDyn *instructions,
                             Amd64RegisterAllocator *reg_alloc,
                             PgAllocator *allocator) {
-  Ir ir = PG_SLICE_AT(irs, i);
+  Ir ir = PG_SLICE_AT(irs, ir_idx);
+  Amd64IrVarRangeSlice var_ranges =
+      PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges);
 
   switch (ir.kind) {
   case IR_KIND_NONE:
     PG_ASSERT(0);
-  case IR_KIND_ADD:
+  case IR_KIND_ADD: {
     PG_ASSERT(2 == ir.operands.len);
-    printf("x%u := ", i);
-    ir_print_value(PG_SLICE_AT(ir.operands, 0));
-    printf(" + ");
-    ir_print_value(PG_SLICE_AT(ir.operands, 1));
-    printf("\n");
-    break;
-  case IR_KIND_LOAD:
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_ADD,
+        .src = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 0), ir_idx,
+                                         var_ranges),
+        .dst = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 1), ir_idx,
+                                         var_ranges),
+    };
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+  } break;
+  case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
-    printf("x%u := ", i);
-    ir_print_value(PG_SLICE_AT(ir.operands, 0));
-    printf("\n");
-    break;
+    IrValue src = PG_SLICE_AT(ir.operands, 0);
+    Amd64InstructionKind kind = (IR_VALUE_KIND_U64 == src.kind)
+                                    ? AMD64_INSTRUCTION_KIND_MOV
+                                    : AMD64_INSTRUCTION_KIND_LEA;
+
+    Amd64Instruction instruction = {
+        .kind = kind,
+        .src = amd64_ir_value_to_operand(src, ir_idx, var_ranges),
+        .dst =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                .reg = amd64_allocate_register_for_var(
+                    reg_alloc, ir_idx, (IrVar){ir_idx}, allocator),
+            },
+    };
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+  } break;
   case IR_KIND_SYSCALL: {
-    printf("x%u := syscall(", i);
+#if 0
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
-      ir_print_value(val);
-
-      if (j + 1 < ir.operands.len) {
-        printf(", ");
-      }
     }
-    printf(")\n");
+#endif
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
+    };
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
   } break;
   default:
     PG_ASSERT(0);

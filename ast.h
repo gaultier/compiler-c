@@ -1,11 +1,5 @@
 #pragma once
-#include "amd64.h"
 #include "submodules/cstd/lib.c"
-
-/* typedef struct { */
-/*   u32 value; */
-/* } AstNodeIndex; */
-/* PG_SLICE(AstNodeIndex) AstNodeIndexSlice; */
 
 typedef enum {
   AST_NODE_KIND_NONE,

@@ -32,7 +32,20 @@ int main() {
 
   IrDyn irs = {0};
   ast_to_ir(*ast_node_syscall, &irs, allocator);
-  irs_print(PG_DYN_SLICE(IrSlice, irs));
+  IrSlice irs_slice = PG_DYN_SLICE(IrSlice, irs);
+  irs_print(irs_slice);
+
+  Amd64RegisterAllocator reg_alloc = amd64_make_register_allocator(allocator);
+
+  Amd64InstructionDyn instructions = {0};
+  amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc, allocator);
+
+  Pgu8Dyn sb = {0};
+  PG_DYN_ENSURE_CAP(&sb, 4 * PG_KiB, allocator);
+  amd64_dump_instructions(
+      &sb, PG_DYN_SLICE(Amd64InstructionSlice, instructions), allocator);
+  PgString s = PG_DYN_SLICE(PgString, sb);
+  write(1, s.data, s.len);
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
