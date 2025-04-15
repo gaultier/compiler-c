@@ -11,6 +11,7 @@ typedef struct {
   Register return_value;
   RegisterSlice call_preserved;
   RegisterSlice calling_convention;
+  RegisterSlice syscall_calling_convention;
   Register stack_pointer;
   Register base_pointer;
 } Architecture;
