@@ -571,6 +571,50 @@ amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, u32 ir_idx,
   return res;
 }
 
+static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
+                                      Register dst, IrValue val, u32 ir_idx,
+                                      Amd64InstructionDyn *instructions,
+                                      PgAllocator *allocator) {
+  i32 reg_idx = -1;
+  for (u64 i = 0; i < reg_alloc->available.len; i++) {
+    Register reg = PG_SLICE_AT(reg_alloc->available, i);
+    if (reg.value == dst.value) {
+      reg_idx = (i32)i;
+      break;
+    }
+  }
+
+  if (-1 == reg_idx) {
+    PG_ASSERT(0); // TODO: move things around to free register.
+  } else {
+    PG_DYN_SWAP_REMOVE(&reg_alloc->available, reg_idx);
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = dst;
+
+    if (IR_VALUE_KIND_VAR == val.kind) {
+      Amd64IrVarRange var_range = {
+          .reg = dst,
+          .var = val.var,
+          .start = ir_idx,
+          .end = 0,
+      };
+      *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+    }
+
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .dst =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                .reg = dst,
+            },
+        .src = amd64_ir_value_to_operand(
+            val, ir_idx,
+            PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges)),
+    };
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+  }
+}
+
 static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
                             Amd64InstructionDyn *instructions,
                             Amd64RegisterAllocator *reg_alloc,
@@ -613,11 +657,12 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
     *PG_DYN_PUSH(instructions, allocator) = instruction;
   } break;
   case IR_KIND_SYSCALL: {
-#if 0
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
+      amd64_store_into_register(reg_alloc, (Register){0}, val, ir_idx,
+                                instructions, allocator);
     }
-#endif
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
     };
