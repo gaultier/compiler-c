@@ -662,6 +662,8 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
                                          var_ranges),
     };
 
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+
     PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
     IrVar var = {ir_idx};
     Amd64IrVarRange var_range = {
@@ -670,8 +672,6 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
         .start = ir_idx,
     };
     *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
   } break;
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
@@ -691,6 +691,15 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
             },
     };
     *PG_DYN_PUSH(instructions, allocator) = instruction;
+
+    IrVar var = {ir_idx};
+    Amd64IrVarRange var_range = {
+        .reg = instruction.dst.reg,
+        .var = var,
+        .start = ir_idx,
+    };
+    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+
   } break;
   case IR_KIND_SYSCALL: {
     PG_ASSERT(ir.operands.len <= amd64_arch.syscall_calling_convention.len);
@@ -706,6 +715,15 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
     };
     *PG_DYN_PUSH(instructions, allocator) = instruction;
+
+    IrVar var = {ir_idx};
+    Amd64IrVarRange var_range = {
+        .reg = amd64_arch.return_value,
+        .var = var,
+        .start = ir_idx,
+    };
+    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+
   } break;
   default:
     PG_ASSERT(0);
