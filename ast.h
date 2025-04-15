@@ -14,12 +14,17 @@ typedef enum {
   AST_NODE_KIND_SYSCALL,
 } AstNodeKind;
 
-typedef struct AstNode {
-  AstNodeKind kind;
-  struct AstNode *operand1, *operand2;
-  u64 n64;
-} AstNode;
+typedef struct AstNode AstNode;
+PG_SLICE(AstNode) AstNodeSlice;
+PG_DYN(AstNode) AstNodeDyn;
 
+struct AstNode {
+  AstNodeKind kind;
+  AstNodeDyn operands;
+  u64 n64;
+};
+
+#if 0
 static void ast_to_asm_instructions(AstNode *root,
                                     Amd64InstructionDyn *instructions,
                                     Amd64ConstantDyn *constants,
@@ -76,3 +81,4 @@ static void ast_to_asm_instructions(AstNode *root,
 
   return program;
 }
+#endif

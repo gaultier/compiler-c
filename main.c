@@ -1,5 +1,6 @@
 #include "ast.h"
 #include "elf.h"
+#include "ir.h"
 #include "submodules/cstd/lib.c"
 
 int main() {
@@ -17,17 +18,21 @@ int main() {
 
   AstNode *ast_node_add = pg_arena_new(&arena, AstNode, 1);
   ast_node_add->kind = AST_NODE_KIND_ADD;
-  ast_node_add->operand1 = ast_node_lit_3;
-  ast_node_add->operand2 = ast_node_lit_5;
+  *PG_DYN_PUSH(&ast_node_add->operands, allocator) = *ast_node_lit_3;
+  *PG_DYN_PUSH(&ast_node_add->operands, allocator) = *ast_node_lit_5;
 
   AstNode *ast_node_lit_60 = pg_arena_new(&arena, AstNode, 1);
-  ast_node_lit_3->kind = AST_NODE_KIND_U64;
-  ast_node_lit_3->n64 = 60;
+  ast_node_lit_60->kind = AST_NODE_KIND_U64;
+  ast_node_lit_60->n64 = 60;
 
   AstNode *ast_node_syscall = pg_arena_new(&arena, AstNode, 1);
   ast_node_syscall->kind = AST_NODE_KIND_SYSCALL;
-  ast_node_syscall->operand1 = ast_node_lit_60;
-  ast_node_syscall->operand2 = ast_node_add;
+  *PG_DYN_PUSH(&ast_node_syscall->operands, allocator) = *ast_node_lit_60;
+  *PG_DYN_PUSH(&ast_node_syscall->operands, allocator) = *ast_node_add;
+
+  IrDyn irs = {0};
+  ast_to_ir(*ast_node_syscall, &irs, allocator);
+  irs_print(PG_DYN_SLICE(IrSlice, irs));
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
