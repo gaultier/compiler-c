@@ -1,12 +1,45 @@
 #include "ast.h"
 #include "elf.h"
+#include "error.h"
 #include "ir.h"
+#include "lex.h"
 #include "submodules/cstd/lib.c"
 
-int main() {
+int main(int argc, char *argv[]) {
+  PG_ASSERT(argc >= 1);
+  if (2 != argc) {
+    fprintf(stderr, "Usage: %s <source file>\n", argv[0]);
+    return 1;
+  }
+
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  PgString file_name = pg_cstr_to_string(argv[1]);
+  PgStringResult file_read_res =
+      pg_file_read_full_from_path(file_name, allocator);
+  if (file_read_res.err) {
+    fprintf(stderr, "Failed to read file %.*s: %u\n", (i32)file_name.len,
+            file_name.data, file_read_res.err);
+    return 1;
+  }
+
+  LexTokenDyn tokens = {0};
+  ErrorDyn errors = {0};
+  lex(file_name, file_read_res.res, &tokens, &errors, allocator);
+  if (errors.len) {
+    for (u64 i = 0; i < errors.len; i++) {
+      Error err = PG_SLICE_AT(errors, i);
+      origin_print(err.origin);
+      printf(" Error: ");
+      error_print(err);
+    }
+    return 1;
+  }
+  LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, tokens);
+  lex_tokens_print(tokens_slice);
+  puts("------------");
 
   AstNode *ast_node_lit_3 = pg_arena_new(&arena, AstNode, 1);
   ast_node_lit_3->kind = AST_NODE_KIND_U64;
