@@ -8,6 +8,9 @@ typedef enum {
   LEX_TOKEN_KIND_LITERAL_U64,
   LEX_TOKEN_KIND_PLUS,
   LEX_TOKEN_KIND_SYSCALL,
+  LEX_TOKEN_KIND_PAREN_LEFT,
+  LEX_TOKEN_KIND_PAREN_RIGHT,
+  LEX_TOKEN_KIND_COMMA,
 } LexTokenKind;
 
 typedef struct {
@@ -25,7 +28,11 @@ static bool lex_keyword(PgUtf8Iterator *it, PgRune first_rune,
   PG_ASSERT(pg_rune_is_alphabetical(first_rune));
 
   u32 column_start = *column;
-  u64 idx_start = it->idx - 1;
+  // Unconsume the first rune.
+  PG_ASSERT(it->idx > 0);
+  it->idx -= 1;
+
+  u64 idx_start = it->idx;
 
   for (u64 _i = 0; _i < it->s.len; _i++) {
     if (it->idx >= it->s.len) {
@@ -97,7 +104,12 @@ static void lex_literal_number(PgUtf8Iterator *it, PgRune first_rune,
   PG_ASSERT(pg_rune_is_numeric(first_rune));
 
   u32 column_start = *column;
-  u64 idx_start = it->idx - 1;
+
+  // Unconsume the first rune.
+  PG_ASSERT(it->idx > 0);
+  it->idx -= 1;
+
+  u64 idx_start = it->idx;
 
   for (u64 _i = 0; _i < it->s.len; _i++) {
     if (it->idx >= it->s.len) {
@@ -232,6 +244,51 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
       column += 1;
     } break;
 
+    case '(': {
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_PAREN_LEFT,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 1;
+    } break;
+
+    case ')': {
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_PAREN_RIGHT,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 1;
+    } break;
+
+    case ',': {
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_COMMA,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 1;
+    } break;
+
     case ' ': {
       column += 1;
       break;
@@ -274,6 +331,15 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       break;
     case LEX_TOKEN_KIND_PLUS:
       printf("+\n");
+      break;
+    case LEX_TOKEN_KIND_PAREN_LEFT:
+      printf("(\n");
+      break;
+    case LEX_TOKEN_KIND_PAREN_RIGHT:
+      printf(")\n");
+      break;
+    case LEX_TOKEN_KIND_COMMA:
+      printf(",\n");
       break;
     case LEX_TOKEN_KIND_SYSCALL:
       printf("syscall\n");
