@@ -7,6 +7,11 @@ typedef enum {
   ERROR_KIND_LEX_INVALID_UTF8,
   ERROR_KIND_LEX_INVALID_LITERAL_NUMBER,
   ERROR_KIND_LEX_INVALID_KEYWORD,
+  ERROR_KIND_PARSE_SYSCALL_MISSING_LEFT_PAREN,
+  ERROR_KIND_PARSE_SYSCALL_MISSING_RIGHT_PAREN,
+  ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA,
+  ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS,
+  ERROR_KIND_PARSE_STATEMENT,
 } ErrorKind;
 
 typedef struct {
@@ -31,6 +36,21 @@ static void error_print(Error err) {
     break;
   case ERROR_KIND_LEX_INVALID_KEYWORD:
     printf("invalid keyword\n");
+    break;
+  case ERROR_KIND_PARSE_SYSCALL_MISSING_LEFT_PAREN:
+    printf("missing left parenthesis for syscall\n");
+    break;
+  case ERROR_KIND_PARSE_SYSCALL_MISSING_RIGHT_PAREN:
+    printf("missing right parenthesis for syscall\n");
+    break;
+  case ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA:
+    printf("missing comma in syscall arguments\n");
+    break;
+  case ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS:
+    printf("missing second operand in binary operation\n");
+    break;
+  case ERROR_KIND_PARSE_STATEMENT:
+    printf("failed to parse statement\n");
     break;
   default:
     PG_ASSERT(0);

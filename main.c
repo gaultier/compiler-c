@@ -41,38 +41,17 @@ int main(int argc, char *argv[]) {
   lex_tokens_print(tokens_slice);
   puts("------------");
 
-  AstNode *ast_node_lit_3 = pg_arena_new(&arena, AstNode, 1);
-  ast_node_lit_3->kind = AST_NODE_KIND_U64;
-  ast_node_lit_3->n64 = 3;
+  AstNode *root = lex_to_ast(tokens_slice, &errors, allocator);
+  if (errors.len) {
+    for (u64 i = 0; i < errors.len; i++) {
+      Error err = PG_SLICE_AT(errors, i);
+      origin_print(err.origin);
+      printf(" Error: ");
+      error_print(err);
+    }
+    return 1;
+  }
 
-  AstNode *ast_node_lit_4 = pg_arena_new(&arena, AstNode, 1);
-  ast_node_lit_4->kind = AST_NODE_KIND_U64;
-  ast_node_lit_4->n64 = 4;
-
-  AstNode *ast_node_lit_5 = pg_arena_new(&arena, AstNode, 1);
-  ast_node_lit_5->kind = AST_NODE_KIND_U64;
-  ast_node_lit_5->n64 = 5;
-
-  AstNode *ast_node_add_3_5 = pg_arena_new(&arena, AstNode, 1);
-  ast_node_add_3_5->kind = AST_NODE_KIND_ADD;
-  *PG_DYN_PUSH(&ast_node_add_3_5->operands, allocator) = *ast_node_lit_3;
-  *PG_DYN_PUSH(&ast_node_add_3_5->operands, allocator) = *ast_node_lit_5;
-
-  AstNode *ast_node_add_4_add = pg_arena_new(&arena, AstNode, 1);
-  ast_node_add_4_add->kind = AST_NODE_KIND_ADD;
-  *PG_DYN_PUSH(&ast_node_add_4_add->operands, allocator) = *ast_node_lit_4;
-  *PG_DYN_PUSH(&ast_node_add_4_add->operands, allocator) = *ast_node_add_3_5;
-
-  AstNode *ast_node_lit_60 = pg_arena_new(&arena, AstNode, 1);
-  ast_node_lit_60->kind = AST_NODE_KIND_U64;
-  ast_node_lit_60->n64 = 60;
-
-  AstNode *ast_node_syscall = pg_arena_new(&arena, AstNode, 1);
-  ast_node_syscall->kind = AST_NODE_KIND_SYSCALL;
-  *PG_DYN_PUSH(&ast_node_syscall->operands, allocator) = *ast_node_lit_60;
-  *PG_DYN_PUSH(&ast_node_syscall->operands, allocator) = *ast_node_add_4_add;
-
-  AstNode *root = ast_node_syscall;
   ast_print(*root, 0);
   puts("------------");
 
