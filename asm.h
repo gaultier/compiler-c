@@ -5,6 +5,7 @@ typedef struct {
   u64 value;
 } Register;
 PG_SLICE(Register) RegisterSlice;
+PG_DYN(Register) RegisterDyn;
 
 typedef struct {
   Register return_value;

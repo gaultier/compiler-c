@@ -1,5 +1,6 @@
 #pragma once
 #include "asm.h"
+#include "ir.h"
 
 static const Register amd64_rax = {1};
 static const Register amd64_rbx = {2};
@@ -146,6 +147,11 @@ typedef struct {
 
   PgString file_name;
 } Amd64Program;
+
+typedef struct {
+  RegisterDyn available;
+  RegisterDyn taken;
+} Amd64RegisterAllocator;
 
 static void amd64_dump_register(Register reg, Pgu8Dyn *sb,
                                 PgAllocator *allocator) {
@@ -458,4 +464,72 @@ static PgString amd64_encode_program_text(Amd64Program program,
   }
 
   return PG_DYN_SLICE(PgString, sb);
+}
+
+static Amd64Operand
+amd64_ir_value_to_operand(IrValue val, Amd64RegisterAllocator *reg_alloc) {
+  switch (val.kind) {
+  case IR_VALUE_KIND_NONE:
+    PG_ASSERT(0);
+  case IR_VALUE_KIND_U64:
+    return (Amd64Operand){
+        .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+        .immediate = val.n64,
+    };
+  case IR_VALUE_KIND_VAR:
+    return (Amd64Operand){
+        .kind = AMD64_OPERAND_KIND_REGISTER,
+        .reg = {},
+    };
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void amd64_ir_to_asm(IrSlice irs, u32 i,
+                            Amd64InstructionDyn *instructions,
+                            Amd64RegisterAllocator *reg_alloc,
+                            PgAllocator *allocator) {
+  Ir ir = PG_SLICE_AT(irs, i);
+
+  switch (ir.kind) {
+  case IR_KIND_NONE:
+    PG_ASSERT(0);
+  case IR_KIND_ADD:
+    PG_ASSERT(2 == ir.operands.len);
+    printf("x%u := ", i);
+    ir_print_value(PG_SLICE_AT(ir.operands, 0));
+    printf(" + ");
+    ir_print_value(PG_SLICE_AT(ir.operands, 1));
+    printf("\n");
+    break;
+  case IR_KIND_LOAD:
+    PG_ASSERT(1 == ir.operands.len);
+    printf("x%u := ", i);
+    ir_print_value(PG_SLICE_AT(ir.operands, 0));
+    printf("\n");
+    break;
+  case IR_KIND_SYSCALL: {
+    printf("x%u := syscall(", i);
+    for (u64 j = 0; j < ir.operands.len; j++) {
+      IrValue val = PG_SLICE_AT(ir.operands, j);
+      ir_print_value(val);
+
+      if (j + 1 < ir.operands.len) {
+        printf(", ");
+      }
+    }
+    printf(")\n");
+  } break;
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
+                             Amd64RegisterAllocator *reg_alloc,
+                             PgAllocator *allocator) {
+  for (u64 i = 0; i < irs.len; i++) {
+    amd64_ir_to_asm(irs, (u32)i, instructions, reg_alloc, allocator);
+  }
 }
