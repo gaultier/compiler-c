@@ -94,6 +94,13 @@ static void ast_to_ir(AstNode root, IrDyn *irs, PgAllocator *allocator) {
 
     *PG_DYN_PUSH(irs, allocator) = ir;
   } break;
+  case AST_NODE_KIND_BLOCK: {
+    for (u64 i = 0; i < root.operands.len; i++) {
+      AstNode node = PG_SLICE_AT(root.operands, i);
+      ast_to_ir(node, irs, allocator);
+    }
+  } break;
+
   default:
     PG_ASSERT(0);
   }

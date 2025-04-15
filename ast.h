@@ -7,6 +7,7 @@ typedef enum {
   AST_NODE_KIND_U64,
   AST_NODE_KIND_ADD,
   AST_NODE_KIND_SYSCALL,
+  AST_NODE_KIND_BLOCK,
 } AstNodeKind;
 
 typedef struct AstNode AstNode;
@@ -64,6 +65,14 @@ static void ast_print(AstNode node, u32 left_width) {
       putchar(' ');
     }
     printf(")\n");
+  } break;
+  case AST_NODE_KIND_BLOCK: {
+    printf("Block\n");
+    for (u64 i = 0; i < node.operands.len; i++) {
+      ast_print(PG_SLICE_AT(node.operands, i), left_width + 2);
+    }
+
+    printf("\n");
   } break;
   default:
     PG_ASSERT(0);
