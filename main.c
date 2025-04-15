@@ -60,76 +60,10 @@ int main() {
           .address_absolute = vm_start + rodata_offset + 0x00,
       },
   };
-  const Amd64Instruction ops[] = {
-      {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rax},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 1 /* write(2) */,
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rdi},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 1 /* stdout */,
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_LEA,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rsi},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
-                  .effective_address =
-                      {
-                          .displacement = (u32)rodata[0].address_absolute,
-                      },
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rdx},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 13 /* msg length */,
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rax},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 60 /* exit */,
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .dst = {.kind = AMD64_OPERAND_KIND_REGISTER, .reg = amd64_rdi},
-          .src =
-              {
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .immediate = 0 /* exit code */,
-              },
-      },
-      {
-          .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-      },
-  };
   Amd64Section section_start = {
       .name = PG_S("_start"),
       .flags = AMD64_SECTION_FLAG_GLOBAL,
-      .instructions = {.data = (Amd64Instruction *)ops,
-                       .len = PG_STATIC_ARRAY_LEN(ops)},
+      .instructions = PG_DYN_SLICE(Amd64InstructionSlice, instructions),
   };
 
   Amd64Program program = {
