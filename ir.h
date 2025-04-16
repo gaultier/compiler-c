@@ -37,17 +37,18 @@ typedef struct {
 PG_SLICE(Ir) IrSlice;
 PG_DYN(Ir) IrDyn;
 
-static void ast_to_ir(AstNode root, IrDyn *irs, PgAllocator *allocator) {
-  switch (root.kind) {
+static void ast_to_ir(AstNode node, IrDyn *irs, PgAllocator *allocator) {
+  switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
     Ir ir = {
         .kind = IR_KIND_LOAD,
+        .origin = node.origin,
     };
     *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_U64,
-        .n64 = root.n64,
+        .n64 = node.n64,
     };
 
     *PG_DYN_PUSH(irs, allocator) = ir;
@@ -62,14 +63,15 @@ static void ast_to_ir(AstNode root, IrDyn *irs, PgAllocator *allocator) {
     // x1 = 2
     // x2 = 3 + 4
     // x3 = x2 + x1
-    PG_ASSERT(2 == root.operands.len);
-    ast_to_ir(PG_SLICE_AT(root.operands, 0), irs, allocator);
+    PG_ASSERT(2 == node.operands.len);
+    ast_to_ir(PG_SLICE_AT(node.operands, 0), irs, allocator);
     IrVar lhs = (IrVar){(u32)irs->len - 1};
-    ast_to_ir(PG_SLICE_AT(root.operands, 1), irs, allocator);
+    ast_to_ir(PG_SLICE_AT(node.operands, 1), irs, allocator);
     IrVar rhs = (IrVar){(u32)irs->len - 1};
 
     Ir ir = {
         .kind = IR_KIND_ADD,
+        .origin = node.origin,
     };
     *PG_DYN_PUSH(&ir.operands, allocator) =
         (IrValue){.kind = IR_VALUE_KIND_VAR, .var = lhs};
@@ -82,11 +84,12 @@ static void ast_to_ir(AstNode root, IrDyn *irs, PgAllocator *allocator) {
   case AST_NODE_KIND_SYSCALL: {
     Ir ir = {
         .kind = IR_KIND_SYSCALL,
+        .origin = node.origin,
     };
 
-    for (u64 i = 0; i < root.operands.len; i++) {
-      AstNode node = PG_SLICE_AT(root.operands, i);
-      ast_to_ir(node, irs, allocator);
+    for (u64 i = 0; i < node.operands.len; i++) {
+      AstNode child = PG_SLICE_AT(node.operands, i);
+      ast_to_ir(child, irs, allocator);
       IrVar operand = (IrVar){(u32)irs->len - 1};
       *PG_DYN_PUSH(&ir.operands, allocator) =
           (IrValue){.kind = IR_VALUE_KIND_VAR, .var = operand};
@@ -95,9 +98,9 @@ static void ast_to_ir(AstNode root, IrDyn *irs, PgAllocator *allocator) {
     *PG_DYN_PUSH(irs, allocator) = ir;
   } break;
   case AST_NODE_KIND_BLOCK: {
-    for (u64 i = 0; i < root.operands.len; i++) {
-      AstNode node = PG_SLICE_AT(root.operands, i);
-      ast_to_ir(node, irs, allocator);
+    for (u64 i = 0; i < node.operands.len; i++) {
+      AstNode child = PG_SLICE_AT(node.operands, i);
+      ast_to_ir(child, irs, allocator);
     }
   } break;
 
@@ -123,6 +126,8 @@ static void ir_print_value(IrValue value) {
 
 static void ir_print(IrSlice irs, u32 i) {
   Ir ir = PG_SLICE_AT(irs, i);
+  origin_print(ir.origin);
+  printf(": ");
 
   switch (ir.kind) {
   case IR_KIND_NONE:
