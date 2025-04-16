@@ -112,9 +112,16 @@ typedef enum {
 } Amd64InstructionKind;
 
 typedef struct {
+  Register reg;
+  IrVar var;
+} VarToRegister;
+PG_DYN(VarToRegister) VarToRegisterDyn;
+
+typedef struct {
   Amd64InstructionKind kind;
   Amd64Operand dst, src;
   Origin origin;
+  VarToRegisterDyn var_to_register_frozen;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
@@ -157,12 +164,6 @@ typedef struct {
 
   PgString file_name;
 } Amd64Program;
-
-typedef struct {
-  Register reg;
-  IrVar var;
-} VarToRegister;
-PG_DYN(VarToRegister) VarToRegisterDyn;
 
 typedef struct {
   // TODO: Could remove this and instead track available registers with
@@ -251,6 +252,9 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       printf(", ");
       amd64_print_operand(instruction.src);
     }
+
+    printf(" ; ");
+    amd64_print_var_to_register(instruction.var_to_register_frozen);
 
     printf("\n");
   }
@@ -665,12 +669,14 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
             },
         .origin = {.synthetic = true},
     };
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->available) = dst;
-
     amd64_upsert_var_to_register(&reg_alloc->var_to_register,
                                  var_to_reg_by_reg->var, reg_mov_dst,
                                  allocator);
+    PG_DYN_CLONE(&instruction.var_to_register_frozen,
+                 reg_alloc->var_to_register, allocator);
+
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->available) = dst;
   }
   // `dst` register is free.
   PG_ASSERT(nullptr == amd64_find_var_to_register_by_register(
@@ -688,11 +694,12 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
       .src = amd64_ir_value_to_operand(val, reg_alloc->var_to_register),
       .origin = origin,
   };
-  *PG_DYN_PUSH(instructions, allocator) = instruction;
-
   // Finally the var is in the `dst` register.
   amd64_upsert_var_to_register(&reg_alloc->var_to_register, val.var, dst,
                                allocator);
+  PG_DYN_CLONE(&instruction.var_to_register_frozen, reg_alloc->var_to_register,
+               allocator);
+  *PG_DYN_PUSH(instructions, allocator) = instruction;
 }
 
 static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
@@ -714,13 +721,15 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
                                          reg_alloc->var_to_register),
         .origin = ir.origin,
     };
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
-
     PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
     IrVar var = {ir_idx};
     amd64_upsert_var_to_register(&reg_alloc->var_to_register, var,
                                  instruction.dst.reg, allocator);
+    PG_DYN_CLONE(&instruction.var_to_register_frozen,
+                 reg_alloc->var_to_register, allocator);
+
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+
   } break;
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
@@ -740,6 +749,8 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
             },
         .origin = ir.origin,
     };
+    PG_DYN_CLONE(&instruction.var_to_register_frozen,
+                 reg_alloc->var_to_register, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
   } break;
@@ -757,11 +768,12 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
         .origin = ir.origin,
     };
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
-
     IrVar var = {ir_idx};
     amd64_upsert_var_to_register(&reg_alloc->var_to_register, var,
                                  amd64_arch.return_value, allocator);
+    PG_DYN_CLONE(&instruction.var_to_register_frozen,
+                 reg_alloc->var_to_register, allocator);
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
 
   } break;
   default:
