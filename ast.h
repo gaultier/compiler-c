@@ -214,8 +214,6 @@ static AstNode *ast_parse_unary(LexTokenSlice tokens, ErrorDyn *errors,
     }
   }
 
-  *tokens_consumed += 1;
-
   return ast_parse_call(tokens, errors, tokens_consumed, allocator);
 }
 
