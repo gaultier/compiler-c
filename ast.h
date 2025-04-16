@@ -11,6 +11,7 @@ typedef enum {
   AST_NODE_KIND_SYSCALL,
   AST_NODE_KIND_BLOCK,
   AST_NODE_KIND_VAR_DECL,
+  AST_NODE_KIND_ADDRESS_OF,
 } AstNodeKind;
 
 typedef struct AstNode AstNode;
@@ -41,6 +42,15 @@ static void ast_print(AstNode node, u32 left_width) {
   case AST_NODE_KIND_IDENTIFIER:
     printf("Identifier(%.*s)\n", (i32)node.identifier.len,
            node.identifier.data);
+    break;
+  case AST_NODE_KIND_ADDRESS_OF:
+    printf("AddressOf(\n");
+    PG_ASSERT(1 == node.operands.len);
+    ast_print(PG_SLICE_AT(node.operands, 0), left_width + 2);
+    for (u64 i = 0; i < left_width; i++) {
+      putchar(' ');
+    }
+    printf(")\n");
     break;
   case AST_NODE_KIND_ADD:
     printf("Add(\n");
@@ -180,6 +190,32 @@ static AstNode *ast_parse_call(LexTokenSlice tokens, ErrorDyn *errors,
 
 static AstNode *ast_parse_unary(LexTokenSlice tokens, ErrorDyn *errors,
                                 u64 *tokens_consumed, PgAllocator *allocator) {
+
+  if (*tokens_consumed < tokens.len) {
+    LexToken token_first = PG_SLICE_AT(tokens, *tokens_consumed);
+    if (LEX_TOKEN_KIND_AMPERSAND == token_first.kind) {
+      *tokens_consumed += 1;
+
+      AstNode *rhs =
+          ast_parse_unary(tokens, errors, tokens_consumed, allocator);
+      if (!rhs) {
+        *PG_DYN_PUSH(errors, allocator) = (Error){
+            .kind = ERROR_KIND_PARSE_UNARY_MISSING_RHS,
+            .origin = token_first.origin,
+        };
+        return nullptr;
+      }
+
+      AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+      res->origin = token_first.origin;
+      res->kind = AST_NODE_KIND_ADDRESS_OF;
+      *PG_DYN_PUSH(&res->operands, allocator) = *rhs;
+      return res;
+    }
+  }
+
+  *tokens_consumed += 1;
+
   return ast_parse_call(tokens, errors, tokens_consumed, allocator);
 }
 

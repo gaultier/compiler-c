@@ -1,3 +1,9 @@
-x := 60
-y := 1 + 1
-syscall(x, y)
+syscall_write_linux_amd64 := 1
+stdout := 1
+write_val := 478560413032
+write_val_len := 5
+syscall(syscall_write_linux_amd64, stdout, &write_val, write_val_len)
+
+syscall_exit := 60
+exit_code := 1 + 1
+syscall(syscall_exit, exit_code)

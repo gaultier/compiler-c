@@ -24,16 +24,10 @@ typedef struct {
 PG_SLICE(LexToken) LexTokenSlice;
 PG_DYN(LexToken) LexTokenDyn;
 
-static bool lex_identifier(PgUtf8Iterator *it, PgRune first_rune,
-                           LexTokenDyn *tokens, ErrorDyn *errors,
-                           PgString file_name, u32 line, u32 *column,
-                           PgAllocator *allocator) {
-  PG_ASSERT(pg_rune_is_alphabetical(first_rune));
-
+static bool lex_identifier(PgUtf8Iterator *it, LexTokenDyn *tokens,
+                           ErrorDyn *errors, PgString file_name, u32 line,
+                           u32 *column, PgAllocator *allocator) {
   u32 column_start = *column;
-  // Unconsume the first rune.
-  PG_ASSERT(it->idx > 0);
-  it->idx -= 1;
 
   u64 idx_start = it->idx;
 
@@ -61,7 +55,7 @@ static bool lex_identifier(PgUtf8Iterator *it, PgRune first_rune,
     PgRune rune = rune_res.res;
     PG_ASSERT(0 != rune);
 
-    if (!('_' == rune || pg_rune_is_alphabetical(rune))) {
+    if (!('_' == rune || pg_rune_is_alphanumeric(rune))) {
       it->idx = idx_prev;
       break;
     }
@@ -70,7 +64,11 @@ static bool lex_identifier(PgUtf8Iterator *it, PgRune first_rune,
   }
 
   PgString lit = PG_SLICE_RANGE(it->s, idx_start, it->idx);
-  PG_ASSERT(lit.len > 0);
+  if (0 == lit.len) {
+    it->idx = idx_start;
+    *column = column_start;
+    return false;
+  }
 
   *PG_DYN_PUSH(tokens, allocator) = (LexToken){
       .kind = LEX_TOKEN_KIND_IDENTIFIER,
@@ -87,17 +85,11 @@ static bool lex_identifier(PgUtf8Iterator *it, PgRune first_rune,
   return true;
 }
 
-static bool lex_keyword(PgUtf8Iterator *it, PgRune first_rune,
-                        LexTokenDyn *tokens, ErrorDyn *errors,
-                        PgString file_name, u32 line, u32 *column,
-                        PgAllocator *allocator) {
-  PG_ASSERT(pg_rune_is_alphabetical(first_rune));
+static bool lex_keyword(PgUtf8Iterator *it, LexTokenDyn *tokens,
+                        ErrorDyn *errors, PgString file_name, u32 line,
+                        u32 *column, PgAllocator *allocator) {
 
   u32 column_start = *column;
-  // Unconsume the first rune.
-  PG_ASSERT(it->idx > 0);
-  it->idx -= 1;
-
   u64 idx_start = it->idx;
 
   for (u64 _i = 0; _i < it->s.len; _i++) {
@@ -124,7 +116,7 @@ static bool lex_keyword(PgUtf8Iterator *it, PgRune first_rune,
     PgRune rune = rune_res.res;
     PG_ASSERT(0 != rune);
 
-    if (!pg_rune_is_alphabetical(rune)) {
+    if (!('_' == rune || pg_rune_is_alphanumeric(rune))) {
       it->idx = idx_prev;
       break;
     }
@@ -133,7 +125,9 @@ static bool lex_keyword(PgUtf8Iterator *it, PgRune first_rune,
   }
 
   PgString lit = PG_SLICE_RANGE(it->s, idx_start, it->idx);
-  PG_ASSERT(lit.len > 0);
+  if (0 == lit.len) {
+    goto end;
+  }
 
   if (pg_string_eq(lit, PG_S("syscall"))) {
     *PG_DYN_PUSH(tokens, allocator) = (LexToken){
@@ -149,6 +143,10 @@ static bool lex_keyword(PgUtf8Iterator *it, PgRune first_rune,
     return true;
   }
 
+end:
+  // Reset .
+  it->idx = idx_start;
+  *column = column_start;
   return false;
 }
 
@@ -399,12 +397,16 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
     }
 
     default: {
-      if (lex_keyword(&it, rune, tokens, errors, file_name, line, &column,
+      // Unconsume the first rune.
+      PG_ASSERT(it.idx > 0);
+      it.idx -= 1;
+
+      if (lex_keyword(&it, tokens, errors, file_name, line, &column,
                       allocator)) {
         break;
       }
 
-      if (lex_identifier(&it, rune, tokens, errors, file_name, line, &column,
+      if (lex_identifier(&it, tokens, errors, file_name, line, &column,
                          allocator)) {
         break;
       }

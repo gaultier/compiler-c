@@ -793,6 +793,12 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
   } break;
+
+  case IR_KIND_ADDRESS_OF: {
+    PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(0 && "TODO");
+  } break;
+
   default:
     PG_ASSERT(0);
   }

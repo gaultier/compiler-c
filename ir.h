@@ -7,6 +7,7 @@ typedef enum {
   IR_KIND_ADD,
   IR_KIND_LOAD,
   IR_KIND_SYSCALL,
+  IR_KIND_ADDRESS_OF,
 } IrKind;
 
 typedef struct {
@@ -180,6 +181,22 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs,
     return identifier_to_var->var;
   }
 
+  case AST_NODE_KIND_ADDRESS_OF: {
+    PG_ASSERT(1 == node.operands.len);
+    AstNode operand = PG_SLICE_AT(node.operands, 0);
+    PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
+
+    IrVar rhs = ast_to_ir(operand, irs, identifier_to_vars, errors, allocator);
+    Ir ir = {
+        .kind = IR_KIND_ADDRESS_OF,
+        .origin = node.origin,
+    };
+    *PG_DYN_PUSH(&ir.operands, allocator) =
+        (IrValue){.kind = IR_VALUE_KIND_VAR, .var = rhs};
+    *PG_DYN_PUSH(irs, allocator) = ir;
+    return (IrVar){(u32)irs->len - 1};
+  }
+
   default:
     PG_ASSERT(0);
   }
@@ -219,6 +236,12 @@ static void ir_print(IrSlice irs, u32 i) {
   case IR_KIND_LOAD:
     PG_ASSERT(1 == ir.operands.len);
     printf("[%u] x%u := ", i, i);
+    ir_print_value(PG_SLICE_AT(ir.operands, 0));
+    printf("\n");
+    break;
+  case IR_KIND_ADDRESS_OF:
+    PG_ASSERT(1 == ir.operands.len);
+    printf("[%u] x%u := &", i, i);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf("\n");
     break;
