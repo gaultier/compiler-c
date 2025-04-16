@@ -16,6 +16,7 @@ typedef enum {
   ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE,
   ERROR_KIND_PARSE_FACTOR_MISSING_RHS,
   ERROR_KIND_PARSE_STATEMENT,
+  ERROR_KIND_UNDEFINED_VAR,
 } ErrorKind;
 
 typedef struct {
@@ -67,6 +68,9 @@ static void error_print(Error err) {
     break;
   case ERROR_KIND_PARSE_FACTOR_MISSING_RHS:
     printf("missing right operand in -/+ operation\n");
+    break;
+  case ERROR_KIND_UNDEFINED_VAR:
+    printf("undefined variable\n");
     break;
   default:
     PG_ASSERT(0);

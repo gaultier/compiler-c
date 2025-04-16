@@ -56,7 +56,18 @@ int main(int argc, char *argv[]) {
   puts("------------");
 
   IrDyn irs = {0};
-  ast_to_ir(*root, &irs, allocator);
+  IrIdentifierToVarDyn identifier_to_vars = {0};
+  ast_to_ir(*root, &irs, &identifier_to_vars, &errors, allocator);
+  if (errors.len) {
+    for (u64 i = 0; i < errors.len; i++) {
+      Error err = PG_SLICE_AT(errors, i);
+      origin_print(err.origin);
+      printf(" Error: ");
+      error_print(err);
+    }
+    return 1;
+  }
+
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, irs);
   irs_print(irs_slice);
   puts("------------");
