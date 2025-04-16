@@ -34,10 +34,23 @@ static const PgStringSlice amd64_register_to_string_slice = {
 };
 
 static const u8 amd64_register_to_encoded_value[16 + 1] = {
-    [0] = 0,       [1] = 0b0000,  [2] = 0b0011,  [3] = 0b0001,  [4] = 0b0010,
-    [5] = 0b0111,  [6] = 0b0110,  [7] = 0b1000,  [8] = 0b1001,  [9] = 0b1010,
-    [10] = 0b1011, [11] = 0b1100, [12] = 0b1101, [13] = 0b1110, [14] = 0b1111,
-    [15] = 0b0100, [16] = 0b0101,
+    [0] = 0,       // zero value
+    [1] = 0b0000,  // rax
+    [2] = 0b0011,  // rbx
+    [3] = 0b0001,  // rcx
+    [4] = 0b0010,  // rdx
+    [5] = 0b0111,  // rdi
+    [6] = 0b0110,  // rsi
+    [7] = 0b1000,  // r8
+    [8] = 0b1001,  // r9
+    [9] = 0b1010,  // r10
+    [10] = 0b1011, // r11
+    [11] = 0b1100, // r12
+    [12] = 0b1101, // r13
+    [13] = 0b1110, // r14
+    [14] = 0b1111, // r15
+    [15] = 0b0100, // rsp
+    [16] = 0b0101, // rbp
 };
 
 static const Pgu8Slice amd64_register_to_encoded_value_slice = {
@@ -292,11 +305,11 @@ static bool amd64_is_register_64_bits_only(Register reg) {
 static const u8 AMD64_REX_DEFAULT = 0b0100'0000;
 // Enable use of 64 operand size.
 static const u8 AMD64_REX_MASK_W = 0b0000'1000;
-// Enable use of 64 bits registers in ModRM.
+// Enable use of 64 bits registers in the ModRM(reg) field.
 static const u8 AMD64_REX_MASK_R = 0b0000'0100;
 // Enable use of 64 bits registers in SIB.
 static const u8 AMD64_REX_MASK_X = 0b0000'0010;
-// TODO: document.
+// Enable use of 64 bits registers in the ModRM(r/m) field.
 static const u8 AMD64_REX_MASK_B = 0b0000'0001;
 
 // No index register.
@@ -423,10 +436,10 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
       AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
     if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
-      rex |= AMD64_REX_MASK_B;
+      rex |= AMD64_REX_MASK_R;
     }
     if (amd64_is_register_64_bits_only(instruction.src.reg)) {
-      rex |= AMD64_REX_MASK_R;
+      rex |= AMD64_REX_MASK_B;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
 
