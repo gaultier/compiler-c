@@ -703,6 +703,7 @@ amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, IrVar var,
   return (VarToMemoryLocation){.var = var, .location = mem_loc_new};
 }
 
+// FIXME: allocate a memory location (register or stack).
 [[nodiscard]]
 static Register
 amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
@@ -767,8 +768,11 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
               var_to_mem_loc_by_var->location.kind);
     PG_ASSERT(var_to_mem_loc_by_var->location.reg.value != 0);
 
+    // FIXME: allocate a memory location (register or stack).
     Register reg_mov_dst = amd64_allocate_register_for_var(
         reg_alloc, var_to_mem_loc_by_reg->var, instructions, origin, allocator);
+    PG_ASSERT(reg_mov_dst.value != 0);
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
         .dst =
