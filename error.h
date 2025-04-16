@@ -12,6 +12,9 @@ typedef enum {
   ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA,
   ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND,
   ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS,
+  ERROR_KIND_PARSE_VAR_DECL_MISSING_COLON_EQUAL,
+  ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE,
+  ERROR_KIND_PARSE_FACTOR_MISSING_RHS,
   ERROR_KIND_PARSE_STATEMENT,
 } ErrorKind;
 
@@ -55,6 +58,15 @@ static void error_print(Error err) {
     break;
   case ERROR_KIND_PARSE_STATEMENT:
     printf("failed to parse statement\n");
+    break;
+  case ERROR_KIND_PARSE_VAR_DECL_MISSING_COLON_EQUAL:
+    printf("missing := in variable declaration after variable name\n");
+    break;
+  case ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE:
+    printf("missing value in variable declaration after :=\n");
+    break;
+  case ERROR_KIND_PARSE_FACTOR_MISSING_RHS:
+    printf("missing right operand in -/+ operation\n");
     break;
   default:
     PG_ASSERT(0);

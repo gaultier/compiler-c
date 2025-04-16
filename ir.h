@@ -103,6 +103,27 @@ static void ast_to_ir(AstNode node, IrDyn *irs, PgAllocator *allocator) {
       ast_to_ir(child, irs, allocator);
     }
   } break;
+  case AST_NODE_KIND_VAR_DECL: {
+    PG_ASSERT(1 == node.operands.len);
+    PG_ASSERT(!pg_string_is_empty(node.identifier));
+
+    Ir ir = {
+        .kind = IR_KIND_LOAD,
+        .origin = node.origin,
+    };
+    ast_to_ir(PG_SLICE_AT(node.operands, 0), irs, allocator);
+    IrVar rhs = (IrVar){(u32)irs->len - 1};
+    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
+        .kind = IR_VALUE_KIND_VAR,
+        .var = rhs,
+    };
+
+    *PG_DYN_PUSH(irs, allocator) = ir;
+  } break;
+
+  case AST_NODE_KIND_IDENTIFIER: {
+    PG_ASSERT(0 && "todo");
+  } break;
 
   default:
     PG_ASSERT(0);
