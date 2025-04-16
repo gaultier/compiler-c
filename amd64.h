@@ -749,9 +749,11 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
     IrValue src = PG_SLICE_AT(ir.operands, 0);
-    Amd64InstructionKind kind = (IR_VALUE_KIND_U64 == src.kind)
-                                    ? AMD64_INSTRUCTION_KIND_MOV
-                                    : AMD64_INSTRUCTION_KIND_LEA;
+    Amd64InstructionKind kind =
+        // TODO: Smarter mov vs lea selection.
+        (IR_VALUE_KIND_U64 == src.kind || IR_VALUE_KIND_VAR == src.kind)
+            ? AMD64_INSTRUCTION_KIND_MOV
+            : AMD64_INSTRUCTION_KIND_LEA;
 
     Amd64Instruction instruction = {
         .kind = kind,
