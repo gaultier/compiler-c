@@ -496,25 +496,25 @@ static PgString amd64_encode_program_text(Amd64Program program,
 }
 
 [[nodiscard]]
-static Amd64IrVarRange amd64_locate_ir_var_range(Amd64IrVarRangeSlice ranges,
-                                                 IrVar var, u32 current_pos) {
+static Amd64IrVarRange *amd64_locate_ir_var_range(Amd64IrVarRangeSlice ranges,
+                                                  IrVar var, u32 current_pos) {
   for (u64 i = 0; i < ranges.len; i++) {
-    Amd64IrVarRange range = PG_SLICE_AT(ranges, i);
+    Amd64IrVarRange *range = PG_SLICE_AT_PTR(&ranges, i);
 
-    if (range.var.value != var.value) {
+    if (range->var.value != var.value) {
       continue;
     }
-    if (current_pos < range.start) {
+    if (current_pos < range->start) {
       continue;
     }
 
-    if (0 != range.end && current_pos >= range.end) {
+    if (0 != range->end && current_pos >= range->end) {
       continue;
     }
 
     return range;
   }
-  return (Amd64IrVarRange){0};
+  return nullptr;
 }
 
 static Amd64Operand amd64_ir_value_to_operand(IrValue val, u32 ir_idx,
@@ -528,13 +528,13 @@ static Amd64Operand amd64_ir_value_to_operand(IrValue val, u32 ir_idx,
         .immediate = val.n64,
     };
   case IR_VALUE_KIND_VAR: {
-    Amd64IrVarRange var_range =
+    Amd64IrVarRange *var_range =
         amd64_locate_ir_var_range(ranges, val.var, ir_idx);
-    PG_ASSERT(0 != var_range.reg.value);
+    PG_ASSERT(nullptr != var_range);
 
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = var_range.reg,
+        .reg = var_range->reg,
     };
   }
   default:
@@ -595,12 +595,12 @@ static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
                                       PgAllocator *allocator) {
 
   if (IR_VALUE_KIND_VAR == val.kind) {
-    Amd64IrVarRange var_range = amd64_locate_ir_var_range(
+    Amd64IrVarRange *var_range = amd64_locate_ir_var_range(
         PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges), val.var,
         ir_idx);
 
     // Nothing to do, the var is already located in the right register.
-    if (var_range.reg.value == dst.value) {
+    if (var_range && var_range->reg.value == dst.value) {
       return;
     }
   }
@@ -615,34 +615,63 @@ static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
   }
 
   if (-1 == reg_idx) {
-    PG_ASSERT(0); // TODO: move things around to free register.
-  } else {
-    PG_DYN_SWAP_REMOVE(&reg_alloc->available, reg_idx);
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = dst;
+    // Move things around to free the target register.
 
     if (IR_VALUE_KIND_VAR == val.kind) {
-      Amd64IrVarRange var_range = {
-          .reg = dst,
-          .var = val.var,
-          .start = ir_idx,
-          .end = 0,
-      };
-      *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
-    }
+      Amd64IrVarRange *var_range = amd64_locate_ir_var_range(
+          PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges), val.var,
+          ir_idx);
+      PG_ASSERT(var_range);
+      var_range->end = ir_idx;
 
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .dst =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = dst,
-            },
-        .src = amd64_ir_value_to_operand(
-            val, ir_idx,
-            PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges)),
-    };
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
+      Register reg_mov_dst = amd64_allocate_register_for_var(
+          reg_alloc, ir_idx, val.var, allocator);
+      Amd64Instruction instruction = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .dst =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_REGISTER,
+                  .reg = reg_mov_dst,
+              },
+          .src =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_REGISTER,
+                  .reg = dst,
+              },
+      };
+      *PG_DYN_PUSH(instructions, allocator) = instruction;
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->available) = dst;
+
+    } else {
+      PG_ASSERT(0); // TODO
+    }
   }
+
+  PG_DYN_SWAP_REMOVE(&reg_alloc->available, reg_idx);
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = dst;
+
+  if (IR_VALUE_KIND_VAR == val.kind) {
+    Amd64IrVarRange var_range = {
+        .reg = dst,
+        .var = val.var,
+        .start = ir_idx,
+        .end = 0,
+    };
+    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+  }
+
+  Amd64Instruction instruction = {
+      .kind = AMD64_INSTRUCTION_KIND_MOV,
+      .dst =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .reg = dst,
+          },
+      .src = amd64_ir_value_to_operand(
+          val, ir_idx,
+          PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges)),
+  };
+  *PG_DYN_PUSH(instructions, allocator) = instruction;
 }
 
 static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
