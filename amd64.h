@@ -103,7 +103,7 @@ typedef struct {
   Register base;
   Register index;
   u8 scale;
-  u32 displacement;
+  i32 displacement;
 } Amd64EffectiveAddress;
 
 typedef struct {
@@ -186,7 +186,7 @@ typedef struct {
   // Track in which machine register is a var stored currently.
   // Indexed by the var value.
   VarToMemoryLocationDyn var_to_memory_location;
-  u32 rsp_offset;
+  i32 rsp_offset;
   u32 rsp_max_offset;
 } Amd64RegisterAllocator;
 
@@ -213,7 +213,9 @@ static void amd64_print_operand(Amd64Operand operand) {
       amd64_print_register(operand.effective_address.index);
       printf(" * %" PRIu8 " ", operand.effective_address.scale);
     }
-    printf("+ %" PRIu32 "]", operand.effective_address.displacement);
+    printf("%s%" PRIi32 "]",
+           operand.effective_address.displacement >= 0 ? "+" : "",
+           operand.effective_address.displacement);
     break;
   default:
     PG_ASSERT(0);
@@ -231,8 +233,8 @@ static void amd64_print_var_to_memory_location(
       break;
     case MEMORY_LOCATION_KIND_STACK: {
       amd64_print_register(amd64_rsp);
-      u32 offset = var_to_mem_loc.location.stack_pointer_offset;
-      printf("%c%u", offset > 0 ? '+' : '-', offset);
+      i32 offset = var_to_mem_loc.location.stack_pointer_offset;
+      printf("%s%" PRIi32, offset >= 0 ? "+" : "", offset);
     } break;
     case MEMORY_LOCATION_KIND_MEMORY:
       printf("%#lx", var_to_mem_loc.location.memory_address);
@@ -438,7 +440,7 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
     *PG_DYN_PUSH(sb, allocator) = sib;
 
     pg_byte_buffer_append_u32_within_capacity(
-        sb, instruction.src.effective_address.displacement);
+        sb, (u32)instruction.src.effective_address.displacement);
     return;
   }
   PG_ASSERT(0 && "todo");
@@ -799,12 +801,12 @@ amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, IrVar var,
 }
 #endif
 
-static u32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
-  reg_alloc->rsp_offset += size;
+static i32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
+  reg_alloc->rsp_offset -= size;
   reg_alloc->rsp_max_offset =
-      PG_MAX(reg_alloc->rsp_max_offset, reg_alloc->rsp_offset);
+      PG_MAX(reg_alloc->rsp_max_offset, (u32)reg_alloc->rsp_offset);
 
-  return reg_alloc->rsp_offset - size;
+  return reg_alloc->rsp_offset + (i32)size;
 }
 
 // FIXME: allocate a memory location (register or stack).
@@ -826,7 +828,7 @@ amd64_allocate_memory_location_for_var(Amd64RegisterAllocator *reg_alloc,
   }
 
   // Stack.
-  u32 stack_pointer_offset = amd64_stack_alloc(reg_alloc, 8);
+  i32 stack_pointer_offset = amd64_stack_alloc(reg_alloc, 8);
   MemoryLocation mem_loc = {
       .kind = MEMORY_LOCATION_KIND_STACK,
       .stack_pointer_offset = stack_pointer_offset,
