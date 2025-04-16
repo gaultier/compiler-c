@@ -68,8 +68,7 @@ int main(int argc, char *argv[]) {
 
   amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
   puts("------------");
-  amd64_print_var_ranges(
-      PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc.var_ranges));
+  amd64_print_var_to_register(reg_alloc.var_to_register);
   puts("------------");
 
   u64 vm_start = 1 << 22;

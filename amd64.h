@@ -158,20 +158,12 @@ typedef struct {
   PgString file_name;
 } Amd64Program;
 
-// Track in which machine register is a var stored in given range.
-typedef struct {
-  // Ir indices.
-  u32 start, end;
-  IrVar var;
-  Register reg;
-} Amd64IrVarRange;
-PG_SLICE(Amd64IrVarRange) Amd64IrVarRangeSlice;
-PG_DYN(Amd64IrVarRange) Amd64IrVarRangeDyn;
-
 typedef struct {
   RegisterDyn available;
   RegisterDyn taken;
-  Amd64IrVarRangeDyn var_ranges;
+  // Track in which machine register is a var stored currently.
+  // Indexed by the var value.
+  RegisterDyn var_to_register;
 } Amd64RegisterAllocator;
 
 static void amd64_print_register(Register reg) {
@@ -486,29 +478,27 @@ static PgString amd64_encode_program_text(Amd64Program program,
 }
 
 [[nodiscard]]
-static Amd64IrVarRange *amd64_locate_ir_var_range(Amd64IrVarRangeSlice ranges,
-                                                  IrVar var, u32 current_pos) {
-  for (u64 i = 0; i < ranges.len; i++) {
-    Amd64IrVarRange *range = PG_SLICE_AT_PTR(&ranges, i);
-
-    if (range->var.value != var.value) {
-      continue;
-    }
-    if (current_pos < range->start) {
-      continue;
-    }
-
-    if (0 != range->end && current_pos >= range->end) {
-      continue;
-    }
-
-    return range;
+static Register *amd64_find_var_to_register(RegisterDyn var_to_register,
+                                            IrVar var) {
+  if (var.value >= var_to_register.len) {
+    return nullptr;
   }
-  return nullptr;
+
+  return PG_SLICE_AT_PTR(&var_to_register, var.value);
 }
 
-static Amd64Operand amd64_ir_value_to_operand(IrValue val, u32 ir_idx,
-                                              Amd64IrVarRangeSlice ranges) {
+static void amd64_upsert_var_to_register(RegisterDyn *var_to_register,
+                                         IrVar var, Register reg,
+                                         PgAllocator *allocator) {
+  if (var.value >= var_to_register->len) {
+    *PG_DYN_PUSH(var_to_register, allocator) = reg;
+  } else {
+    *PG_SLICE_AT_PTR(var_to_register, var.value) = reg;
+  }
+}
+
+static Amd64Operand amd64_ir_value_to_operand(IrValue val,
+                                              RegisterDyn var_to_register) {
   switch (val.kind) {
   case IR_VALUE_KIND_NONE:
     PG_ASSERT(0);
@@ -518,13 +508,12 @@ static Amd64Operand amd64_ir_value_to_operand(IrValue val, u32 ir_idx,
         .immediate = val.n64,
     };
   case IR_VALUE_KIND_VAR: {
-    Amd64IrVarRange *var_range =
-        amd64_locate_ir_var_range(ranges, val.var, ir_idx);
-    PG_ASSERT(nullptr != var_range);
+    Register *reg = amd64_find_var_to_register(var_to_register, val.var);
+    PG_ASSERT(nullptr != reg);
 
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = var_range->reg,
+        .reg = *reg,
     };
   }
   default:
@@ -558,40 +547,33 @@ amd64_make_register_allocator(PgAllocator *allocator) {
 
 [[nodiscard]]
 static Register
-amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, u32 ir_idx,
-                                IrVar var, PgAllocator *allocator) {
+amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
+                                PgAllocator *allocator) {
   // TODO: Spill.
   PG_ASSERT(reg_alloc->available.len > 0 && "todo");
 
-  Register res = PG_SLICE_AT(reg_alloc->available, 0);
+  Register reg = PG_SLICE_AT(reg_alloc->available, 0);
 
   PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = res;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = reg;
 
-  Amd64IrVarRange var_range = {
-      .reg = res,
-      .var = var,
-      .start = ir_idx,
-      .end = 0,
-  };
-  *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+  amd64_upsert_var_to_register(&reg_alloc->var_to_register, var, reg,
+                               allocator);
 
-  return res;
+  return reg;
 }
 
 static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
-                                      Register dst, IrValue val, u32 ir_idx,
-                                      Origin origin,
+                                      Register dst, IrValue val, Origin origin,
                                       Amd64InstructionDyn *instructions,
                                       PgAllocator *allocator) {
 
   if (IR_VALUE_KIND_VAR == val.kind) {
-    Amd64IrVarRange *var_range = amd64_locate_ir_var_range(
-        PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges), val.var,
-        ir_idx);
+    Register *reg =
+        amd64_find_var_to_register(reg_alloc->var_to_register, val.var);
 
     // Nothing to do, the var is already located in the right register.
-    if (var_range && var_range->reg.value == dst.value) {
+    if (reg && reg->value == dst.value) {
       return;
     }
   }
@@ -609,14 +591,12 @@ static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
     // Move things around to free the target register.
 
     if (IR_VALUE_KIND_VAR == val.kind) {
-      Amd64IrVarRange *var_range = amd64_locate_ir_var_range(
-          PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges), val.var,
-          ir_idx);
-      PG_ASSERT(var_range);
-      var_range->end = ir_idx;
+      Register *reg =
+          amd64_find_var_to_register(reg_alloc->var_to_register, val.var);
+      PG_ASSERT(reg);
 
-      Register reg_mov_dst = amd64_allocate_register_for_var(
-          reg_alloc, ir_idx, val.var, allocator);
+      Register reg_mov_dst =
+          amd64_allocate_register_for_var(reg_alloc, val.var, allocator);
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .dst =
@@ -634,6 +614,9 @@ static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
       *PG_DYN_PUSH(instructions, allocator) = instruction;
       *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->available) = dst;
 
+      amd64_upsert_var_to_register(&reg_alloc->var_to_register, val.var,
+                                   reg_mov_dst, allocator);
+
     } else {
       PG_ASSERT(0); // TODO
     }
@@ -643,13 +626,8 @@ static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
   *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = dst;
 
   if (IR_VALUE_KIND_VAR == val.kind) {
-    Amd64IrVarRange var_range = {
-        .reg = dst,
-        .var = val.var,
-        .start = ir_idx,
-        .end = 0,
-    };
-    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+    amd64_upsert_var_to_register(&reg_alloc->var_to_register, val.var, dst,
+                                 allocator);
   }
 
   Amd64Instruction instruction = {
@@ -659,9 +637,7 @@ static void amd64_store_into_register(Amd64RegisterAllocator *reg_alloc,
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .reg = dst,
           },
-      .src = amd64_ir_value_to_operand(
-          val, ir_idx,
-          PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges)),
+      .src = amd64_ir_value_to_operand(val, reg_alloc->var_to_register),
       .origin = origin,
   };
   *PG_DYN_PUSH(instructions, allocator) = instruction;
@@ -672,8 +648,6 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
                             Amd64RegisterAllocator *reg_alloc,
                             PgAllocator *allocator) {
   Ir ir = PG_SLICE_AT(irs, ir_idx);
-  Amd64IrVarRangeSlice var_ranges =
-      PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc->var_ranges);
 
   switch (ir.kind) {
   case IR_KIND_NONE:
@@ -682,10 +656,10 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
     PG_ASSERT(2 == ir.operands.len);
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
-        .src = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 0), ir_idx,
-                                         var_ranges),
-        .dst = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 1), ir_idx,
-                                         var_ranges),
+        .src = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 0),
+                                         reg_alloc->var_to_register),
+        .dst = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 1),
+                                         reg_alloc->var_to_register),
         .origin = ir.origin,
     };
 
@@ -693,12 +667,8 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
 
     PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
     IrVar var = {ir_idx};
-    Amd64IrVarRange var_range = {
-        .reg = instruction.dst.reg,
-        .var = var,
-        .start = ir_idx,
-    };
-    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+    amd64_upsert_var_to_register(&reg_alloc->var_to_register, var,
+                                 instruction.dst.reg, allocator);
   } break;
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
@@ -709,24 +679,20 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
 
     Amd64Instruction instruction = {
         .kind = kind,
-        .src = amd64_ir_value_to_operand(src, ir_idx, var_ranges),
+        .src = amd64_ir_value_to_operand(src, reg_alloc->var_to_register),
         .dst =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
                 .reg = amd64_allocate_register_for_var(
-                    reg_alloc, ir_idx, (IrVar){ir_idx}, allocator),
+                    reg_alloc, (IrVar){ir_idx}, allocator),
             },
         .origin = ir.origin,
     };
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
     IrVar var = {ir_idx};
-    Amd64IrVarRange var_range = {
-        .reg = instruction.dst.reg,
-        .var = var,
-        .start = ir_idx,
-    };
-    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+    amd64_upsert_var_to_register(&reg_alloc->var_to_register, var,
+                                 instruction.dst.reg, allocator);
 
   } break;
   case IR_KIND_SYSCALL: {
@@ -735,8 +701,8 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
       Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, j);
-      amd64_store_into_register(reg_alloc, dst, val, ir_idx, ir.origin,
-                                instructions, allocator);
+      amd64_store_into_register(reg_alloc, dst, val, ir.origin, instructions,
+                                allocator);
     }
 
     Amd64Instruction instruction = {
@@ -746,12 +712,8 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
     IrVar var = {ir_idx};
-    Amd64IrVarRange var_range = {
-        .reg = amd64_arch.return_value,
-        .var = var,
-        .start = ir_idx,
-    };
-    *PG_DYN_PUSH(&reg_alloc->var_ranges, allocator) = var_range;
+    amd64_upsert_var_to_register(&reg_alloc->var_to_register, var,
+                                 amd64_arch.return_value, allocator);
 
   } break;
   default:
@@ -767,12 +729,11 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
   }
 }
 
-static void amd64_print_var_ranges(Amd64IrVarRangeSlice var_ranges) {
-  for (u64 i = 0; i < var_ranges.len; i++) {
-    Amd64IrVarRange var_range = PG_SLICE_AT(var_ranges, i);
-    printf("%" PRIu64 ":[%" PRIu32 " ..< %" PRIu32 "] x%" PRIu32 " ", i,
-           var_range.start, var_range.end, var_range.var.value);
-    amd64_print_register(var_range.reg);
+static void amd64_print_var_to_register(RegisterDyn var_to_register) {
+  for (u64 i = 0; i < var_to_register.len; i++) {
+    Register reg = PG_SLICE_AT(var_to_register, i);
+    printf("x%" PRIu64 ": ", i);
+    amd64_print_register(reg);
     printf("\n");
   }
 }
