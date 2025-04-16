@@ -206,6 +206,14 @@ static AstNode *ast_parse_unary(LexTokenSlice tokens, ErrorDyn *errors,
         return nullptr;
       }
 
+      if (AST_NODE_KIND_IDENTIFIER != rhs->kind) {
+        *PG_DYN_PUSH(errors, allocator) = (Error){
+            .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
+            .origin = token_first.origin,
+        };
+        return nullptr;
+      }
+
       AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
       res->origin = token_first.origin;
       res->kind = AST_NODE_KIND_ADDRESS_OF;

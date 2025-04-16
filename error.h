@@ -18,6 +18,7 @@ typedef enum {
   ERROR_KIND_PARSE_UNARY_MISSING_RHS,
   ERROR_KIND_PARSE_STATEMENT,
   ERROR_KIND_UNDEFINED_VAR,
+  ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
 } ErrorKind;
 
 typedef struct {
@@ -75,6 +76,9 @@ static void error_print(Error err) {
     break;
   case ERROR_KIND_UNDEFINED_VAR:
     printf("undefined variable\n");
+    break;
+  case ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER:
+    printf("trying to take address of something that is not a variable\n");
     break;
   default:
     PG_ASSERT(0);
