@@ -66,13 +66,8 @@ int main(int argc, char *argv[]) {
   Amd64InstructionDyn instructions = {0};
   amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc, allocator);
 
-  Pgu8Dyn sb = {0};
-  PG_DYN_ENSURE_CAP(&sb, 4 * PG_KiB, allocator);
-  amd64_dump_instructions(
-      &sb, PG_DYN_SLICE(Amd64InstructionSlice, instructions), allocator);
-  PgString s = PG_DYN_SLICE(PgString, sb);
+  amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
   puts("------------");
-  write(1, s.data, s.len);
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
