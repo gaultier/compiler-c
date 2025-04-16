@@ -15,3 +15,19 @@ typedef struct {
   Register stack_pointer;
   Register base_pointer;
 } Architecture;
+
+typedef enum {
+  MEMORY_LOCATION_KIND_NONE,
+  MEMORY_LOCATION_KIND_REGISTER,
+  MEMORY_LOCATION_KIND_STACK,
+  MEMORY_LOCATION_KIND_MEMORY,
+} MemoryLocationKind;
+
+typedef struct {
+  MemoryLocationKind kind;
+  union {
+    Register reg;
+    i64 stack_pointer_offset;
+    u64 memory_address;
+  };
+} MemoryLocation;

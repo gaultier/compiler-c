@@ -125,16 +125,16 @@ typedef enum {
 } Amd64InstructionKind;
 
 typedef struct {
-  Register reg;
+  MemoryLocation location;
   IrVar var;
-} VarToRegister;
-PG_DYN(VarToRegister) VarToRegisterDyn;
+} VarToMemoryLocation;
+PG_DYN(VarToMemoryLocation) VarToMemoryLocationDyn;
 
 typedef struct {
   Amd64InstructionKind kind;
   Amd64Operand dst, src;
   Origin origin;
-  VarToRegisterDyn var_to_register_frozen;
+  VarToMemoryLocationDyn var_to_register_frozen;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
@@ -184,7 +184,7 @@ typedef struct {
   RegisterDyn available;
   // Track in which machine register is a var stored currently.
   // Indexed by the var value.
-  VarToRegisterDyn var_to_register;
+  VarToMemoryLocationDyn var_to_register;
 } Amd64RegisterAllocator;
 
 static void amd64_print_register(Register reg) {
@@ -215,11 +215,27 @@ static void amd64_print_operand(Amd64Operand operand) {
   }
 }
 
-static void amd64_print_var_to_register(VarToRegisterDyn var_to_register) {
+static void
+amd64_print_var_to_register(VarToMemoryLocationDyn var_to_register) {
   for (u64 i = 0; i < var_to_register.len; i++) {
-    VarToRegister var_to_reg = PG_SLICE_AT(var_to_register, i);
+    VarToMemoryLocation var_to_reg = PG_SLICE_AT(var_to_register, i);
     printf("x%" PRIu32 ":", var_to_reg.var.value);
-    amd64_print_register(var_to_reg.reg);
+    switch (var_to_reg.location.kind) {
+    case MEMORY_LOCATION_KIND_REGISTER:
+      amd64_print_register(var_to_reg.location.reg);
+      break;
+    case MEMORY_LOCATION_KIND_STACK:
+      amd64_print_register(amd64_rsp);
+      i64 offset = var_to_reg.location.stack_pointer_offset;
+      printf("%c%ld", offset > 0 ? '+' : '-', offset);
+      break;
+    case MEMORY_LOCATION_KIND_MEMORY:
+      printf("%#lx", var_to_reg.location.memory_address);
+      break;
+    case MEMORY_LOCATION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
     printf(" ");
   }
   printf("\n");
@@ -514,12 +530,13 @@ static PgString amd64_encode_program_text(Amd64Program program,
 }
 
 [[nodiscard]]
-static VarToRegister *
-amd64_find_var_to_register_by_var(VarToRegisterDyn var_to_register, IrVar var) {
-  VarToRegister *var_to_reg = nullptr;
+static VarToMemoryLocation *
+amd64_find_var_to_register_by_var(VarToMemoryLocationDyn var_to_register,
+                                  IrVar var) {
+  VarToMemoryLocation *var_to_reg = nullptr;
 
   for (u64 i = 0; i < var_to_register.len; i++) {
-    VarToRegister *elem = PG_SLICE_AT_PTR(&var_to_register, i);
+    VarToMemoryLocation *elem = PG_SLICE_AT_PTR(&var_to_register, i);
     if (elem->var.value == var.value) {
       var_to_reg = elem;
       break;
@@ -530,14 +547,15 @@ amd64_find_var_to_register_by_var(VarToRegisterDyn var_to_register, IrVar var) {
 }
 
 [[nodiscard]]
-static VarToRegister *
-amd64_find_var_to_register_by_register(VarToRegisterDyn var_to_register,
+static VarToMemoryLocation *
+amd64_find_var_to_register_by_register(VarToMemoryLocationDyn var_to_register,
                                        Register reg) {
-  VarToRegister *var_to_reg = nullptr;
+  VarToMemoryLocation *var_to_reg = nullptr;
 
   for (u64 i = 0; i < var_to_register.len; i++) {
-    VarToRegister *elem = PG_SLICE_AT_PTR(&var_to_register, i);
-    if (elem->reg.value == reg.value) {
+    VarToMemoryLocation *elem = PG_SLICE_AT_PTR(&var_to_register, i);
+    if (MEMORY_LOCATION_KIND_REGISTER == elem->location.kind &&
+        elem->location.reg.value == reg.value) {
       var_to_reg = elem;
       break;
     }
@@ -546,28 +564,35 @@ amd64_find_var_to_register_by_register(VarToRegisterDyn var_to_register,
   return var_to_reg;
 }
 
-static void amd64_upsert_var_to_register(VarToRegisterDyn *var_to_register,
-                                         IrVar var, Register reg,
-                                         PgAllocator *allocator) {
-  VarToRegister *var_to_reg =
+static void
+amd64_upsert_var_to_register(VarToMemoryLocationDyn *var_to_register, IrVar var,
+                             Register reg, PgAllocator *allocator) {
+  VarToMemoryLocation *var_to_reg =
       amd64_find_var_to_register_by_var(*var_to_register, var);
 
   if (!var_to_reg) {
-    *PG_DYN_PUSH(var_to_register, allocator) = (VarToRegister){
-        .reg = reg,
+    *PG_DYN_PUSH(var_to_register, allocator) = (VarToMemoryLocation){
+        .location =
+            {
+                .kind = MEMORY_LOCATION_KIND_REGISTER,
+                .reg = reg,
+            },
         .var = var,
     };
   } else {
     PG_ASSERT(var_to_reg->var.value == var.value);
-    var_to_reg->reg = reg;
+    // TODO: Review.
+    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == var_to_reg->location.kind);
+    var_to_reg->location.reg = reg;
   }
 
   // Another var previously in this register has just been overriden so
   // we remove the mapping.
   u64 other_vars_count = 0;
   for (u64 i = 0; i < var_to_register->len;) {
-    VarToRegister elem = PG_SLICE_AT(*var_to_register, i);
-    if (elem.reg.value == reg.value && elem.var.value != var.value) {
+    VarToMemoryLocation elem = PG_SLICE_AT(*var_to_register, i);
+    if (MEMORY_LOCATION_KIND_REGISTER == elem.location.kind &&
+        elem.location.reg.value == reg.value && elem.var.value != var.value) {
       other_vars_count += 1;
       PG_DYN_SWAP_REMOVE(var_to_register, i);
       continue;
@@ -579,7 +604,7 @@ static void amd64_upsert_var_to_register(VarToRegisterDyn *var_to_register,
 }
 
 static Amd64Operand
-amd64_ir_value_to_operand(IrValue val, VarToRegisterDyn var_to_register) {
+amd64_ir_value_to_operand(IrValue val, VarToMemoryLocationDyn var_to_register) {
   switch (val.kind) {
   case IR_VALUE_KIND_NONE:
     PG_ASSERT(0);
@@ -589,14 +614,15 @@ amd64_ir_value_to_operand(IrValue val, VarToRegisterDyn var_to_register) {
         .immediate = val.n64,
     };
   case IR_VALUE_KIND_VAR: {
-    VarToRegister *var_to_reg =
+    VarToMemoryLocation *var_to_reg =
         amd64_find_var_to_register_by_var(var_to_register, val.var);
     PG_ASSERT(nullptr != var_to_reg);
-    PG_ASSERT(var_to_reg->reg.value != 0);
+    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == var_to_reg->location.kind);
+    PG_ASSERT(var_to_reg->location.reg.value != 0);
 
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = var_to_reg->reg,
+        .reg = var_to_reg->location.reg,
     };
   }
   default:
@@ -651,22 +677,26 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
                                           PgAllocator *allocator) {
 
   PG_ASSERT(IR_VALUE_KIND_VAR == val.kind);
-  VarToRegister *var_to_reg_by_var =
+  VarToMemoryLocation *var_to_reg_by_var =
       amd64_find_var_to_register_by_var(reg_alloc->var_to_register, val.var);
 
   // Nothing to do, the var is already located in the right register.
-  if (var_to_reg_by_var && var_to_reg_by_var->reg.value == dst.value) {
+  if (var_to_reg_by_var &&
+      MEMORY_LOCATION_KIND_REGISTER == var_to_reg_by_var->location.kind &&
+      var_to_reg_by_var->location.reg.value == dst.value) {
     return;
   }
 
-  VarToRegister *var_to_reg_by_reg =
+  VarToMemoryLocation *var_to_reg_by_reg =
       amd64_find_var_to_register_by_register(reg_alloc->var_to_register, dst);
 
   if (var_to_reg_by_reg) { // Target register is occupied by a different
                            // variable.
     // Move things around to free the target register.
     PG_ASSERT(var_to_reg_by_var);
-    PG_ASSERT(var_to_reg_by_var->reg.value != 0);
+    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER ==
+              var_to_reg_by_var->location.kind);
+    PG_ASSERT(var_to_reg_by_var->location.reg.value != 0);
 
     Register reg_mov_dst = amd64_allocate_register_for_var(
         reg_alloc, var_to_reg_by_reg->var, allocator);
