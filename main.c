@@ -68,6 +68,9 @@ int main(int argc, char *argv[]) {
 
   amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
   puts("------------");
+  amd64_print_var_ranges(
+      PG_DYN_SLICE(Amd64IrVarRangeSlice, reg_alloc.var_ranges));
+  puts("------------");
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;

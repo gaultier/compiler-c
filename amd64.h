@@ -766,3 +766,13 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
     amd64_ir_to_asm(irs, (u32)i, instructions, reg_alloc, allocator);
   }
 }
+
+static void amd64_print_var_ranges(Amd64IrVarRangeSlice var_ranges) {
+  for (u64 i = 0; i < var_ranges.len; i++) {
+    Amd64IrVarRange var_range = PG_SLICE_AT(var_ranges, i);
+    printf("%" PRIu64 ":[%" PRIu32 " ..< %" PRIu32 "] x%" PRIu32 " ", i,
+           var_range.start, var_range.end, var_range.var.value);
+    amd64_print_register(var_range.reg);
+    printf("\n");
+  }
+}
