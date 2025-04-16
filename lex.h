@@ -441,7 +441,7 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       printf(":=\n");
       break;
     case LEX_TOKEN_KIND_IDENTIFIER:
-      printf("%.*s\n", (i32)token.s.len, token.s.data);
+      printf("Identifier %.*s\n", (i32)token.s.len, token.s.data);
       break;
     default:
       PG_ASSERT(0);
