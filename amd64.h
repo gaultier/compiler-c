@@ -730,7 +730,15 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
   PG_ASSERT(nullptr == amd64_find_var_to_memory_location_by_register(
                            reg_alloc->var_to_memory_location, dst));
 
-  PG_DYN_SWAP_REMOVE(&reg_alloc->available, dst.value);
+  i64 reg_idx = -1;
+  for (u64 i = 0; i < reg_alloc->available.len; i++) {
+    if (PG_SLICE_AT(reg_alloc->available, i).value == dst.value) {
+      reg_idx = (i64)i;
+      break;
+    }
+  }
+  PG_ASSERT(-1 != reg_idx);
+  PG_DYN_SWAP_REMOVE(&reg_alloc->available, reg_idx);
 
   Amd64Instruction instruction = {
       .kind = AMD64_INSTRUCTION_KIND_MOV,
