@@ -563,43 +563,40 @@ static VarToMemoryLocation *amd64_find_var_to_memory_location_by_register(
   return var_to_mem_loc;
 }
 
-static void amd64_upsert_var_to_memory_location(
-    VarToMemoryLocationDyn *var_to_memory_location, IrVar var, Register reg,
-    PgAllocator *allocator) {
+static void amd64_upsert_var_to_memory_location_by_var(
+    VarToMemoryLocationDyn *var_to_memory_location, IrVar var,
+    MemoryLocation mem_loc, PgAllocator *allocator) {
   VarToMemoryLocation *var_to_mem_loc =
       amd64_find_var_to_memory_location_by_var(*var_to_memory_location, var);
 
   if (!var_to_mem_loc) {
     *PG_DYN_PUSH(var_to_memory_location, allocator) = (VarToMemoryLocation){
-        .location =
-            {
-                .kind = MEMORY_LOCATION_KIND_REGISTER,
-                .reg = reg,
-            },
+        .location = mem_loc,
         .var = var,
     };
   } else {
     PG_ASSERT(var_to_mem_loc->var.value == var.value);
-    // TODO: Review.
-    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == var_to_mem_loc->location.kind);
-    var_to_mem_loc->location.reg = reg;
+    var_to_mem_loc->location = mem_loc;
   }
 
-  // Another var previously in this register has just been overriden so
-  // we remove the mapping.
-  u64 other_vars_count = 0;
-  for (u64 i = 0; i < var_to_memory_location->len;) {
-    VarToMemoryLocation elem = PG_SLICE_AT(*var_to_memory_location, i);
-    if (MEMORY_LOCATION_KIND_REGISTER == elem.location.kind &&
-        elem.location.reg.value == reg.value && elem.var.value != var.value) {
-      other_vars_count += 1;
-      PG_DYN_SWAP_REMOVE(var_to_memory_location, i);
-      continue;
+  // Has another var previously in this register has just been overriden so
+  // we have tro remove the mapping?
+  if (MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind) {
+    u64 other_vars_count = 0;
+    for (u64 i = 0; i < var_to_memory_location->len;) {
+      VarToMemoryLocation elem = PG_SLICE_AT(*var_to_memory_location, i);
+      if (MEMORY_LOCATION_KIND_REGISTER == elem.location.kind &&
+          elem.location.reg.value == mem_loc.reg.value &&
+          elem.var.value != var.value) {
+        other_vars_count += 1;
+        PG_DYN_SWAP_REMOVE(var_to_memory_location, i);
+        continue;
+      }
+
+      i++;
     }
-
-    i++;
+    PG_ASSERT(other_vars_count <= 1);
   }
-  PG_ASSERT(other_vars_count <= 1);
 }
 
 static Amd64Operand
@@ -654,19 +651,88 @@ amd64_make_register_allocator(PgAllocator *allocator) {
   return reg_alloc;
 }
 
+static VarToMemoryLocation
+amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, IrVar var,
+                         Amd64InstructionDyn *instructions, Origin origin,
+                         PgAllocator *allocator) {
+  i64 stack_offset = 0; // FIXME
+
+  VarToMemoryLocation *mem_loc = amd64_find_var_to_memory_location_by_var(
+      reg_alloc->var_to_memory_location, var);
+  PG_ASSERT(mem_loc);
+
+  if (MEMORY_LOCATION_KIND_STACK == mem_loc->location.kind) {
+    // Nothing to do.
+    return *mem_loc;
+  }
+
+  Amd64Instruction instruction = {
+      .kind = AMD64_INSTRUCTION_KIND_MOV,
+      .dst =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+              .effective_address =
+                  {
+                      .base = amd64_rsp,
+                      .displacement = (u32)stack_offset,
+                  },
+          },
+      .src = {0},
+      .origin = origin,
+  };
+  if (MEMORY_LOCATION_KIND_REGISTER == mem_loc->location.kind) {
+    instruction.src.kind = AMD64_OPERAND_KIND_REGISTER;
+    instruction.src.reg = mem_loc->location.reg;
+  } else if (MEMORY_LOCATION_KIND_MEMORY == mem_loc->location.kind) {
+    PG_ASSERT(0 && "todo");
+  } else {
+    PG_ASSERT(0 && "unreachable");
+  }
+
+  MemoryLocation mem_loc_new = {
+      .kind = MEMORY_LOCATION_KIND_STACK,
+      .stack_pointer_offset = stack_offset,
+  };
+  amd64_upsert_var_to_memory_location_by_var(&reg_alloc->var_to_memory_location,
+                                             var, mem_loc_new, allocator);
+  PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
+               reg_alloc->var_to_memory_location, allocator);
+
+  *PG_DYN_PUSH(instructions, allocator) = instruction;
+
+  return (VarToMemoryLocation){.var = var, .location = mem_loc_new};
+}
+
 [[nodiscard]]
 static Register
 amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
-                                PgAllocator *allocator) {
-  // TODO: Spill.
-  PG_ASSERT(reg_alloc->available.len > 0 && "todo");
+                                Amd64InstructionDyn *instructions,
+                                Origin origin, PgAllocator *allocator) {
+  if (0 == reg_alloc->available.len) { // Spill.
+    // Pick a (random?) register to free.
+    for (u64 i = 0; i < reg_alloc->var_to_memory_location.len; i++) {
+      VarToMemoryLocation var_to_mem_loc =
+          PG_SLICE_AT(reg_alloc->var_to_memory_location, i);
+      if (MEMORY_LOCATION_KIND_REGISTER == var_to_mem_loc.location.kind) {
+        amd64_store_var_on_stack(reg_alloc, var_to_mem_loc.var, instructions,
+                                 origin, allocator);
+        *PG_DYN_PUSH(&reg_alloc->available, allocator) =
+            var_to_mem_loc.location.reg;
+        // The variable is no more in this register.
+        PG_DYN_SWAP_REMOVE(&reg_alloc->var_to_memory_location, i);
+        break;
+      }
+    }
+  }
+  PG_ASSERT(reg_alloc->available.len > 0);
 
   Register reg = PG_SLICE_AT(reg_alloc->available, 0);
 
   PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
 
-  amd64_upsert_var_to_memory_location(&reg_alloc->var_to_memory_location, var,
-                                      reg, allocator);
+  MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER, .reg = reg};
+  amd64_upsert_var_to_memory_location_by_var(&reg_alloc->var_to_memory_location,
+                                             var, mem_loc, allocator);
 
   return reg;
 }
@@ -702,7 +768,7 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
     PG_ASSERT(var_to_mem_loc_by_var->location.reg.value != 0);
 
     Register reg_mov_dst = amd64_allocate_register_for_var(
-        reg_alloc, var_to_mem_loc_by_reg->var, allocator);
+        reg_alloc, var_to_mem_loc_by_reg->var, instructions, origin, allocator);
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
         .dst =
@@ -717,9 +783,12 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
             },
         .origin = {.synthetic = true},
     };
-    amd64_upsert_var_to_memory_location(&reg_alloc->var_to_memory_location,
-                                        var_to_mem_loc_by_reg->var, reg_mov_dst,
-                                        allocator);
+
+    MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER,
+                              .reg = reg_mov_dst};
+    amd64_upsert_var_to_memory_location_by_var(
+        &reg_alloc->var_to_memory_location, var_to_mem_loc_by_reg->var, mem_loc,
+        allocator);
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
 
@@ -751,8 +820,9 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
       .origin = origin,
   };
   // Finally the var is in the `dst` register.
-  amd64_upsert_var_to_memory_location(&reg_alloc->var_to_memory_location,
-                                      val.var, dst, allocator);
+  MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER, .reg = dst};
+  amd64_upsert_var_to_memory_location_by_var(&reg_alloc->var_to_memory_location,
+                                             val.var, mem_loc, allocator);
   PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                reg_alloc->var_to_memory_location, allocator);
   *PG_DYN_PUSH(instructions, allocator) = instruction;
@@ -779,8 +849,10 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
     };
     PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
     IrVar var = {ir_idx};
-    amd64_upsert_var_to_memory_location(&reg_alloc->var_to_memory_location, var,
-                                        instruction.dst.reg, allocator);
+    MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER,
+                              .reg = instruction.dst.reg};
+    amd64_upsert_var_to_memory_location_by_var(
+        &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
 
@@ -804,7 +876,8 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
                 .reg = amd64_allocate_register_for_var(
-                    reg_alloc, (IrVar){ir_idx}, allocator),
+                    reg_alloc, (IrVar){ir_idx}, instructions, ir.origin,
+                    allocator),
             },
         .origin = ir.origin,
     };
@@ -828,8 +901,12 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
         .origin = ir.origin,
     };
     IrVar var = {ir_idx};
-    amd64_upsert_var_to_memory_location(&reg_alloc->var_to_memory_location, var,
-                                        amd64_arch.return_value, allocator);
+    MemoryLocation mem_loc = {
+        .kind = MEMORY_LOCATION_KIND_REGISTER,
+        .reg = amd64_arch.return_value,
+    };
+    amd64_upsert_var_to_memory_location_by_var(
+        &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction;
