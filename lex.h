@@ -11,6 +11,8 @@ typedef enum {
   LEX_TOKEN_KIND_PAREN_LEFT,
   LEX_TOKEN_KIND_PAREN_RIGHT,
   LEX_TOKEN_KIND_COMMA,
+  LEX_TOKEN_KIND_COLON_EQUAL,
+  LEX_TOKEN_KIND_IDENTIFIER,
 } LexTokenKind;
 
 typedef struct {
@@ -20,6 +22,69 @@ typedef struct {
 } LexToken;
 PG_SLICE(LexToken) LexTokenSlice;
 PG_DYN(LexToken) LexTokenDyn;
+
+static bool lex_identifier(PgUtf8Iterator *it, PgRune first_rune,
+                           LexTokenDyn *tokens, ErrorDyn *errors,
+                           PgString file_name, u32 line, u32 *column,
+                           PgAllocator *allocator) {
+  PG_ASSERT(pg_rune_is_alphabetical(first_rune));
+
+  u32 column_start = *column;
+  // Unconsume the first rune.
+  PG_ASSERT(it->idx > 0);
+  it->idx -= 1;
+
+  u64 idx_start = it->idx;
+
+  for (u64 _i = 0; _i < it->s.len; _i++) {
+    if (it->idx >= it->s.len) {
+      return false;
+    }
+    u64 idx_prev = it->idx;
+
+    PgRuneResult rune_res = pg_utf8_iterator_next(it);
+    if (rune_res.err || 0 == rune_res.res) {
+      *PG_DYN_PUSH(errors, allocator) = (Error){
+          .kind = ERROR_KIND_LEX_INVALID_UTF8,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = *column,
+                  .file_offset = (u32)it->idx,
+              },
+      };
+      return false;
+    }
+
+    PgRune rune = rune_res.res;
+    PG_ASSERT(0 != rune);
+
+    if (!('_' == rune || pg_rune_is_alphabetical(rune))) {
+      it->idx = idx_prev;
+      break;
+    }
+
+    *column += 1;
+  }
+
+  PgString lit = PG_SLICE_RANGE(it->s, idx_start, it->idx);
+  PG_ASSERT(lit.len > 0);
+
+  *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+      .kind = LEX_TOKEN_KIND_IDENTIFIER,
+      .s = lit,
+      .origin =
+          {
+              .file_name = file_name,
+              .line = line,
+              .column = column_start,
+              .file_offset = (u32)idx_start,
+          },
+  };
+
+  return true;
+}
 
 static bool lex_keyword(PgUtf8Iterator *it, PgRune first_rune,
                         LexTokenDyn *tokens, ErrorDyn *errors,
@@ -82,17 +147,6 @@ static bool lex_keyword(PgUtf8Iterator *it, PgRune first_rune,
     };
     return true;
   }
-
-  *PG_DYN_PUSH(errors, allocator) = (Error){
-      .kind = ERROR_KIND_LEX_INVALID_KEYWORD,
-      .origin =
-          {
-              .file_name = file_name,
-              .line = line,
-              .column = *column,
-              .file_offset = (u32)it->idx,
-          },
-  };
 
   return false;
 }
@@ -289,6 +343,40 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
       column += 1;
     } break;
 
+    case ':': {
+      PgUtf8Iterator it_tmp = it;
+      PgRuneResult rune_next_res = pg_utf8_iterator_next(&it_tmp);
+      if ('=' != rune_next_res.res) {
+        *PG_DYN_PUSH(errors, allocator) = (Error){
+            .kind = ERROR_KIND_LEX_UNKNOWN_TOKEN,
+            .origin =
+                {
+                    .file_name = file_name,
+                    .line = line,
+                    .column = column,
+                    .file_offset = (u32)it.idx,
+                },
+        };
+
+        err_mode = true;
+      }
+      it = it_tmp;
+
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_COLON_EQUAL,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 2;
+
+    } break;
+
     case ' ': {
       column += 1;
       break;
@@ -297,6 +385,11 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
     default: {
       if (lex_keyword(&it, rune, tokens, errors, file_name, line, &column,
                       allocator)) {
+        break;
+      }
+
+      if (lex_identifier(&it, rune, tokens, errors, file_name, line, &column,
+                         allocator)) {
         break;
       }
 
@@ -343,6 +436,12 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       break;
     case LEX_TOKEN_KIND_SYSCALL:
       printf("syscall\n");
+      break;
+    case LEX_TOKEN_KIND_COLON_EQUAL:
+      printf(":=\n");
+      break;
+    case LEX_TOKEN_KIND_IDENTIFIER:
+      printf("%.*s\n", (i32)token.s.len, token.s.data);
       break;
     default:
       PG_ASSERT(0);
