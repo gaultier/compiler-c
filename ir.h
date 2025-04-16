@@ -134,7 +134,7 @@ static void ir_print(IrSlice irs, u32 i) {
     PG_ASSERT(0);
   case IR_KIND_ADD:
     PG_ASSERT(2 == ir.operands.len);
-    printf("%u: x%u := ", i, i);
+    printf("[%u] x%u := ", i, i);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf(" + ");
     ir_print_value(PG_SLICE_AT(ir.operands, 1));
@@ -142,12 +142,12 @@ static void ir_print(IrSlice irs, u32 i) {
     break;
   case IR_KIND_LOAD:
     PG_ASSERT(1 == ir.operands.len);
-    printf("%u: x%u := ", i, i);
+    printf("[%u] x%u := ", i, i);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf("\n");
     break;
   case IR_KIND_SYSCALL: {
-    printf("%u: x%u := syscall(", i, i);
+    printf("[%u] x%u := syscall(", i, i);
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
       ir_print_value(val);

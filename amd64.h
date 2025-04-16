@@ -214,6 +214,8 @@ static void amd64_print_var_to_register(VarToRegisterDyn var_to_register) {
 
 static void amd64_print_instructions(Amd64InstructionSlice instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
+    printf("[%" PRIu64 "] ", i);
+
     Amd64Instruction instruction = PG_SLICE_AT(instructions, i);
     origin_print(instruction.origin);
     printf(": ");
