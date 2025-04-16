@@ -2,3 +2,4 @@
 *.bin
 *.nasm
 a.out
+test*
