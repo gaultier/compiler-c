@@ -165,8 +165,9 @@ typedef struct {
 PG_DYN(VarToRegister) VarToRegisterDyn;
 
 typedef struct {
+  // TODO: Could remove this and instead track available registers with
+  // `var_to_register` with entries having no variable.
   RegisterDyn available;
-  RegisterDyn taken;
   // Track in which machine register is a var stored currently.
   // Indexed by the var value.
   VarToRegisterDyn var_to_register;
@@ -587,7 +588,6 @@ amd64_ir_value_to_operand(IrValue val, VarToRegisterDyn var_to_register) {
 [[nodiscard]] static Amd64RegisterAllocator
 amd64_make_register_allocator(PgAllocator *allocator) {
   Amd64RegisterAllocator reg_alloc = {0};
-  PG_DYN_ENSURE_CAP(&reg_alloc.taken, 16, allocator);
   PG_DYN_ENSURE_CAP(&reg_alloc.available, 16, allocator);
 
   *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rax;
@@ -618,7 +618,6 @@ amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
   Register reg = PG_SLICE_AT(reg_alloc->available, 0);
 
   PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = reg;
 
   amd64_upsert_var_to_register(&reg_alloc->var_to_register, var, reg,
                                allocator);
@@ -678,7 +677,6 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
                            reg_alloc->var_to_register, dst));
 
   PG_DYN_SWAP_REMOVE(&reg_alloc->available, dst.value);
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->taken) = dst;
 
   Amd64Instruction instruction = {
       .kind = AMD64_INSTRUCTION_KIND_MOV,
