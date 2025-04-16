@@ -13,6 +13,7 @@ typedef enum {
   LEX_TOKEN_KIND_COMMA,
   LEX_TOKEN_KIND_COLON_EQUAL,
   LEX_TOKEN_KIND_IDENTIFIER,
+  LEX_TOKEN_KIND_AMPERSAND,
 } LexTokenKind;
 
 typedef struct {
@@ -298,6 +299,21 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
       column += 1;
     } break;
 
+    case '&': {
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_AMPERSAND,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 1;
+    } break;
+
     case '(': {
       *PG_DYN_PUSH(tokens, allocator) = (LexToken){
           .kind = LEX_TOKEN_KIND_PAREN_LEFT,
@@ -439,6 +455,9 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       break;
     case LEX_TOKEN_KIND_COLON_EQUAL:
       printf(":=\n");
+      break;
+    case LEX_TOKEN_KIND_AMPERSAND:
+      printf("&\n");
       break;
     case LEX_TOKEN_KIND_IDENTIFIER:
       printf("Identifier %.*s\n", (i32)token.s.len, token.s.data);
