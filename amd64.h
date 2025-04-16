@@ -205,10 +205,12 @@ static void amd64_print_operand(Amd64Operand operand) {
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS:
     printf("[");
     amd64_print_register(operand.effective_address.base);
-    printf(" + ");
-    amd64_print_register(operand.effective_address.index);
-    printf(" * %" PRIu8 " + %" PRIu32 "]", operand.effective_address.scale,
-           operand.effective_address.displacement);
+    if (operand.effective_address.index.value) {
+      printf(" + ");
+      amd64_print_register(operand.effective_address.index);
+      printf(" * %" PRIu8 " ", operand.effective_address.scale);
+    }
+    printf("+ %" PRIu32 "]", operand.effective_address.displacement);
     break;
   default:
     PG_ASSERT(0);
@@ -224,11 +226,11 @@ static void amd64_print_var_to_memory_location(
     case MEMORY_LOCATION_KIND_REGISTER:
       amd64_print_register(var_to_mem_loc.location.reg);
       break;
-    case MEMORY_LOCATION_KIND_STACK:
+    case MEMORY_LOCATION_KIND_STACK: {
       amd64_print_register(amd64_rsp);
-      i64 offset = var_to_mem_loc.location.stack_pointer_offset;
-      printf("%c%ld", offset > 0 ? '+' : '-', offset);
-      break;
+      u32 offset = var_to_mem_loc.location.stack_pointer_offset;
+      printf("%c%u", offset > 0 ? '+' : '-', offset);
+    } break;
     case MEMORY_LOCATION_KIND_MEMORY:
       printf("%#lx", var_to_mem_loc.location.memory_address);
       break;
@@ -599,6 +601,42 @@ static void amd64_upsert_var_to_memory_location_by_var(
   }
 }
 
+[[nodiscard]]
+static Amd64Operand amd64_memory_location_to_operand(MemoryLocation mem_loc) {
+  Amd64Operand operand = {0};
+
+  if (MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind) {
+    operand.kind = AMD64_OPERAND_KIND_REGISTER;
+    operand.reg = mem_loc.reg;
+  } else if (MEMORY_LOCATION_KIND_STACK == mem_loc.kind) {
+    operand.kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS;
+    operand.effective_address.base = amd64_rsp;
+    operand.effective_address.displacement = mem_loc.stack_pointer_offset;
+  } else {
+    PG_ASSERT(0);
+  }
+
+  return operand;
+}
+
+[[nodiscard]]
+static MemoryLocation amd64_operand_to_memory_location(Amd64Operand operand) {
+  MemoryLocation mem_loc = {0};
+
+  if (AMD64_OPERAND_KIND_REGISTER == operand.kind) {
+    mem_loc.kind = MEMORY_LOCATION_KIND_REGISTER;
+    mem_loc.reg = operand.reg;
+  } else if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == operand.kind &&
+             operand.reg.value == amd64_rsp.value) {
+    mem_loc.kind = MEMORY_LOCATION_KIND_STACK;
+    mem_loc.stack_pointer_offset = operand.effective_address.displacement;
+  } else {
+    PG_ASSERT(0);
+  }
+
+  return mem_loc;
+}
+
 static Amd64Operand
 amd64_ir_value_to_operand(IrValue val,
                           VarToMemoryLocationDyn var_to_memory_location) {
@@ -615,13 +653,10 @@ amd64_ir_value_to_operand(IrValue val,
         amd64_find_var_to_memory_location_by_var(var_to_memory_location,
                                                  val.var);
     PG_ASSERT(nullptr != var_to_mem_loc);
-    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == var_to_mem_loc->location.kind);
-    PG_ASSERT(var_to_mem_loc->location.reg.value != 0);
+    Amd64Operand operand =
+        amd64_memory_location_to_operand(var_to_mem_loc->location);
 
-    return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = var_to_mem_loc->location.reg,
-    };
+    return operand;
   }
   default:
     PG_ASSERT(0);
@@ -651,11 +686,12 @@ amd64_make_register_allocator(PgAllocator *allocator) {
   return reg_alloc;
 }
 
+#if 0
 static VarToMemoryLocation
 amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, IrVar var,
                          Amd64InstructionDyn *instructions, Origin origin,
                          PgAllocator *allocator) {
-  i64 stack_offset = 0; // FIXME
+  u32 stack_offset = 0; // FIXME
 
   VarToMemoryLocation *mem_loc = amd64_find_var_to_memory_location_by_var(
       reg_alloc->var_to_memory_location, var);
@@ -702,40 +738,35 @@ amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, IrVar var,
 
   return (VarToMemoryLocation){.var = var, .location = mem_loc_new};
 }
+#endif
 
 // FIXME: allocate a memory location (register or stack).
 [[nodiscard]]
-static Register
-amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
-                                Amd64InstructionDyn *instructions,
-                                Origin origin, PgAllocator *allocator) {
-  if (0 == reg_alloc->available.len) { // Spill.
-    // Pick a (random?) register to free.
-    for (u64 i = 0; i < reg_alloc->var_to_memory_location.len; i++) {
-      VarToMemoryLocation var_to_mem_loc =
-          PG_SLICE_AT(reg_alloc->var_to_memory_location, i);
-      if (MEMORY_LOCATION_KIND_REGISTER == var_to_mem_loc.location.kind) {
-        amd64_store_var_on_stack(reg_alloc, var_to_mem_loc.var, instructions,
-                                 origin, allocator);
-        *PG_DYN_PUSH(&reg_alloc->available, allocator) =
-            var_to_mem_loc.location.reg;
-        // The variable is no more in this register.
-        PG_DYN_SWAP_REMOVE(&reg_alloc->var_to_memory_location, i);
-        break;
-      }
-    }
+static MemoryLocation
+amd64_allocate_memory_location_for_var(Amd64RegisterAllocator *reg_alloc,
+                                       IrVar var, PgAllocator *allocator) {
+  // Register.
+  if (reg_alloc->available.len > 0) {
+    Register reg = PG_SLICE_AT(reg_alloc->available, 0);
+    PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
+
+    MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER,
+                              .reg = reg};
+    amd64_upsert_var_to_memory_location_by_var(
+        &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
+
+    return mem_loc;
   }
-  PG_ASSERT(reg_alloc->available.len > 0);
 
-  Register reg = PG_SLICE_AT(reg_alloc->available, 0);
-
-  PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
-
-  MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER, .reg = reg};
+  // Stack.
+  u32 stack_pointer_offset = 0; // FIXME.
+  MemoryLocation mem_loc = {
+      .kind = MEMORY_LOCATION_KIND_STACK,
+      .stack_pointer_offset = stack_pointer_offset,
+  };
   amd64_upsert_var_to_memory_location_by_var(&reg_alloc->var_to_memory_location,
                                              var, mem_loc, allocator);
-
-  return reg;
+  return mem_loc;
 }
 
 static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
@@ -764,22 +795,14 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
                                // variable.
     // Move things around to free the target register.
     PG_ASSERT(var_to_mem_loc_by_var);
-    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER ==
-              var_to_mem_loc_by_var->location.kind);
-    PG_ASSERT(var_to_mem_loc_by_var->location.reg.value != 0);
 
     // FIXME: allocate a memory location (register or stack).
-    Register reg_mov_dst = amd64_allocate_register_for_var(
-        reg_alloc, var_to_mem_loc_by_reg->var, instructions, origin, allocator);
-    PG_ASSERT(reg_mov_dst.value != 0);
+    MemoryLocation mem_loc = amd64_allocate_memory_location_for_var(
+        reg_alloc, var_to_mem_loc_by_reg->var, allocator);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .dst =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = reg_mov_dst,
-            },
+        .dst = amd64_memory_location_to_operand(mem_loc),
         .src =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -788,8 +811,6 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
         .origin = {.synthetic = true},
     };
 
-    MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER,
-                              .reg = reg_mov_dst};
     amd64_upsert_var_to_memory_location_by_var(
         &reg_alloc->var_to_memory_location, var_to_mem_loc_by_reg->var, mem_loc,
         allocator);
@@ -851,10 +872,9 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
                                          reg_alloc->var_to_memory_location),
         .origin = ir.origin,
     };
-    PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
     IrVar var = {ir_idx};
-    MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER,
-                              .reg = instruction.dst.reg};
+
+    MemoryLocation mem_loc = amd64_operand_to_memory_location(instruction.dst);
     amd64_upsert_var_to_memory_location_by_var(
         &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
@@ -872,17 +892,14 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
             ? AMD64_INSTRUCTION_KIND_MOV
             : AMD64_INSTRUCTION_KIND_LEA;
 
+    MemoryLocation mem_loc = amd64_allocate_memory_location_for_var(
+        reg_alloc, (IrVar){ir_idx}, allocator);
+
     Amd64Instruction instruction = {
         .kind = kind,
         .src =
             amd64_ir_value_to_operand(src, reg_alloc->var_to_memory_location),
-        .dst =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = amd64_allocate_register_for_var(
-                    reg_alloc, (IrVar){ir_idx}, instructions, ir.origin,
-                    allocator),
-            },
+        .dst = amd64_memory_location_to_operand(mem_loc),
         .origin = ir.origin,
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
