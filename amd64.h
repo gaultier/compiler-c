@@ -348,6 +348,9 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_MOV == instruction.kind);
+  // Illegal per amd64 rules.
+  PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.src.kind &&
+              AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.dst.kind));
 
   // MOV reg64, imm64 | B8 +rq iq | Move an 64-bit immediate value into a 64-bit
   // register.
