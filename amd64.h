@@ -1136,6 +1136,6 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
 
     *PG_DYN_PUSH(instructions, allocator) = stack_add;
   } else {
-    PG_DYN_SWAP_REMOVE(instructions, 0);
+    PG_DYN_REMOVE_AT(instructions, 0);
   }
 }
