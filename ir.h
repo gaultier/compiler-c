@@ -202,6 +202,21 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs,
   }
 }
 
+static void irs_simplify(IrDyn *irs) {
+  for (u64 i = 0; i < irs->len;) {
+    Ir ir = PG_SLICE_AT(*irs, i);
+
+    // `x1 := x0`: Remove.
+    if (IR_KIND_LOAD == ir.kind && 1 == ir.operands.len &&
+        IR_VALUE_KIND_VAR == PG_SLICE_AT(ir.operands, 0).kind) {
+      PG_DYN_REMOVE_AT(irs, i);
+      continue;
+    }
+
+    i += 1;
+  }
+}
+
 static void ir_print_value(IrValue value) {
   switch (value.kind) {
   case IR_VALUE_KIND_NONE:
