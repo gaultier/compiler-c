@@ -57,7 +57,8 @@ int main(int argc, char *argv[]) {
 
   IrDyn irs = {0};
   IrIdentifierToVarDyn identifier_to_vars = {0};
-  ast_to_ir(*root, &irs, &identifier_to_vars, &errors, allocator);
+  u32 ir_num = 1;
+  ast_to_ir(*root, &irs, &ir_num, &identifier_to_vars, &errors, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
