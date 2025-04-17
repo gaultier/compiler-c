@@ -276,8 +276,8 @@ static void amd64_print_var_to_memory_location(
       break;
     case MEMORY_LOCATION_KIND_STACK: {
       amd64_print_register(amd64_rbp);
-      u32 offset = var_to_mem_loc.location.base_pointer_offset;
-      printf("%" PRIu32, offset);
+      i32 offset = var_to_mem_loc.location.base_pointer_offset;
+      printf("%" PRIi32, offset);
     } break;
     case MEMORY_LOCATION_KIND_MEMORY:
       printf("%#lx", var_to_mem_loc.location.memory_address);
@@ -874,7 +874,7 @@ static MemoryLocation amd64_operand_to_memory_location(Amd64Operand operand) {
   } else if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == operand.kind &&
              operand.reg.value == amd64_rbp.value) {
     mem_loc.kind = MEMORY_LOCATION_KIND_STACK;
-    mem_loc.base_pointer_offset = (u32)operand.effective_address.displacement;
+    mem_loc.base_pointer_offset = operand.effective_address.displacement;
   } else {
     PG_ASSERT(0);
   }
@@ -985,12 +985,12 @@ amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, IrVar var,
 }
 #endif
 
-static u32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
+static i32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
   reg_alloc->rbp_offset += size;
   reg_alloc->rbp_max_offset =
       PG_MAX(reg_alloc->rbp_max_offset, reg_alloc->rbp_offset);
 
-  return reg_alloc->rbp_offset;
+  return -(i32)reg_alloc->rbp_offset;
 }
 
 // FIXME: allocate a memory location (register or stack).
@@ -1012,7 +1012,7 @@ amd64_allocate_memory_location_for_var(Amd64RegisterAllocator *reg_alloc,
   }
 
   // Stack.
-  u32 stack_pointer_offset = amd64_stack_alloc(reg_alloc, 8);
+  i32 stack_pointer_offset = amd64_stack_alloc(reg_alloc, 8);
   MemoryLocation mem_loc = {
       .kind = MEMORY_LOCATION_KIND_STACK,
       .base_pointer_offset = stack_pointer_offset,
@@ -1200,7 +1200,7 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     if (MEMORY_LOCATION_KIND_REGISTER ==
         mem_loc_src.kind) { // Need to store the value on the stack to
                             // take its address.
-      u32 rbp_offset = amd64_stack_alloc(reg_alloc, sizeof(u64));
+      i32 rbp_offset = amd64_stack_alloc(reg_alloc, sizeof(u64));
 
       MemoryLocation mem_loc_stack = {
           .kind = MEMORY_LOCATION_KIND_STACK,
