@@ -80,7 +80,9 @@ int main(int argc, char *argv[]) {
   Amd64RegisterAllocator reg_alloc = amd64_make_register_allocator(allocator);
 
   Amd64InstructionDyn instructions = {0};
+  amd64_emit_prolog(&instructions, allocator);
   amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc, allocator);
+  amd64_emit_epilog(&instructions, allocator);
 
   amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
   puts("------------");
