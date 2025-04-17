@@ -1058,6 +1058,9 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                                     instructions, allocator);
     }
 
+    // TODO: Should rax be preserved (in a register or on the stack)
+    // before `syscall` since `syscall` will override it with its return value?
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
         .origin = ir.origin,
