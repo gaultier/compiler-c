@@ -474,8 +474,12 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
 
   u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
   if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    rex |= AMD64_REX_MASK_R;
+  }
+  if (amd64_is_register_64_bits_only(instruction.src.effective_address.base)) {
     rex |= AMD64_REX_MASK_B;
   }
+
   *PG_DYN_PUSH(sb, allocator) = rex;
 
   u8 opcode = 0x8d;
