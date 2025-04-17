@@ -525,6 +525,9 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
   }
   if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.dst.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
+    PG_ASSERT(0 == instruction.dst.effective_address.scale && "todo");
+    PG_ASSERT(0 == instruction.dst.effective_address.index.value && "todo");
+
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
     if (amd64_is_register_64_bits_only(instruction.src.reg)) {
       rex |= AMD64_REX_MASK_R;
@@ -541,7 +544,10 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
 
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
-    u8 sib = AMD64_SIB_INDEX_NONE | AMD64_SIB_BASE_DISP32;
+    u8 sib =
+        (0b100 << 3) /* no index */
+        | (amd64_encode_register_value(instruction.dst.effective_address.base) &
+           0b111);
     *PG_DYN_PUSH(sb, allocator) = sib;
 
     pg_byte_buffer_append_u64(
