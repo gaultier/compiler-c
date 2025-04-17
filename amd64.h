@@ -547,9 +547,8 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
     u8 opcode = 0x81;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
-    u8 modrm =
-        (0b11 << 6) |
-        (u8)((amd64_encode_register_value(instruction.dst.reg) & 0b111) << 3);
+    u8 modrm = (0b11 << 6) |
+               (u8)((amd64_encode_register_value(instruction.dst.reg) & 0b111));
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
     pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
