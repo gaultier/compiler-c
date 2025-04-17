@@ -448,7 +448,8 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
         (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
-    pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+    pg_byte_buffer_append_u32(
+        sb, (u32)instruction.dst.effective_address.displacement, allocator);
 
     return;
   }
