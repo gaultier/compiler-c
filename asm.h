@@ -27,7 +27,7 @@ typedef struct {
   MemoryLocationKind kind;
   union {
     Register reg;
-    i32 stack_pointer_offset;
+    u32 base_pointer_offset;
     u64 memory_address;
   };
 } MemoryLocation;

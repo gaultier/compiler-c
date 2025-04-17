@@ -223,6 +223,7 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
   }
 }
 
+// TODO: Constant folding.
 static void irs_simplify(IrDyn *irs) {
   for (u64 i = 0; i < irs->len;) {
     Ir ir = PG_SLICE_AT(*irs, i);
