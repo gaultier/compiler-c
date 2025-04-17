@@ -997,12 +997,9 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
   *PG_DYN_PUSH(instructions, allocator) = instruction;
 }
 
-static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
-                            Amd64InstructionDyn *instructions,
+static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                             Amd64RegisterAllocator *reg_alloc,
                             PgAllocator *allocator) {
-  Ir ir = PG_SLICE_AT(irs, ir_idx);
-
   switch (ir.kind) {
   case IR_KIND_NONE:
     PG_ASSERT(0);
@@ -1016,7 +1013,7 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
                                          reg_alloc->var_to_memory_location),
         .origin = ir.origin,
     };
-    IrVar var = {ir_idx};
+    IrVar var = {ir.num};
 
     MemoryLocation mem_loc = amd64_operand_to_memory_location(instruction.dst);
     amd64_upsert_var_to_memory_location_by_var(
@@ -1037,7 +1034,7 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
             : AMD64_INSTRUCTION_KIND_LEA;
 
     MemoryLocation mem_loc = amd64_allocate_memory_location_for_var(
-        reg_alloc, (IrVar){ir_idx}, allocator);
+        reg_alloc, (IrVar){ir.num}, allocator);
 
     Amd64Instruction instruction = {
         .kind = kind,
@@ -1065,7 +1062,7 @@ static void amd64_ir_to_asm(IrSlice irs, u32 ir_idx,
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
         .origin = ir.origin,
     };
-    IrVar var = {ir_idx};
+    IrVar var = {ir.num};
     MemoryLocation mem_loc = {
         .kind = MEMORY_LOCATION_KIND_REGISTER,
         .reg = amd64_arch.return_value,
@@ -1108,7 +1105,7 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
   *PG_DYN_PUSH(instructions, allocator) = stack_sub;
 
   for (u64 i = 0; i < irs.len; i++) {
-    amd64_ir_to_asm(irs, (u32)i, instructions, reg_alloc, allocator);
+    amd64_ir_to_asm(PG_SLICE_AT(irs, i), instructions, reg_alloc, allocator);
   }
 
   if (reg_alloc->rsp_max_offset > 0) {
