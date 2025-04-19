@@ -55,10 +55,11 @@ int main(int argc, char *argv[]) {
   ast_print(*root, 0);
   puts("------------");
 
-  IrDyn irs = {0};
-  IrIdentifierToVarDyn identifier_to_vars = {0};
-  u32 ir_num = 1;
-  ast_to_ir(*root, &irs, &ir_num, &identifier_to_vars, &errors, allocator);
+  IrEmitter ir_emitter = {
+      .ir_num = 1,
+      .label_num = 1,
+  };
+  ast_to_ir(*root, &ir_emitter, &errors, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
@@ -69,11 +70,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  IrSlice irs_slice = PG_DYN_SLICE(IrSlice, irs);
+  IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
   irs_print(irs_slice);
   puts("------------");
-  irs_simplify(&irs);
-  irs_slice = PG_DYN_SLICE(IrSlice, irs);
+  irs_simplify(&ir_emitter.irs);
+  irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
   irs_print(irs_slice);
   puts("------------");
 

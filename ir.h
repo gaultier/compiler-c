@@ -48,6 +48,13 @@ typedef struct {
 } IrIdentifierToVar;
 PG_DYN(IrIdentifierToVar) IrIdentifierToVarDyn;
 
+typedef struct {
+  IrDyn irs;
+  u32 ir_num;
+  u32 label_num;
+  IrIdentifierToVarDyn identifier_to_vars;
+} IrEmitter;
+
 static void ir_add_identifier_to_var(IrIdentifierToVarDyn *identifier_to_vars,
                                      PgString identifier, IrVar var,
                                      PgAllocator *allocator) {
@@ -76,9 +83,8 @@ ir_find_identifier_to_var_by_identifier(IrIdentifierToVarDyn identifier_to_vars,
   return res;
 }
 
-static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
-                       IrIdentifierToVarDyn *identifier_to_vars,
-                       ErrorDyn *errors, PgAllocator *allocator) {
+static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
+                       PgAllocator *allocator) {
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
@@ -86,14 +92,14 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
     Ir ir = {
         .kind = IR_KIND_LOAD,
         .origin = node.origin,
-        .num = (*ir_num)++,
+        .num = emitter->ir_num++,
     };
     *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_U64,
         .n64 = node.n64,
     };
 
-    *PG_DYN_PUSH(irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
     return (IrVar){ir.num};
   }
   case AST_NODE_KIND_ADD: {
@@ -107,15 +113,15 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
     // x2 = 3 + 4
     // x3 = x2 + x1
     PG_ASSERT(2 == node.operands.len);
-    IrVar lhs = ast_to_ir(PG_SLICE_AT(node.operands, 0), irs, ir_num,
-                          identifier_to_vars, errors, allocator);
-    IrVar rhs = ast_to_ir(PG_SLICE_AT(node.operands, 1), irs, ir_num,
-                          identifier_to_vars, errors, allocator);
+    IrVar lhs =
+        ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
+    IrVar rhs =
+        ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
 
     Ir ir = {
         .kind = IR_KIND_ADD,
         .origin = node.origin,
-        .num = (*ir_num)++,
+        .num = emitter->ir_num++,
     };
     PG_ASSERT(lhs.value < ir.num);
     PG_ASSERT(rhs.value < ir.num);
@@ -125,7 +131,7 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
     *PG_DYN_PUSH(&ir.operands, allocator) =
         (IrValue){.kind = IR_VALUE_KIND_VAR, .var = rhs};
 
-    *PG_DYN_PUSH(irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
     return (IrVar){ir.num};
   }
 
@@ -133,8 +139,7 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
     IrValueDyn operands = {0};
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      IrVar operand =
-          ast_to_ir(child, irs, ir_num, identifier_to_vars, errors, allocator);
+      IrVar operand = ast_to_ir(child, emitter, errors, allocator);
 
       *PG_DYN_PUSH(&operands, allocator) =
           (IrValue){.kind = IR_VALUE_KIND_VAR, .var = operand};
@@ -143,7 +148,7 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
     Ir ir = {
         .kind = IR_KIND_SYSCALL,
         .origin = node.origin,
-        .num = (*ir_num)++,
+        .num = emitter->ir_num++,
         .operands = operands,
     };
     for (u64 i = 0; i < node.operands.len; i++) {
@@ -151,26 +156,26 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
       PG_ASSERT(PG_SLICE_AT(ir.operands, i).var.value < ir.num);
     }
 
-    *PG_DYN_PUSH(irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
     return (IrVar){ir.num};
   }
   case AST_NODE_KIND_BLOCK: {
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      ast_to_ir(child, irs, ir_num, identifier_to_vars, errors, allocator);
+      ast_to_ir(child, emitter, errors, allocator);
     }
-    return (IrVar){0}; // TODO: Should a block return a value?
+    return (IrVar){0};
   }
   case AST_NODE_KIND_VAR_DECL: {
     PG_ASSERT(1 == node.operands.len);
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
-    IrVar rhs = ast_to_ir(PG_SLICE_AT(node.operands, 0), irs, ir_num,
-                          identifier_to_vars, errors, allocator);
+    IrVar rhs =
+        ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
     Ir ir = {
         .kind = IR_KIND_LOAD,
         .origin = node.origin,
-        .num = (*ir_num)++,
+        .num = emitter->ir_num++,
     };
     PG_ASSERT(rhs.value < ir.num);
 
@@ -179,16 +184,16 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
         .var = rhs,
     };
 
-    *PG_DYN_PUSH(irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    ir_add_identifier_to_var(identifier_to_vars, node.identifier, rhs,
+    ir_add_identifier_to_var(&emitter->identifier_to_vars, node.identifier, rhs,
                              allocator);
     return (IrVar){ir.num};
   }
 
   case AST_NODE_KIND_IDENTIFIER: {
     IrIdentifierToVar *identifier_to_var =
-        ir_find_identifier_to_var_by_identifier(*identifier_to_vars,
+        ir_find_identifier_to_var_by_identifier(emitter->identifier_to_vars,
                                                 node.identifier);
 
     if (!identifier_to_var) {
@@ -206,40 +211,38 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
     AstNode operand = PG_SLICE_AT(node.operands, 0);
     PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
 
-    IrVar rhs =
-        ast_to_ir(operand, irs, ir_num, identifier_to_vars, errors, allocator);
+    IrVar rhs = ast_to_ir(operand, emitter, errors, allocator);
     Ir ir = {
         .kind = IR_KIND_ADDRESS_OF,
         .origin = node.origin,
-        .num = (*ir_num)++,
+        .num = emitter->ir_num++,
     };
     PG_ASSERT(rhs.value < ir.num);
 
     *PG_DYN_PUSH(&ir.operands, allocator) =
         (IrValue){.kind = IR_VALUE_KIND_VAR, .var = rhs};
-    *PG_DYN_PUSH(irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
     return (IrVar){ir.num};
   }
 
   case AST_NODE_KIND_IF: {
     PG_ASSERT(2 == node.operands.len);
-    IrVar cond = ast_to_ir(PG_SLICE_AT(node.operands, 0), irs, ir_num,
-                           identifier_to_vars, errors, allocator);
+    IrVar cond =
+        ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
     // TODO: then, else.
 
-    IrVar branch_then = ast_to_ir(PG_SLICE_AT(node.operands, 1), irs, ir_num,
-                                  identifier_to_vars, errors, allocator);
+    IrVar branch_then =
+        ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
 
-    IrVar branch_else =
-        (3 == node.operands.len)
-            ? ast_to_ir(PG_SLICE_AT(node.operands, 2), irs, ir_num,
-                        identifier_to_vars, errors, allocator)
-            : (IrVar){0};
+    IrVar branch_else = (3 == node.operands.len)
+                            ? ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter,
+                                        errors, allocator)
+                            : (IrVar){0};
 
     Ir ir = {
         .kind = IR_KIND_CONDITIONAL_JUMP,
         .origin = node.origin,
-        .num = (*ir_num)++,
+        .num = emitter->ir_num++,
     };
     PG_ASSERT(cond.value < ir.num);
     PG_ASSERT(branch_then.value < ir.num);
@@ -258,7 +261,7 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
         .i32 = (i32)branch_else.value,
     };
 
-    *PG_DYN_PUSH(irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
     return (IrVar){0};
   }
 
