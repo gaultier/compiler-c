@@ -420,20 +420,10 @@ static void ir_print(IrSlice irs, u32 i) {
     printf(")\n");
   } break;
   case IR_KIND_JUMP: {
-    PG_ASSERT(0 == ir.operands.len);
-    IrValue cond = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
-
-    IrValue branch_then = PG_SLICE_AT(ir.operands, 1);
-    IrValue branch_else = PG_SLICE_AT(ir.operands, 2);
-
-    printf("[%u] jump_if(", i);
-    ir_print_value(cond);
-    printf(", ");
-    ir_print_value(branch_then);
-    printf(", ");
-    ir_print_value(branch_else);
-    printf(")\n");
+    PG_ASSERT(1 == ir.operands.len);
+    IrValue label = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
+    printf("[%u] jump(%u)\n", i, label.u32);
   } break;
 
   case IR_KIND_LABEL: {
