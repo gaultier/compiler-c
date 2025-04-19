@@ -9,6 +9,7 @@ typedef enum {
   IR_KIND_SYSCALL,
   IR_KIND_ADDRESS_OF,
   IR_KIND_CONDITIONAL_JUMP,
+  IR_KIND_JUMP,
   IR_KIND_LABEL,
 } IrKind;
 
@@ -232,48 +233,76 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
     // TODO: then, else.
 
-    Ir ir = {
+    Ir ir_cond_jump = {
         .kind = IR_KIND_CONDITIONAL_JUMP,
         .origin = node.origin,
         .num = emitter->ir_num++,
     };
-    PG_ASSERT(cond.value < ir.num);
-    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
+    PG_ASSERT(cond.value < ir_cond_jump.num);
+    *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_VAR,
         .var = cond,
     };
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir_cond_jump;
 
-    u64 ir_backpatch_idx = emitter->irs.len - 1;
+    u64 ir_cond_jump_idx = emitter->irs.len - 1;
 
     u32 branch_then_label = emitter->label_num++;
-    *PG_DYN_PUSH(&emitter->irs, allocator) = (Ir){
-        .kind = IR_KIND_LABEL,
-        .num = branch_then_label,
-    };
-    ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
-
+    u32 branch_if_cont_label = emitter->label_num++;
     u32 branch_else_label = emitter->label_num++;
-    *PG_DYN_PUSH(&emitter->irs, allocator) = (Ir){
-        .kind = IR_KIND_LABEL,
-        .num = branch_else_label,
-    };
-    if (3 == node.operands.len) {
-      ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, allocator);
+
+    // 'then' branch.
+    {
+      Ir ir_label_then = {
+          .kind = IR_KIND_LABEL,
+          .num = emitter->ir_num++,
+      };
+      *PG_DYN_PUSH(&ir_label_then.operands, allocator) = (IrValue){
+          .kind = IR_VALUE_KIND_LABEL,
+          .u32 = branch_then_label,
+      };
+      *PG_DYN_PUSH(&emitter->irs, allocator) = ir_label_then;
+
+      ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
+      Ir ir_jump = {
+          .kind = IR_KIND_JUMP,
+          .num = emitter->ir_num++,
+      };
+      *PG_DYN_PUSH(&ir_jump.operands, allocator) = (IrValue){
+          .kind = IR_VALUE_KIND_LABEL,
+          .u32 = branch_if_cont_label,
+      };
+      *PG_DYN_PUSH(&emitter->irs, allocator) = ir_jump;
     }
 
-    u32 branch_if_cont_label = emitter->label_num++;
+    // 'else' branch.
+    {
+      Ir ir_label_else = {
+          .kind = IR_KIND_LABEL,
+          .num = emitter->ir_num++,
+      };
+      *PG_DYN_PUSH(&ir_label_else.operands, allocator) = (IrValue){
+          .kind = IR_VALUE_KIND_LABEL,
+          .u32 = branch_else_label,
+      };
+      *PG_DYN_PUSH(&emitter->irs, allocator) = ir_label_else;
+      if (3 == node.operands.len) {
+        ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, allocator);
+      }
+    }
+
     *PG_DYN_PUSH(&emitter->irs, allocator) = (Ir){
         .kind = IR_KIND_LABEL,
         .num = branch_if_cont_label,
     };
 
-    Ir *ir_backpatch = PG_SLICE_AT_PTR(&emitter->irs, ir_backpatch_idx);
-    *PG_DYN_PUSH(&ir_backpatch->operands, allocator) = (IrValue){
+    Ir *ir_cond_jump_backpatch =
+        PG_SLICE_AT_PTR(&emitter->irs, ir_cond_jump_idx);
+    *PG_DYN_PUSH(&ir_cond_jump_backpatch->operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_LABEL,
         .u32 = branch_then_label,
     };
-    *PG_DYN_PUSH(&ir_backpatch->operands, allocator) = (IrValue){
+    *PG_DYN_PUSH(&ir_cond_jump_backpatch->operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_LABEL,
         .u32 = branch_else_label,
     };
@@ -390,6 +419,23 @@ static void ir_print(IrSlice irs, u32 i) {
     ir_print_value(branch_else);
     printf(")\n");
   } break;
+  case IR_KIND_JUMP: {
+    PG_ASSERT(0 == ir.operands.len);
+    IrValue cond = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
+
+    IrValue branch_then = PG_SLICE_AT(ir.operands, 1);
+    IrValue branch_else = PG_SLICE_AT(ir.operands, 2);
+
+    printf("[%u] jump_if(", i);
+    ir_print_value(cond);
+    printf(", ");
+    ir_print_value(branch_then);
+    printf(", ");
+    ir_print_value(branch_else);
+    printf(")\n");
+  } break;
+
   case IR_KIND_LABEL: {
     printf("[%u] .%u:\n", i, ir.num);
   } break;

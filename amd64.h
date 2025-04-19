@@ -126,6 +126,9 @@ typedef enum {
   AMD64_INSTRUCTION_KIND_PUSH,
   AMD64_INSTRUCTION_KIND_POP,
   AMD64_INSTRUCTION_KIND_LABEL,
+  AMD64_INSTRUCTION_KIND_CMP,
+  AMD64_INSTRUCTION_KIND_JMP,
+  AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
 } Amd64InstructionKind;
 
 typedef struct {
@@ -331,6 +334,15 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       break;
     case AMD64_INSTRUCTION_KIND_LABEL:
       printf(".%u:", instruction.label);
+      break;
+    case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
+      printf("je ");
+      break;
+    case AMD64_INSTRUCTION_KIND_JMP:
+      printf("jmp ");
+      break;
+    case AMD64_INSTRUCTION_KIND_CMP:
+      printf("cmp ");
       break;
     default:
       PG_ASSERT(0);
@@ -757,6 +769,13 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
 
   case AMD64_INSTRUCTION_KIND_LABEL:
     break;
+
+  case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
+    PG_ASSERT(0 && "todo");
+  case AMD64_INSTRUCTION_KIND_JMP:
+    PG_ASSERT(0 && "todo");
+  case AMD64_INSTRUCTION_KIND_CMP:
+    PG_ASSERT(0 && "todo");
 
   default:
     PG_ASSERT(0);
@@ -1262,19 +1281,75 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
   } break;
 
   case IR_KIND_CONDITIONAL_JUMP: {
-    PG_ASSERT(0 && "todo");
+    PG_ASSERT(3 == ir.operands.len);
+    IrValue cond = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
+    IrValue branch_then = PG_SLICE_AT(ir.operands, 1);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == branch_then.kind);
+    IrValue branch_else = PG_SLICE_AT(ir.operands, 2);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);
+
+    VarToMemoryLocation *cond_mem_loc =
+        amd64_find_var_to_memory_location_by_var(
+            reg_alloc->var_to_memory_location, cond.var);
+    PG_ASSERT(cond_mem_loc);
+
+    Amd64Instruction instruction_cmp = {
+        .kind = AMD64_INSTRUCTION_KIND_CMP,
+        .origin = ir.origin,
+        .dst = amd64_memory_location_to_operand(cond_mem_loc->location),
+        .src =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                .immediate = 0,
+            },
+    };
+    PG_DYN_CLONE(&instruction_cmp.var_to_memory_location_frozen,
+                 reg_alloc->var_to_memory_location, allocator);
+    *PG_DYN_PUSH(instructions, allocator) = instruction_cmp;
+
+    Amd64Instruction instruction_je = {
+        .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
+        .origin = ir.origin,
+        .label = branch_then.u32,
+    };
+    PG_DYN_CLONE(&instruction_je.var_to_memory_location_frozen,
+                 reg_alloc->var_to_memory_location, allocator);
+    *PG_DYN_PUSH(instructions, allocator) = instruction_je;
+
   } break;
 
   case IR_KIND_LABEL: {
+    PG_ASSERT(1 == ir.operands.len);
+    IrValue operand = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == operand.kind);
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL,
         .origin = ir.origin,
-        .label = ir.num,
+        .label = operand.u32,
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
+  } break;
+
+  case IR_KIND_JUMP: {
+    PG_ASSERT(1 == ir.operands.len);
+    IrValue operand = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == operand.kind);
+
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_JMP,
+        .origin = ir.origin,
+        .label = operand.u32,
+    };
+    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
+                 reg_alloc->var_to_memory_location, allocator);
+
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+
   } break;
 
   default:
