@@ -96,6 +96,7 @@ typedef enum {
   AMD64_OPERAND_KIND_REGISTER,
   AMD64_OPERAND_KIND_IMMEDIATE,
   AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+  AMD64_OPERAND_KIND_LABEL,
 } Amd64OperandKind;
 
 // Effective address = `base + index * scale + displacement`.
@@ -112,6 +113,7 @@ typedef struct {
     Register reg;
     u64 immediate;
     Amd64EffectiveAddress effective_address;
+    u32 label;
   };
 } Amd64Operand;
 
@@ -264,6 +266,9 @@ static void amd64_print_operand(Amd64Operand operand) {
     printf("%s%" PRIi32 "]",
            operand.effective_address.displacement >= 0 ? "+" : "",
            operand.effective_address.displacement);
+    break;
+  case AMD64_OPERAND_KIND_LABEL:
+    printf(".%" PRIu32, operand.label);
     break;
   default:
     PG_ASSERT(0);
@@ -1311,7 +1316,11 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction_je = {
         .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
         .origin = ir.origin,
-        .label = branch_then.u32,
+        .dst =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_LABEL,
+                .label = branch_else.u32,
+            },
     };
     PG_DYN_CLONE(&instruction_je.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
@@ -1337,13 +1346,18 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
 
   case IR_KIND_JUMP: {
     PG_ASSERT(1 == ir.operands.len);
-    IrValue operand = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_LABEL == operand.kind);
+    IrValue label = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
         .origin = ir.origin,
-        .label = operand.u32,
+        .label = label.u32,
+        .dst =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_LABEL,
+                .label = label.u32,
+            },
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
