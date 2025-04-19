@@ -909,7 +909,7 @@ amd64_ir_value_to_operand(IrValue val,
         .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
         .effective_address =
             {
-                .displacement = val.i32,
+                .displacement = 0, // FIXME
             },
     };
   }

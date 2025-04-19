@@ -27,7 +27,7 @@ typedef struct {
   union {
     u64 n64;
     IrVar var;
-    i32 i32;
+    u32 u32;
   };
 } IrValue;
 PG_SLICE(IrValue) IrValueSlice;
@@ -231,37 +231,38 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
     // TODO: then, else.
 
-    IrVar branch_then =
-        ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
-
-    IrVar branch_else = (3 == node.operands.len)
-                            ? ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter,
-                                        errors, allocator)
-                            : (IrVar){0};
-
     Ir ir = {
         .kind = IR_KIND_CONDITIONAL_JUMP,
         .origin = node.origin,
         .num = emitter->ir_num++,
     };
     PG_ASSERT(cond.value < ir.num);
-    PG_ASSERT(branch_then.value < ir.num);
-    PG_ASSERT(branch_else.value < ir.num);
-
     *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_VAR,
         .var = cond,
     };
-    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
+
+    u64 ir_backpatch_idx = emitter->irs.len - 1;
+
+    u32 branch_then_label = emitter->label_num++;
+    ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
+
+    u32 branch_else_label = emitter->label_num++;
+    if (3 == node.operands.len) {
+      ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, allocator);
+    }
+
+    Ir *ir_backpatch = PG_SLICE_AT_PTR(&emitter->irs, ir_backpatch_idx);
+    *PG_DYN_PUSH(&ir_backpatch->operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_LABEL,
-        .i32 = (i32)branch_then.value,
+        .u32 = branch_then_label,
     };
-    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
+    *PG_DYN_PUSH(&ir_backpatch->operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_LABEL,
-        .i32 = (i32)branch_else.value,
+        .u32 = branch_else_label,
     };
 
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
     return (IrVar){0};
   }
 
