@@ -80,8 +80,6 @@ static void ast_print(AstNode node, u32 left_width) {
     for (u64 i = 0; i < node.operands.len; i++) {
       ast_print(PG_SLICE_AT(node.operands, i), left_width + 2);
     }
-
-    printf("\n");
   } break;
   case AST_NODE_KIND_VAR_DECL:
     PG_ASSERT(1 == node.operands.len);
@@ -120,6 +118,9 @@ static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
 static AstNode *ast_parse_statement(LexTokenSlice tokens, ErrorDyn *errors,
                                     u64 *tokens_consumed,
                                     PgAllocator *allocator);
+static AstNode *ast_parse_declaration(LexTokenSlice tokens, ErrorDyn *errors,
+                                      u64 *tokens_consumed,
+                                      PgAllocator *allocator);
 
 static AstNode *ast_parse_var_decl(LexTokenSlice tokens, ErrorDyn *errors,
                                    u64 *tokens_consumed,
@@ -417,14 +418,11 @@ static AstNode *ast_parse_block(LexTokenSlice tokens, ErrorDyn *errors,
     }
 
     AstNode *operand =
-        ast_parse_statement(tokens, errors, tokens_consumed, allocator);
+        ast_parse_declaration(tokens, errors, tokens_consumed, allocator);
     if (!operand) {
-      *PG_DYN_PUSH(errors, allocator) = (Error){
-          .kind = ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT,
-          .origin = token_first.origin,
-      };
-      return nullptr;
+      break; // EOF?
     }
+    *PG_DYN_PUSH(&operands, allocator) = *operand;
   }
 
   *PG_DYN_PUSH(errors, allocator) = (Error){
@@ -469,6 +467,7 @@ static AstNode *ast_parse_statement_if(LexTokenSlice tokens, ErrorDyn *errors,
     };
     return nullptr;
   }
+  *PG_DYN_PUSH(&operands, allocator) = *if_body;
 
   // TODO: optional else.
 
