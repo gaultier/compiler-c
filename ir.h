@@ -8,6 +8,7 @@ typedef enum {
   IR_KIND_LOAD,
   IR_KIND_SYSCALL,
   IR_KIND_ADDRESS_OF,
+  IR_KIND_CONDITIONAL_JUMP,
 } IrKind;
 
 typedef struct {
@@ -18,6 +19,7 @@ typedef enum {
   IR_VALUE_KIND_NONE,
   IR_VALUE_KIND_U64,
   IR_VALUE_KIND_VAR,
+  IR_VALUE_KIND_LABEL,
 } IrValueKind;
 
 typedef struct {
@@ -25,6 +27,7 @@ typedef struct {
   union {
     u64 n64;
     IrVar var;
+    i32 i32;
   };
 } IrValue;
 PG_SLICE(IrValue) IrValueSlice;
@@ -219,8 +222,45 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
   }
 
   case AST_NODE_KIND_IF: {
-    PG_ASSERT(0 && "todo");
-  } break;
+    PG_ASSERT(2 == node.operands.len);
+    IrVar cond = ast_to_ir(PG_SLICE_AT(node.operands, 0), irs, ir_num,
+                           identifier_to_vars, errors, allocator);
+    // TODO: then, else.
+
+    IrVar branch_then = ast_to_ir(PG_SLICE_AT(node.operands, 1), irs, ir_num,
+                                  identifier_to_vars, errors, allocator);
+
+    IrVar branch_else =
+        (3 == node.operands.len)
+            ? ast_to_ir(PG_SLICE_AT(node.operands, 2), irs, ir_num,
+                        identifier_to_vars, errors, allocator)
+            : (IrVar){0};
+
+    Ir ir = {
+        .kind = IR_KIND_CONDITIONAL_JUMP,
+        .origin = node.origin,
+        .num = (*ir_num)++,
+    };
+    PG_ASSERT(cond.value < ir.num);
+    PG_ASSERT(branch_then.value < ir.num);
+    PG_ASSERT(branch_else.value < ir.num);
+
+    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
+        .kind = IR_VALUE_KIND_VAR,
+        .var = cond,
+    };
+    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
+        .kind = IR_VALUE_KIND_LABEL,
+        .i32 = (i32)branch_then.value,
+    };
+    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
+        .kind = IR_VALUE_KIND_LABEL,
+        .i32 = (i32)branch_else.value,
+    };
+
+    *PG_DYN_PUSH(irs, allocator) = ir;
+    return (IrVar){0};
+  }
 
   default:
     PG_ASSERT(0);
@@ -267,6 +307,9 @@ static void ir_print_value(IrValue value) {
   case IR_VALUE_KIND_VAR:
     printf("x%" PRIu32, value.var.value);
     break;
+  case IR_VALUE_KIND_LABEL:
+    printf(".%" PRIu64 "", value.n64);
+    break;
   default:
     PG_ASSERT(0);
   }
@@ -310,6 +353,22 @@ static void ir_print(IrSlice irs, u32 i) {
         printf(", ");
       }
     }
+    printf(")\n");
+  } break;
+  case IR_KIND_CONDITIONAL_JUMP: {
+    PG_ASSERT(3 == ir.operands.len);
+    IrValue cond = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
+
+    IrValue branch_then = PG_SLICE_AT(ir.operands, 1);
+    IrValue branch_else = PG_SLICE_AT(ir.operands, 2);
+
+    printf("[%u] jump_if(", i);
+    ir_print_value(cond);
+    printf(", ");
+    ir_print_value(branch_then);
+    printf(", ");
+    ir_print_value(branch_else);
     printf(")\n");
   } break;
   default:

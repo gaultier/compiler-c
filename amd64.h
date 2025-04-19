@@ -903,6 +903,16 @@ amd64_ir_value_to_operand(IrValue val,
 
     return operand;
   }
+
+  case IR_VALUE_KIND_LABEL: {
+    return (Amd64Operand){
+        .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+        .effective_address =
+            {
+                .displacement = val.i32,
+            },
+    };
+  }
   default:
     PG_ASSERT(0);
   }
@@ -1241,6 +1251,10 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
+  } break;
+
+  case IR_KIND_CONDITIONAL_JUMP: {
+    PG_ASSERT(0 && "todo");
   } break;
 
   default:
