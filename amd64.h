@@ -1257,6 +1257,10 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     PG_ASSERT(0 && "todo");
   } break;
 
+  case IR_KIND_LABEL: {
+    PG_ASSERT(0 && "todo");
+  }
+
   default:
     PG_ASSERT(0);
   }

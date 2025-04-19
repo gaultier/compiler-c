@@ -9,6 +9,7 @@ typedef enum {
   IR_KIND_SYSCALL,
   IR_KIND_ADDRESS_OF,
   IR_KIND_CONDITIONAL_JUMP,
+  IR_KIND_LABEL,
 } IrKind;
 
 typedef struct {
@@ -246,12 +247,26 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     u64 ir_backpatch_idx = emitter->irs.len - 1;
 
     u32 branch_then_label = emitter->label_num++;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = (Ir){
+        .kind = IR_KIND_LABEL,
+        .num = branch_then_label,
+    };
     ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
 
     u32 branch_else_label = emitter->label_num++;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = (Ir){
+        .kind = IR_KIND_LABEL,
+        .num = branch_else_label,
+    };
     if (3 == node.operands.len) {
       ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, allocator);
     }
+
+    u32 branch_if_cont_label = emitter->label_num++;
+    *PG_DYN_PUSH(&emitter->irs, allocator) = (Ir){
+        .kind = IR_KIND_LABEL,
+        .num = branch_if_cont_label,
+    };
 
     Ir *ir_backpatch = PG_SLICE_AT_PTR(&emitter->irs, ir_backpatch_idx);
     *PG_DYN_PUSH(&ir_backpatch->operands, allocator) = (IrValue){
@@ -374,6 +389,9 @@ static void ir_print(IrSlice irs, u32 i) {
     printf(", ");
     ir_print_value(branch_else);
     printf(")\n");
+  } break;
+  case IR_KIND_LABEL: {
+    printf("[%u] .%u:\n", i, ir.num);
   } break;
   default:
     PG_ASSERT(0);
