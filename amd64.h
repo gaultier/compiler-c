@@ -125,6 +125,7 @@ typedef enum {
   AMD64_INSTRUCTION_KIND_SYSCALL,
   AMD64_INSTRUCTION_KIND_PUSH,
   AMD64_INSTRUCTION_KIND_POP,
+  AMD64_INSTRUCTION_KIND_LABEL,
 } Amd64InstructionKind;
 
 typedef struct {
@@ -138,6 +139,7 @@ typedef struct {
   Amd64Operand dst, src;
   Origin origin;
   VarToMemoryLocationDyn var_to_memory_location_frozen;
+  u32 label;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
@@ -326,6 +328,9 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       break;
     case AMD64_INSTRUCTION_KIND_POP:
       printf("pop ");
+      break;
+    case AMD64_INSTRUCTION_KIND_LABEL:
+      printf(".%u:", instruction.label);
       break;
     default:
       PG_ASSERT(0);
@@ -748,6 +753,9 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
     break;
   case AMD64_INSTRUCTION_KIND_POP:
     amd64_encode_instruction_pop(sb, instruction, allocator);
+    break;
+
+  case AMD64_INSTRUCTION_KIND_LABEL:
     break;
 
   default:
@@ -1258,8 +1266,16 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
   } break;
 
   case IR_KIND_LABEL: {
-    PG_ASSERT(0 && "todo");
-  }
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_LABEL,
+        .origin = ir.origin,
+        .label = ir.num,
+    };
+    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
+                 reg_alloc->var_to_memory_location, allocator);
+
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+  } break;
 
   default:
     PG_ASSERT(0);
