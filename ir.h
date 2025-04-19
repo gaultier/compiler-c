@@ -290,11 +290,15 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, allocator);
       }
     }
-
-    *PG_DYN_PUSH(&emitter->irs, allocator) = (Ir){
+    Ir ir_label_if_cont = {
         .kind = IR_KIND_LABEL,
-        .num = branch_if_cont_label,
+        .num = emitter->ir_num++,
     };
+    *PG_DYN_PUSH(&ir_label_if_cont.operands, allocator) = (IrValue){
+        .kind = IR_VALUE_KIND_LABEL,
+        .u32 = branch_if_cont_label,
+    };
+    *PG_DYN_PUSH(&emitter->irs, allocator) = ir_label_if_cont;
 
     Ir *ir_cond_jump_backpatch =
         PG_SLICE_AT_PTR(&emitter->irs, ir_cond_jump_idx);
@@ -423,11 +427,15 @@ static void ir_print(IrSlice irs, u32 i) {
     PG_ASSERT(1 == ir.operands.len);
     IrValue label = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
-    printf("[%u] jump(%u)\n", i, label.u32);
+    printf("[%u] jump .%u\n", i, label.u32);
   } break;
 
   case IR_KIND_LABEL: {
-    printf("[%u] .%u:\n", i, ir.num);
+    PG_ASSERT(1 == ir.operands.len);
+    IrValue label = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
+
+    printf("[%u] %u .%u:\n", i, ir.num, label.u32);
   } break;
   default:
     PG_ASSERT(0);
