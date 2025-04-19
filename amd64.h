@@ -741,6 +741,25 @@ static void amd64_encode_instruction_pop(Pgu8Dyn *sb,
       opcode + (amd64_encode_register_value(instruction.dst.reg) & 0b111);
 }
 
+static void amd64_encode_instruction_je(Pgu8Dyn *sb,
+                                        Amd64Instruction instruction,
+                                        PgAllocator *allocator) {
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP_IF_EQ == instruction.kind);
+
+  (void)sb;
+  (void)allocator;
+  // TODO
+}
+
+static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
+                                         Amd64Instruction instruction,
+                                         PgAllocator *allocator) {
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP == instruction.kind);
+  (void)sb;
+  (void)allocator;
+  // TODO
+}
+
 static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
@@ -802,9 +821,11 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
     break;
 
   case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
-    PG_ASSERT(0 && "todo");
+    amd64_encode_instruction_je(sb, instruction, allocator);
+    break;
   case AMD64_INSTRUCTION_KIND_JMP:
-    PG_ASSERT(0 && "todo");
+    amd64_encode_instruction_jmp(sb, instruction, allocator);
+    break;
   case AMD64_INSTRUCTION_KIND_CMP:
     amd64_encode_instruction_cmp(sb, instruction, allocator);
     break;
