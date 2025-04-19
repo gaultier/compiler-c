@@ -741,6 +741,32 @@ static void amd64_encode_instruction_pop(Pgu8Dyn *sb,
       opcode + (amd64_encode_register_value(instruction.dst.reg) & 0b111);
 }
 
+static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
+                                         Amd64Instruction instruction,
+                                         PgAllocator *allocator) {
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_CMP == instruction.kind);
+
+  PG_ASSERT(AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind && "todo");
+  PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind && "todo");
+
+  u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
+  if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    rex |= AMD64_REX_MASK_R;
+  }
+  *PG_DYN_PUSH(sb, allocator) = rex;
+
+  PG_ASSERT(instruction.src.immediate <= UINT32_MAX);
+
+  u8 opcode = 0x81;
+  *PG_DYN_PUSH(sb, allocator) = opcode;
+
+  u8 modrm = (0b11 << 6) | (u8)(7 << 3) |
+             (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
+  *PG_DYN_PUSH(sb, allocator) = modrm;
+
+  pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+}
+
 static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
                                      Amd64Program program,
                                      PgAllocator *allocator) {
@@ -780,7 +806,8 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
   case AMD64_INSTRUCTION_KIND_JMP:
     PG_ASSERT(0 && "todo");
   case AMD64_INSTRUCTION_KIND_CMP:
-    PG_ASSERT(0 && "todo");
+    amd64_encode_instruction_cmp(sb, instruction, allocator);
+    break;
 
   default:
     PG_ASSERT(0);
