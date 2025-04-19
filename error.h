@@ -19,6 +19,11 @@ typedef enum {
   ERROR_KIND_PARSE_STATEMENT,
   ERROR_KIND_UNDEFINED_VAR,
   ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
+  ERROR_KIND_PARSE_IF_MISSING_CONDITION,
+  ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK,
+  ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_LEFT,
+  ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT,
+  ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT,
 } ErrorKind;
 
 typedef struct {
@@ -79,6 +84,21 @@ static void error_print(Error err) {
     break;
   case ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER:
     printf("trying to take address of something that is not a variable\n");
+    break;
+  case ERROR_KIND_PARSE_IF_MISSING_CONDITION:
+    printf("missing if condition\n");
+    break;
+  case ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK:
+    printf("missing if-then block\n");
+    break;
+  case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_LEFT:
+    printf("missing '{' at the start of block\n");
+    break;
+  case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT:
+    printf("missing '}' at the end of block\n");
+    break;
+  case ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT:
+    printf("missing statement in block\n");
     break;
   default:
     PG_ASSERT(0);

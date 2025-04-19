@@ -7,13 +7,17 @@ typedef enum {
   LEX_TOKEN_KIND_NONE,
   LEX_TOKEN_KIND_LITERAL_U64,
   LEX_TOKEN_KIND_PLUS,
-  LEX_TOKEN_KIND_SYSCALL,
+  LEX_TOKEN_KIND_KEYWORD_SYSCALL,
   LEX_TOKEN_KIND_PAREN_LEFT,
   LEX_TOKEN_KIND_PAREN_RIGHT,
+  LEX_TOKEN_KIND_CURLY_LEFT,
+  LEX_TOKEN_KIND_CURLY_RIGHT,
   LEX_TOKEN_KIND_COMMA,
   LEX_TOKEN_KIND_COLON_EQUAL,
   LEX_TOKEN_KIND_IDENTIFIER,
   LEX_TOKEN_KIND_AMPERSAND,
+  LEX_TOKEN_KIND_KEYWORD_IF,
+  LEX_TOKEN_KIND_KEYWORD_ELSE,
 } LexTokenKind;
 
 typedef struct {
@@ -131,7 +135,33 @@ static bool lex_keyword(PgUtf8Iterator *it, LexTokenDyn *tokens,
 
   if (pg_string_eq(lit, PG_S("syscall"))) {
     *PG_DYN_PUSH(tokens, allocator) = (LexToken){
-        .kind = LEX_TOKEN_KIND_SYSCALL,
+        .kind = LEX_TOKEN_KIND_KEYWORD_SYSCALL,
+        .origin =
+            {
+                .file_name = file_name,
+                .line = line,
+                .column = column_start,
+                .file_offset = (u32)idx_start,
+            },
+    };
+    return true;
+  }
+  if (pg_string_eq(lit, PG_S("if"))) {
+    *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+        .kind = LEX_TOKEN_KIND_KEYWORD_IF,
+        .origin =
+            {
+                .file_name = file_name,
+                .line = line,
+                .column = column_start,
+                .file_offset = (u32)idx_start,
+            },
+    };
+    return true;
+  }
+  if (pg_string_eq(lit, PG_S("else"))) {
+    *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+        .kind = LEX_TOKEN_KIND_KEYWORD_ELSE,
         .origin =
             {
                 .file_name = file_name,
@@ -342,6 +372,36 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
       column += 1;
     } break;
 
+    case '{': {
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_CURLY_LEFT,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 1;
+    } break;
+
+    case '}': {
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_CURLY_RIGHT,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 1;
+    } break;
+
     case ',': {
       *PG_DYN_PUSH(tokens, allocator) = (LexToken){
           .kind = LEX_TOKEN_KIND_COMMA,
@@ -449,11 +509,23 @@ static void lex_tokens_print(LexTokenSlice tokens) {
     case LEX_TOKEN_KIND_PAREN_RIGHT:
       printf(")\n");
       break;
+    case LEX_TOKEN_KIND_CURLY_LEFT:
+      printf("{\n");
+      break;
+    case LEX_TOKEN_KIND_CURLY_RIGHT:
+      printf("}\n");
+      break;
     case LEX_TOKEN_KIND_COMMA:
       printf(",\n");
       break;
-    case LEX_TOKEN_KIND_SYSCALL:
+    case LEX_TOKEN_KIND_KEYWORD_SYSCALL:
       printf("syscall\n");
+      break;
+    case LEX_TOKEN_KIND_KEYWORD_IF:
+      printf("if\n");
+      break;
+    case LEX_TOKEN_KIND_KEYWORD_ELSE:
+      printf("else\n");
       break;
     case LEX_TOKEN_KIND_COLON_EQUAL:
       printf(":=\n");

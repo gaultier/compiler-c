@@ -218,6 +218,10 @@ static IrVar ast_to_ir(AstNode node, IrDyn *irs, u32 *ir_num,
     return (IrVar){ir.num};
   }
 
+  case AST_NODE_KIND_IF: {
+    PG_ASSERT(0 && "todo");
+  } break;
+
   default:
     PG_ASSERT(0);
   }
