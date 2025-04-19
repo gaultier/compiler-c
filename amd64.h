@@ -755,9 +755,15 @@ static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP == instruction.kind);
-  (void)sb;
-  (void)allocator;
-  // TODO
+  u8 opcode = 0xe9;
+  *PG_DYN_PUSH(sb, allocator) = opcode;
+
+  PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.dst.kind);
+  u32 label = instruction.dst.label;
+  (void)label;
+
+  // Backpatched.
+  pg_byte_buffer_append_u32(sb, 0, allocator);
 }
 
 static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
