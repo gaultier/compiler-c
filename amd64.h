@@ -113,7 +113,7 @@ typedef struct {
     Register reg;
     u64 immediate;
     Amd64EffectiveAddress effective_address;
-    u32 label;
+    Label label;
   };
 } Amd64Operand;
 
@@ -144,7 +144,7 @@ typedef struct {
   Amd64Operand lhs, rhs;
   Origin origin;
   VarToMemoryLocationDyn var_to_memory_location_frozen;
-  u32 label;
+  Label label;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
@@ -268,7 +268,7 @@ static void amd64_print_operand(Amd64Operand operand) {
            operand.effective_address.displacement);
     break;
   case AMD64_OPERAND_KIND_LABEL:
-    printf(".%" PRIu32, operand.label);
+    printf(".%" PRIu32, operand.label.value);
     break;
   default:
     PG_ASSERT(0);
@@ -338,7 +338,7 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       printf("pop ");
       break;
     case AMD64_INSTRUCTION_KIND_LABEL:
-      printf(".%u:", instruction.label);
+      printf(".%u:", instruction.label.value);
       break;
     case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
       printf("je ");
@@ -764,7 +764,7 @@ static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
   *PG_DYN_PUSH(sb, allocator) = opcode;
 
   PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
-  u32 label = instruction.lhs.label;
+  Label label = instruction.lhs.label;
   (void)label;
 
   // Backpatched.
@@ -1378,7 +1378,7 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
         .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_LABEL,
-                .label = branch_else.u32,
+                .label = branch_else.label,
             },
     };
     PG_DYN_CLONE(&instruction_je.var_to_memory_location_frozen,
@@ -1395,7 +1395,7 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL,
         .origin = ir.origin,
-        .label = operand.u32,
+        .label = operand.label,
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
@@ -1411,11 +1411,11 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
         .origin = ir.origin,
-        .label = label.u32,
+        .label = label.label,
         .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_LABEL,
-                .label = label.u32,
+                .label = label.label,
             },
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,

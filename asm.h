@@ -31,3 +31,14 @@ typedef struct {
     u64 memory_address;
   };
 } MemoryLocation;
+
+typedef struct {
+  u32 value;
+} Label;
+
+typedef struct {
+  Label label;
+  u64 address_text;
+} LabelLocation;
+PG_SLICE(LabelLocation) LabelLocationSlice;
+PG_DYN(LabelLocation) LabelLocationDyn;
