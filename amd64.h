@@ -144,7 +144,6 @@ typedef struct {
   Amd64Operand lhs, rhs;
   Origin origin;
   VarToMemoryLocationDyn var_to_memory_location_frozen;
-  Label label;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
@@ -340,7 +339,8 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       printf("pop ");
       break;
     case AMD64_INSTRUCTION_KIND_LABEL:
-      printf(".%u:", instruction.label.value);
+      PG_ASSERT(instruction.lhs.label.value > 0);
+      printf(".%u:", instruction.lhs.label.value);
       break;
     case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
       printf("je ");
@@ -757,7 +757,7 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
   u8 opcode2 = 0x85;
   *PG_DYN_PUSH(sb, allocator) = opcode2;
 
-  *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
+  *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
       .label = instruction.lhs.label,
       .address_text = sb->len - 1,
   };
@@ -777,7 +777,7 @@ static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
   u8 opcode = 0xe9;
   *PG_DYN_PUSH(sb, allocator) = opcode;
 
-  *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
+  *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
       .label = instruction.lhs.label,
       .address_text = sb->len - 1,
   };
@@ -844,6 +844,7 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
     break;
 
   case AMD64_INSTRUCTION_KIND_LABEL:
+    PG_ASSERT(instruction.lhs.label.value > 0);
     *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
         .label = instruction.lhs.label,
         .address_text = sb->len - 1,
@@ -871,6 +872,32 @@ static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction instruction = PG_SLICE_AT(section.instructions, i);
     amd64_encode_instruction(sb, instruction, program, allocator);
+  }
+
+  for (u64 i = 0; i < program->jumps_to_backpatch.len; i++) {
+    LabelAddress jump_to_backpatch =
+        PG_SLICE_AT(program->jumps_to_backpatch, i);
+    PG_ASSERT(jump_to_backpatch.label.value > 0);
+    PG_ASSERT(jump_to_backpatch.address_text > 0);
+
+    LabelAddress label = {0};
+    for (u64 j = 0; j < program->label_addresses.len; j++) {
+      label = PG_SLICE_AT(program->label_addresses, j);
+      PG_ASSERT(label.label.value > 0);
+      if (label.label.value == jump_to_backpatch.label.value) {
+        break;
+      }
+    }
+    PG_ASSERT(label.label.value > 0);
+    PG_ASSERT(label.label.value == jump_to_backpatch.label.value);
+
+    u8 *jump_displacement_encoded =
+        PG_SLICE_AT_PTR(sb, jump_to_backpatch.address_text);
+    i64 displacement =
+        (i64)label.address_text - (i64)jump_to_backpatch.address_text;
+    PG_ASSERT(displacement <= INT32_MAX);
+
+    memcpy(jump_displacement_encoded, &displacement, sizeof(i32));
   }
 }
 
@@ -1415,7 +1442,11 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL,
         .origin = ir.origin,
-        .label = operand.label,
+        .lhs =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_LABEL,
+                .label = operand.label,
+            },
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
@@ -1431,7 +1462,6 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
         .origin = ir.origin,
-        .label = label.label,
         .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_LABEL,
