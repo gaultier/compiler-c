@@ -363,7 +363,7 @@ static void ir_print(IrSlice irs, u32 i) {
     PG_ASSERT(0);
   case IR_KIND_ADD:
     PG_ASSERT(2 == ir.operands.len);
-    printf("[%u] x%u := ", i, ir.num);
+    printf("[%u] [%u] x%u := ", i, ir.num, ir.num);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf(" + ");
     ir_print_value(PG_SLICE_AT(ir.operands, 1));
@@ -371,18 +371,18 @@ static void ir_print(IrSlice irs, u32 i) {
     break;
   case IR_KIND_LOAD:
     PG_ASSERT(1 == ir.operands.len);
-    printf("[%u] x%u := ", i, ir.num);
+    printf("[%u] [%u] x%u := ", i, ir.num, ir.num);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf("\n");
     break;
   case IR_KIND_ADDRESS_OF:
     PG_ASSERT(1 == ir.operands.len);
-    printf("[%u] x%u := &", i, ir.num);
+    printf("[%u] [%u] x%u := &", i, ir.num, ir.num);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf("\n");
     break;
   case IR_KIND_SYSCALL: {
-    printf("[%u] x%u := syscall(", i, ir.num);
+    printf("[%u] [%u] x%u := syscall(", i, ir.num, ir.num);
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
       ir_print_value(val);
@@ -400,7 +400,7 @@ static void ir_print(IrSlice irs, u32 i) {
 
     IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
 
-    printf("[%u] jump_if_false(", i);
+    printf("[%u] [%u] jump_if_false(", i, ir.num);
     ir_print_value(cond);
     printf(", ");
     ir_print_value(branch_else);
@@ -410,7 +410,7 @@ static void ir_print(IrSlice irs, u32 i) {
     PG_ASSERT(1 == ir.operands.len);
     IrValue label = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
-    printf("[%u] jump .%u\n", i, label.label.value);
+    printf("[%u] [%u] jump .%u\n", i, ir.num, label.label.value);
   } break;
 
   case IR_KIND_LABEL: {
@@ -418,7 +418,7 @@ static void ir_print(IrSlice irs, u32 i) {
     IrValue label = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
 
-    printf("[%u] %u .%u:\n", i, ir.num, label.label.value);
+    printf("[%u] [%u] .%u:\n", i, ir.num, label.label.value);
   } break;
   default:
     PG_ASSERT(0);

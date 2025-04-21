@@ -1082,66 +1082,43 @@ amd64_make_register_allocator(PgAllocator *allocator) {
   return reg_alloc;
 }
 
-#if 0
-static VarToMemoryLocation
-amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, IrVar var,
-                         Amd64InstructionDyn *instructions, Origin origin,
-                         PgAllocator *allocator) {
-  u32 stack_offset = 0; // FIXME
-
-  VarToMemoryLocation *mem_loc = amd64_find_var_to_memory_location_by_var(
-      reg_alloc->var_to_memory_location, var);
-  PG_ASSERT(mem_loc);
-
-  if (MEMORY_LOCATION_KIND_STACK == mem_loc->location.kind) {
-    // Nothing to do.
-    return *mem_loc;
-  }
-
-  Amd64Instruction instruction = {
-      .kind = AMD64_INSTRUCTION_KIND_MOV,
-      .dst =
-          (Amd64Operand){
-              .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
-              .effective_address =
-                  {
-                      .base = amd64_rsp,
-                      .displacement = (u32)stack_offset,
-                  },
-          },
-      .src = {0},
-      .origin = origin,
-  };
-  if (MEMORY_LOCATION_KIND_REGISTER == mem_loc->location.kind) {
-    instruction.src.kind = AMD64_OPERAND_KIND_REGISTER;
-    instruction.src.reg = mem_loc->location.reg;
-  } else if (MEMORY_LOCATION_KIND_MEMORY == mem_loc->location.kind) {
-    PG_ASSERT(0 && "todo");
-  } else {
-    PG_ASSERT(0 && "unreachable");
-  }
-
-  MemoryLocation mem_loc_new = {
-      .kind = MEMORY_LOCATION_KIND_STACK,
-      .stack_pointer_offset = stack_offset,
-  };
-  amd64_upsert_var_to_memory_location_by_var(&reg_alloc->var_to_memory_location,
-                                             var, mem_loc_new, allocator);
-  PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-               reg_alloc->var_to_memory_location, allocator);
-
-  *PG_DYN_PUSH(instructions, allocator) = instruction;
-
-  return (VarToMemoryLocation){.var = var, .location = mem_loc_new};
-}
-#endif
-
 static i32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
   reg_alloc->rbp_offset += size;
   reg_alloc->rbp_max_offset =
       PG_MAX(reg_alloc->rbp_max_offset, reg_alloc->rbp_offset);
 
   return -(i32)reg_alloc->rbp_offset;
+}
+
+static MemoryLocation
+amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, u32 size, IrVar var,
+                         MemoryLocation location_src,
+                         Amd64InstructionDyn *instructions,
+                         PgAllocator *allocator) {
+  i32 rbp_offset = amd64_stack_alloc(reg_alloc, size);
+
+  MemoryLocation mem_loc_stack = {
+      .kind = MEMORY_LOCATION_KIND_STACK,
+      .base_pointer_offset = rbp_offset,
+  };
+  *PG_DYN_PUSH(&reg_alloc->var_to_memory_location, allocator) =
+      (VarToMemoryLocation){
+          .location = mem_loc_stack,
+          .var = var,
+      };
+
+  Amd64Instruction instruction = {
+      .kind = AMD64_INSTRUCTION_KIND_MOV,
+      .origin = {.synthetic = true},
+      .lhs = amd64_memory_location_to_operand(mem_loc_stack),
+      .rhs = amd64_memory_location_to_operand(location_src),
+  };
+  PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
+               reg_alloc->var_to_memory_location, allocator);
+
+  *PG_DYN_PUSH(instructions, allocator) = instruction;
+
+  return mem_loc_stack;
 }
 
 // FIXME: allocate a memory location (register or stack).
@@ -1309,7 +1286,23 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
 
   } break;
   case IR_KIND_SYSCALL: {
+    PG_ASSERT(ir.operands.len > 0);
     PG_ASSERT(ir.operands.len <= amd64_arch.syscall_calling_convention.len);
+
+    // Save the first operand on the stack before the syscall since the syscall
+    // will override `rax` with the return value and thus we might lose the
+    // first operand.
+    {
+      IrValue op0 = PG_SLICE_AT(ir.operands, 0);
+      PG_ASSERT(IR_VALUE_KIND_VAR == op0.kind);
+      VarToMemoryLocation *op0_var_mem_loc =
+          amd64_find_var_to_memory_location_by_var(
+              reg_alloc->var_to_memory_location, op0.var);
+      PG_ASSERT(op0_var_mem_loc);
+      amd64_store_var_on_stack(reg_alloc, sizeof(u64), op0_var_mem_loc->var,
+                               op0_var_mem_loc->location, instructions,
+                               allocator);
+    }
 
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
@@ -1317,9 +1310,6 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
       amd64_store_var_into_register(reg_alloc, dst, val, ir.origin,
                                     instructions, allocator);
     }
-
-    // TODO: Should rax be preserved (in a register or on the stack)
-    // before `syscall` since `syscall` will override it with its return value?
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
@@ -1351,29 +1341,9 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     if (MEMORY_LOCATION_KIND_REGISTER ==
         mem_loc_src.kind) { // Need to store the value on the stack to
                             // take its address.
-      i32 rbp_offset = amd64_stack_alloc(reg_alloc, sizeof(u64));
-
-      MemoryLocation mem_loc_stack = {
-          .kind = MEMORY_LOCATION_KIND_STACK,
-          .base_pointer_offset = rbp_offset,
-      };
-      *PG_DYN_PUSH(&reg_alloc->var_to_memory_location, allocator) =
-          (VarToMemoryLocation){
-              .location = mem_loc_stack,
-              .var = var_mem_loc->var,
-          };
-
-      Amd64Instruction instruction = {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .origin = {.synthetic = true},
-          .lhs = amd64_memory_location_to_operand(mem_loc_stack),
-          .rhs = amd64_memory_location_to_operand(var_mem_loc->location),
-      };
-      PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                   reg_alloc->var_to_memory_location, allocator);
-
-      *PG_DYN_PUSH(instructions, allocator) = instruction;
-      mem_loc_src = mem_loc_stack;
+      mem_loc_src = amd64_store_var_on_stack(
+          reg_alloc, sizeof(u64), var_mem_loc->var, var_mem_loc->location,
+          instructions, allocator);
     }
 
     PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER != mem_loc_src.kind);
