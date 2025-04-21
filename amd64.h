@@ -1292,6 +1292,7 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     // Save the first operand on the stack before the syscall since the syscall
     // will override `rax` with the return value and thus we might lose the
     // first operand.
+    // TODO: Only if necessary i.e. if the variable gets used afterwards.
     {
       IrValue op0 = PG_SLICE_AT(ir.operands, 0);
       PG_ASSERT(IR_VALUE_KIND_VAR == op0.kind);
