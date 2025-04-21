@@ -1295,16 +1295,19 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     {
       IrValue op0 = PG_SLICE_AT(ir.operands, 0);
       PG_ASSERT(IR_VALUE_KIND_VAR == op0.kind);
-      VarToMemoryLocation *op0_var_mem_loc =
-          amd64_find_var_to_memory_location_by_var(
-              reg_alloc->var_to_memory_location, op0.var);
-      PG_ASSERT(op0_var_mem_loc);
-      amd64_store_var_on_stack(reg_alloc, sizeof(u64), op0_var_mem_loc->var,
-                               op0_var_mem_loc->location, instructions,
-                               allocator);
+      Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, 0);
+      amd64_store_var_into_register(reg_alloc, dst, op0, ir.origin,
+                                    instructions, allocator);
+
+      MemoryLocation mem_loc = {
+          .kind = MEMORY_LOCATION_KIND_REGISTER,
+          .reg = dst,
+      };
+      amd64_store_var_on_stack(reg_alloc, sizeof(u64), op0.var, mem_loc,
+                               instructions, allocator);
     }
 
-    for (u64 j = 0; j < ir.operands.len; j++) {
+    for (u64 j = 1; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
       Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, j);
       amd64_store_var_into_register(reg_alloc, dst, val, ir.origin,
