@@ -141,7 +141,7 @@ PG_DYN(VarToMemoryLocation) VarToMemoryLocationDyn;
 
 typedef struct {
   Amd64InstructionKind kind;
-  Amd64Operand dst, src;
+  Amd64Operand lhs, rhs;
   Origin origin;
   VarToMemoryLocationDyn var_to_memory_location_frozen;
   u32 label;
@@ -209,7 +209,7 @@ static void amd64_emit_prolog(Amd64InstructionDyn *instructions,
   *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_PUSH,
       .origin = {.synthetic = true},
-      .dst =
+      .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .reg = amd64_rbp,
@@ -219,12 +219,12 @@ static void amd64_emit_prolog(Amd64InstructionDyn *instructions,
   *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_MOV,
       .origin = {.synthetic = true},
-      .dst =
+      .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .reg = amd64_rbp,
           },
-      .src =
+      .rhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .reg = amd64_rsp,
@@ -237,7 +237,7 @@ static void amd64_emit_epilog(Amd64InstructionDyn *instructions,
   *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_POP,
       .origin = {.synthetic = true},
-      .dst =
+      .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .reg = amd64_rbp,
@@ -354,15 +354,15 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       break;
     }
 
-    if (AMD64_OPERAND_KIND_NONE != instruction.dst.kind) {
-      amd64_print_operand(instruction.dst);
+    if (AMD64_OPERAND_KIND_NONE != instruction.lhs.kind) {
+      amd64_print_operand(instruction.lhs);
     }
 
-    if (AMD64_OPERAND_KIND_NONE != instruction.src.kind) {
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE != instruction.dst.kind);
+    if (AMD64_OPERAND_KIND_NONE != instruction.rhs.kind) {
+      PG_ASSERT(AMD64_OPERAND_KIND_NONE != instruction.lhs.kind);
 
       printf(", ");
-      amd64_print_operand(instruction.src);
+      amd64_print_operand(instruction.rhs);
     }
 
     printf(" ; ");
@@ -420,18 +420,18 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_MOV == instruction.kind);
   // Illegal per amd64 rules.
-  PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.src.kind &&
-              AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.dst.kind));
+  PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind &&
+              AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind));
 
   // MOV reg64, imm64 | B8 +rq iq | Move an 64-bit immediate value into a 64-bit
   // register.
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind) {
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
     u8 rex = AMD64_REX_DEFAULT;
-    if (instruction.src.immediate > UINT32_MAX) {
+    if (instruction.rhs.immediate > UINT32_MAX) {
       rex |= AMD64_REX_MASK_W;
     }
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_B;
     }
 
@@ -441,12 +441,12 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
     u8 opcode = 0xb8;
     *PG_DYN_PUSH(sb, allocator) =
-        opcode + (amd64_encode_register_value(instruction.dst.reg) & 0b111);
+        opcode + (amd64_encode_register_value(instruction.lhs.reg) & 0b111);
 
-    if (instruction.src.immediate <= UINT32_MAX) {
-      pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+    if (instruction.rhs.immediate <= UINT32_MAX) {
+      pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.immediate, allocator);
     } else {
-      pg_byte_buffer_append_u64(sb, instruction.src.immediate, allocator);
+      pg_byte_buffer_append_u64(sb, instruction.rhs.immediate, allocator);
     }
 
     return;
@@ -454,13 +454,13 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
   // MOV reg/mem64, reg64 | 89 /r | Move the contents of a 64-bit register to a
   // 64-bit destination register or memory operand.
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_B;
     }
-    if (amd64_is_register_64_bits_only(instruction.src.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.rhs.reg)) {
       rex |= AMD64_REX_MASK_R;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
@@ -469,19 +469,19 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
     *PG_DYN_PUSH(sb, allocator) = opcode;
     u8 modrm =
         (0b11 << 6) |
-        (u8)((amd64_encode_register_value(instruction.src.reg) & 0b111) << 3) |
-        (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
+        (u8)((amd64_encode_register_value(instruction.rhs.reg) & 0b111) << 3) |
+        (u8)(amd64_encode_register_value(instruction.lhs.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
     return;
   }
 
-  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind) {
-    PG_ASSERT(instruction.src.kind <= INT32_MAX);
+  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
+    PG_ASSERT(instruction.rhs.kind <= INT32_MAX);
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_B;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
@@ -489,24 +489,24 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
     u8 opcode = 0xc7;
     *PG_DYN_PUSH(sb, allocator) = opcode;
     u8 modrm = (0b11 << 6) |
-               (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
+               (u8)(amd64_encode_register_value(instruction.lhs.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
-    pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+    pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.immediate, allocator);
 
     return;
   }
 
-  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
-    PG_ASSERT(instruction.dst.effective_address.base.value == amd64_rbp.value &&
+  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
+    PG_ASSERT(instruction.lhs.effective_address.base.value == amd64_rbp.value &&
               "todo");
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_B;
     }
-    if (amd64_is_register_64_bits_only(instruction.src.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.rhs.reg)) {
       rex |= AMD64_REX_MASK_R;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
@@ -515,12 +515,12 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
     *PG_DYN_PUSH(sb, allocator) = opcode;
     u8 modrm =
         (0b10 /* [rbp] + disp32 */ << 6) |
-        (u8)((amd64_encode_register_value(instruction.src.reg) & 0b111) << 3) |
-        (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
+        (u8)((amd64_encode_register_value(instruction.rhs.reg) & 0b111) << 3) |
+        (u8)(amd64_encode_register_value(instruction.lhs.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
     pg_byte_buffer_append_u32(
-        sb, (u32)instruction.dst.effective_address.displacement, allocator);
+        sb, (u32)instruction.lhs.effective_address.displacement, allocator);
 
     return;
   }
@@ -537,18 +537,18 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
   (void)allocator;
 
   PG_ASSERT(AMD64_INSTRUCTION_KIND_LEA == instruction.kind);
-  PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind);
-  PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.src.kind);
-  PG_ASSERT(0 == instruction.src.effective_address.index.value && "todo");
-  PG_ASSERT(0 == instruction.src.effective_address.scale && "todo");
-  PG_ASSERT(amd64_rbp.value == instruction.src.effective_address.base.value &&
+  PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind);
+  PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind);
+  PG_ASSERT(0 == instruction.rhs.effective_address.index.value && "todo");
+  PG_ASSERT(0 == instruction.rhs.effective_address.scale && "todo");
+  PG_ASSERT(amd64_rbp.value == instruction.rhs.effective_address.base.value &&
             "todo");
 
   u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-  if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+  if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
     rex |= AMD64_REX_MASK_R;
   }
-  if (amd64_is_register_64_bits_only(instruction.src.effective_address.base)) {
+  if (amd64_is_register_64_bits_only(instruction.rhs.effective_address.base)) {
     rex |= AMD64_REX_MASK_B;
   }
 
@@ -559,14 +559,14 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
 
   u8 modrm =
       (0b10 /* [rbp] + disp32 */ << 6) |
-      (u8)((amd64_encode_register_value(instruction.dst.reg) & 0b111) << 3) |
+      (u8)((amd64_encode_register_value(instruction.lhs.reg) & 0b111) << 3) |
       (u8)((
-          amd64_encode_register_value(instruction.src.effective_address.base) &
+          amd64_encode_register_value(instruction.rhs.effective_address.base) &
           0b111));
   *PG_DYN_PUSH(sb, allocator) = modrm;
 
   pg_byte_buffer_append_u32_within_capacity(
-      sb, (u32)instruction.src.effective_address.displacement);
+      sb, (u32)instruction.rhs.effective_address.displacement);
   return;
 }
 
@@ -583,13 +583,13 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_ADD == instruction.kind);
 
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_R;
     }
-    if (amd64_is_register_64_bits_only(instruction.src.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.rhs.reg)) {
       rex |= AMD64_REX_MASK_B;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
@@ -599,18 +599,18 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
 
     u8 modrm =
         (0b11 << 6) |
-        (u8)((amd64_encode_register_value(instruction.dst.reg) & 0b111) << 3) |
-        (u8)(amd64_encode_register_value(instruction.src.reg) & 0b111);
+        (u8)((amd64_encode_register_value(instruction.lhs.reg) & 0b111) << 3) |
+        (u8)(amd64_encode_register_value(instruction.rhs.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
     return;
   }
 
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind) {
-    PG_ASSERT(instruction.src.immediate <= INT32_MAX);
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
+    PG_ASSERT(instruction.rhs.immediate <= INT32_MAX);
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_R;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
@@ -619,19 +619,19 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
     u8 modrm = (0b11 << 6) |
-               (u8)((amd64_encode_register_value(instruction.dst.reg) & 0b111));
+               (u8)((amd64_encode_register_value(instruction.lhs.reg) & 0b111));
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
-    pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+    pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.immediate, allocator);
     return;
   }
-  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
-    PG_ASSERT(0 == instruction.dst.effective_address.scale && "todo");
-    PG_ASSERT(0 == instruction.dst.effective_address.index.value && "todo");
+  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
+    PG_ASSERT(0 == instruction.lhs.effective_address.scale && "todo");
+    PG_ASSERT(0 == instruction.lhs.effective_address.index.value && "todo");
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.src.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.rhs.reg)) {
       rex |= AMD64_REX_MASK_R;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
@@ -641,19 +641,19 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
 
     u8 modrm =
         (0b10 << 6) |
-        (u8)((amd64_encode_register_value(instruction.src.reg) & 0b111) << 3) |
+        (u8)((amd64_encode_register_value(instruction.rhs.reg) & 0b111) << 3) |
         0b100; // sib + imm32
 
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
     u8 sib =
         (0b100 << 3) /* no index */
-        | (amd64_encode_register_value(instruction.dst.effective_address.base) &
+        | (amd64_encode_register_value(instruction.lhs.effective_address.base) &
            0b111);
     *PG_DYN_PUSH(sb, allocator) = sib;
 
     pg_byte_buffer_append_u64(
-        sb, (u32)instruction.src.effective_address.displacement, allocator);
+        sb, (u32)instruction.rhs.effective_address.displacement, allocator);
 
     return;
   }
@@ -665,13 +665,13 @@ static void amd64_encode_instruction_sub(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_SUB == instruction.kind);
 
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.src.kind) {
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_R;
     }
-    if (amd64_is_register_64_bits_only(instruction.src.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.rhs.reg)) {
       rex |= AMD64_REX_MASK_B;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
@@ -681,30 +681,30 @@ static void amd64_encode_instruction_sub(Pgu8Dyn *sb,
 
     u8 modrm =
         (0b11 << 6) |
-        (u8)((amd64_encode_register_value(instruction.dst.reg) & 0b111) << 3) |
-        (u8)(amd64_encode_register_value(instruction.src.reg) & 0b111);
+        (u8)((amd64_encode_register_value(instruction.lhs.reg) & 0b111) << 3) |
+        (u8)(amd64_encode_register_value(instruction.rhs.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
     return;
   }
 
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind) {
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
       rex |= AMD64_REX_MASK_R;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
 
-    PG_ASSERT(instruction.src.immediate <= UINT32_MAX);
+    PG_ASSERT(instruction.rhs.immediate <= UINT32_MAX);
 
     u8 opcode = 0x81;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
     u8 modrm = (0b11 << 6) | (u8)(5 << 3) |
-               (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
+               (u8)(amd64_encode_register_value(instruction.lhs.reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
-    pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+    pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.immediate, allocator);
     return;
   }
   PG_ASSERT(0 && "todo");
@@ -722,11 +722,11 @@ static void amd64_encode_instruction_push(Pgu8Dyn *sb,
                                           Amd64Instruction instruction,
                                           PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_PUSH == instruction.kind);
-  PG_ASSERT(amd64_rbp.value == instruction.dst.reg.value && "todo");
+  PG_ASSERT(amd64_rbp.value == instruction.lhs.reg.value && "todo");
 
   u8 opcode = 0x50;
   *PG_DYN_PUSH(sb, allocator) =
-      opcode + (amd64_encode_register_value(instruction.dst.reg) & 0b111);
+      opcode + (amd64_encode_register_value(instruction.lhs.reg) & 0b111);
 }
 
 static void amd64_encode_instruction_pop(Pgu8Dyn *sb,
@@ -734,11 +734,11 @@ static void amd64_encode_instruction_pop(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_POP == instruction.kind);
 
-  PG_ASSERT(amd64_rbp.value == instruction.dst.reg.value && "todo");
+  PG_ASSERT(amd64_rbp.value == instruction.lhs.reg.value && "todo");
 
   u8 opcode = 0x58;
   *PG_DYN_PUSH(sb, allocator) =
-      opcode + (amd64_encode_register_value(instruction.dst.reg) & 0b111);
+      opcode + (amd64_encode_register_value(instruction.lhs.reg) & 0b111);
 }
 
 static void amd64_encode_instruction_je(Pgu8Dyn *sb,
@@ -763,8 +763,8 @@ static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
   u8 opcode = 0xe9;
   *PG_DYN_PUSH(sb, allocator) = opcode;
 
-  PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.dst.kind);
-  u32 label = instruction.dst.label;
+  PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
+  u32 label = instruction.lhs.label;
   (void)label;
 
   // Backpatched.
@@ -776,25 +776,25 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_CMP == instruction.kind);
 
-  PG_ASSERT(AMD64_OPERAND_KIND_IMMEDIATE == instruction.src.kind && "todo");
-  PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.dst.kind && "todo");
+  PG_ASSERT(AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind && "todo");
+  PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind && "todo");
 
   u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-  if (amd64_is_register_64_bits_only(instruction.dst.reg)) {
+  if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
     rex |= AMD64_REX_MASK_B;
   }
   *PG_DYN_PUSH(sb, allocator) = rex;
 
-  PG_ASSERT(instruction.src.immediate <= UINT32_MAX);
+  PG_ASSERT(instruction.rhs.immediate <= UINT32_MAX);
 
   u8 opcode = 0x81;
   *PG_DYN_PUSH(sb, allocator) = opcode;
 
   u8 modrm = (0b11 << 6) | (u8)(7 << 3) |
-             (u8)(amd64_encode_register_value(instruction.dst.reg) & 0b111);
+             (u8)(amd64_encode_register_value(instruction.lhs.reg) & 0b111);
   *PG_DYN_PUSH(sb, allocator) = modrm;
 
-  pg_byte_buffer_append_u32(sb, (u32)instruction.src.immediate, allocator);
+  pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.immediate, allocator);
 }
 
 static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
@@ -1156,8 +1156,8 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .dst = amd64_memory_location_to_operand(mem_loc),
-        .src =
+        .lhs = amd64_memory_location_to_operand(mem_loc),
+        .rhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
                 .reg = dst,
@@ -1190,12 +1190,12 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
 
   Amd64Instruction instruction = {
       .kind = AMD64_INSTRUCTION_KIND_MOV,
-      .dst =
+      .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .reg = dst,
           },
-      .src = amd64_ir_value_to_operand(val, reg_alloc->var_to_memory_location),
+      .rhs = amd64_ir_value_to_operand(val, reg_alloc->var_to_memory_location),
       .origin = origin,
   };
   // Finally the var is in the `dst` register.
@@ -1217,15 +1217,15 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     PG_ASSERT(2 == ir.operands.len);
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
-        .src = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 0),
+        .rhs = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 0),
                                          reg_alloc->var_to_memory_location),
-        .dst = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 1),
+        .lhs = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 1),
                                          reg_alloc->var_to_memory_location),
         .origin = ir.origin,
     };
     IrVar var = {ir.num};
 
-    MemoryLocation mem_loc = amd64_operand_to_memory_location(instruction.dst);
+    MemoryLocation mem_loc = amd64_operand_to_memory_location(instruction.lhs);
     amd64_upsert_var_to_memory_location_by_var(
         &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
@@ -1248,9 +1248,9 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
 
     Amd64Instruction instruction = {
         .kind = kind,
-        .src =
+        .rhs =
             amd64_ir_value_to_operand(src, reg_alloc->var_to_memory_location),
-        .dst = amd64_memory_location_to_operand(mem_loc),
+        .lhs = amd64_memory_location_to_operand(mem_loc),
         .origin = ir.origin,
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
@@ -1316,8 +1316,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .origin = {.synthetic = true},
-          .dst = amd64_memory_location_to_operand(mem_loc_stack),
-          .src = amd64_memory_location_to_operand(var_mem_loc->location),
+          .lhs = amd64_memory_location_to_operand(mem_loc_stack),
+          .rhs = amd64_memory_location_to_operand(var_mem_loc->location),
       };
       PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                    reg_alloc->var_to_memory_location, allocator);
@@ -1334,8 +1334,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LEA,
         .origin = ir.origin,
-        .dst = amd64_memory_location_to_operand(mem_loc),
-        .src = amd64_memory_location_to_operand(mem_loc_src),
+        .lhs = amd64_memory_location_to_operand(mem_loc),
+        .rhs = amd64_memory_location_to_operand(mem_loc_src),
     };
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
@@ -1361,8 +1361,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction_cmp = {
         .kind = AMD64_INSTRUCTION_KIND_CMP,
         .origin = ir.origin,
-        .dst = amd64_memory_location_to_operand(cond_mem_loc->location),
-        .src =
+        .lhs = amd64_memory_location_to_operand(cond_mem_loc->location),
+        .rhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                 .immediate = 0,
@@ -1375,7 +1375,7 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     Amd64Instruction instruction_je = {
         .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
         .origin = ir.origin,
-        .dst =
+        .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_LABEL,
                 .label = branch_else.u32,
@@ -1412,7 +1412,7 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
         .kind = AMD64_INSTRUCTION_KIND_JMP,
         .origin = ir.origin,
         .label = label.u32,
-        .dst =
+        .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_LABEL,
                 .label = label.u32,
@@ -1435,12 +1435,12 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
                              PgAllocator *allocator) {
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
-      .dst =
+      .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .reg = amd64_rsp,
           },
-      .src =
+      .rhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_IMMEDIATE,
               .immediate = 0, // Backpatched.
@@ -1458,17 +1458,17 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
     u32 rsp_max_offset_aligned_16 =
         (u32)PG_ROUNDUP(reg_alloc->rbp_max_offset, 16);
 
-    PG_SLICE_AT_PTR(instructions, stack_sub_instruction_idx)->src.immediate =
+    PG_SLICE_AT_PTR(instructions, stack_sub_instruction_idx)->rhs.immediate =
         rsp_max_offset_aligned_16;
 
     Amd64Instruction stack_add = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
-        .dst =
+        .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
                 .reg = amd64_rsp,
             },
-        .src =
+        .rhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                 .immediate = rsp_max_offset_aligned_16,
