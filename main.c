@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
           },
   };
 
-  PgError err_write = elf_write_exe(program, allocator);
+  PgError err_write = elf_write_exe(&program, allocator);
   if (err_write) {
     fprintf(stderr, "failed to write to file %.*s: %u\n",
             (i32)program.file_name.len, program.file_name.data, err_write);

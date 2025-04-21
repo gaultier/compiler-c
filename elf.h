@@ -38,7 +38,7 @@ typedef struct {
 static_assert(64 == sizeof(ElfSectionHeader));
 
 [[nodiscard]]
-static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
+static PgError elf_write_exe(Amd64Program *program, PgAllocator *allocator) {
   // The ELF header and program headers take less than a page size but are
   // padded with zeroes to occupy one page. Then comes the program text. This
   // page gets loaded as well as the program text in one swoop, but the
@@ -54,8 +54,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
 
   u64 rodata_size = 0;
   {
-    for (u64 i = 0; i < program.rodata.len; i++) {
-      Amd64Constant constant = PG_SLICE_AT(program.rodata, i);
+    for (u64 i = 0; i < program->rodata.len; i++) {
+      Amd64Constant constant = PG_SLICE_AT(program->rodata, i);
       switch (constant.kind) {
       case AMD64_CONSTANT_KIND_NONE:
         PG_ASSERT(0);
@@ -75,8 +75,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
       {
           .type = ElfProgramHeaderTypeLoad,
           .p_offset = 0,
-          .p_vaddr = program.vm_start,
-          .p_paddr = program.vm_start,
+          .p_vaddr = program->vm_start,
+          .p_paddr = program->vm_start,
           .p_filesz = page_size + program_encoded.len,
           .p_memsz = page_size + program_encoded.len,
           .flags =
@@ -88,9 +88,9 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
           .p_offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
           .p_filesz = rodata_size,
           .p_memsz = rodata_size,
-          .p_vaddr = program.vm_start + page_size +
+          .p_vaddr = program->vm_start + page_size +
                      PG_ROUNDUP(program_encoded.len, page_size),
-          .p_paddr = program.vm_start + page_size +
+          .p_paddr = program->vm_start + page_size +
                      PG_ROUNDUP(program_encoded.len, page_size),
           .flags = ElfProgramHeaderFlagsReadable,
           .alignment = page_size,
@@ -122,7 +122,7 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
           .name = 11,
           .type = ElfSectionHeaderTypeProgBits,
           .flags = ElfSectionHeaderFlagExecInstr | ElfSectionHeaderFlagAlloc,
-          .addr = program.vm_start + page_size,
+          .addr = program->vm_start + page_size,
           .offset = page_size,
           .size = program_encoded.len,
           .align = 16,
@@ -133,7 +133,7 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
           .name = 17,
           .type = ElfSectionHeaderTypeProgBits,
           .flags = ElfSectionHeaderFlagAlloc,
-          .addr = program.vm_start + page_size +
+          .addr = program->vm_start + page_size +
                   PG_ROUNDUP(program_encoded.len, page_size),
           .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
           .size = rodata_size,
@@ -236,8 +236,8 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
   }
 
   // Rodata.
-  for (u64 i = 0; i < program.rodata.len; i++) {
-    Amd64Constant constant = PG_SLICE_AT(program.rodata, i);
+  for (u64 i = 0; i < program->rodata.len; i++) {
+    Amd64Constant constant = PG_SLICE_AT(program->rodata, i);
     switch (constant.kind) {
     case AMD64_CONSTANT_KIND_NONE:
       PG_ASSERT(0);
@@ -268,5 +268,5 @@ static PgError elf_write_exe(Amd64Program program, PgAllocator *allocator) {
 
   PgString sb_string = PG_DYN_SLICE(PgString, sb);
 
-  return pg_file_write_full(program.file_name, sb_string, 0700, allocator);
+  return pg_file_write_full(program->file_name, sb_string, 0700, allocator);
 }

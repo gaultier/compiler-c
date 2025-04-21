@@ -185,6 +185,7 @@ typedef struct {
   Amd64ConstantSlice rodata;
   u64 vm_start;
   LabelAddressDyn label_addresses;
+  LabelAddressDyn jumps_to_backpatch;
 
   PgString file_name;
 } Amd64Program;
@@ -812,7 +813,7 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
 }
 
 static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
-                                     Amd64Program program,
+                                     Amd64Program *program,
                                      PgAllocator *allocator) {
   switch (instruction.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
@@ -827,7 +828,7 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
     amd64_encode_instruction_sub(sb, instruction, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LEA:
-    amd64_encode_instruction_lea(sb, instruction, program, allocator);
+    amd64_encode_instruction_lea(sb, instruction, *program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_RET:
     amd64_encode_instruction_ret(sb, instruction, allocator);
@@ -843,13 +844,17 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
     break;
 
   case AMD64_INSTRUCTION_KIND_LABEL:
+    *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
+        .label = instruction.lhs.label,
+        .address_text = sb->len - 1,
+    };
     break;
 
   case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
-    amd64_encode_instruction_je(sb, instruction, &program, allocator);
+    amd64_encode_instruction_je(sb, instruction, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP:
-    amd64_encode_instruction_jmp(sb, instruction, &program, allocator);
+    amd64_encode_instruction_jmp(sb, instruction, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_CMP:
     amd64_encode_instruction_cmp(sb, instruction, allocator);
@@ -861,7 +866,8 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
 }
 
 static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
-                                 Amd64Program program, PgAllocator *allocator) {
+                                 Amd64Program *program,
+                                 PgAllocator *allocator) {
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction instruction = PG_SLICE_AT(section.instructions, i);
     amd64_encode_instruction(sb, instruction, program, allocator);
@@ -869,13 +875,13 @@ static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
 }
 
 [[nodiscard]]
-static PgString amd64_encode_program_text(Amd64Program program,
+static PgString amd64_encode_program_text(Amd64Program *program,
                                           PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
 
-  for (u64 i = 0; i < program.text.len; i++) {
-    Amd64Section section = PG_SLICE_AT(program.text, i);
+  for (u64 i = 0; i < program->text.len; i++) {
+    Amd64Section section = PG_SLICE_AT(program->text, i);
     amd64_encode_section(&sb, section, program, allocator);
   }
 
