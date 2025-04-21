@@ -1394,13 +1394,11 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
 
   } break;
 
-  case IR_KIND_CONDITIONAL_JUMP: {
-    PG_ASSERT(3 == ir.operands.len);
+  case IR_KIND_JUMP_IF_FALSE: {
+    PG_ASSERT(2 == ir.operands.len);
     IrValue cond = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
-    IrValue branch_then = PG_SLICE_AT(ir.operands, 1);
-    PG_ASSERT(IR_VALUE_KIND_LABEL == branch_then.kind);
-    IrValue branch_else = PG_SLICE_AT(ir.operands, 2);
+    IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
     PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);
 
     VarToMemoryLocation *cond_mem_loc =

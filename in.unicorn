@@ -1,13 +1,13 @@
 syscall_write_linux_amd64 := 1
 stdout := 1
 
-if 1 {
-  stderr := 2
-}
 
 write_val := 478560413032
 write_val_len := 5
-syscall(syscall_write_linux_amd64, stdout, &write_val, write_val_len)
+if 1 {
+  stderr := 2
+  syscall(syscall_write_linux_amd64, stderr, &write_val, write_val_len)
+}
 
 syscall_exit := 60
 exit_code := 1 + 1
