@@ -754,7 +754,7 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
   u8 opcode1 = 0x0f;
   *PG_DYN_PUSH(sb, allocator) = opcode1;
 
-  u8 opcode2 = 0x85;
+  u8 opcode2 = 0x84;
   *PG_DYN_PUSH(sb, allocator) = opcode2;
 
   *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
