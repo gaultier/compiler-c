@@ -746,9 +746,14 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
                                         PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP_IF_EQ == instruction.kind);
 
-  (void)sb;
-  (void)allocator;
-  // TODO
+  u8 opcode1 = 0x0f;
+  *PG_DYN_PUSH(sb, allocator) = opcode1;
+
+  u8 opcode2 = 0x85;
+  *PG_DYN_PUSH(sb, allocator) = opcode2;
+
+  // FIXME
+  pg_byte_buffer_append_u32(sb, 0, allocator);
 }
 
 static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
