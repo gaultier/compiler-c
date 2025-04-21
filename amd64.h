@@ -759,7 +759,7 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
 
   *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
       .label = instruction.lhs.label,
-      .address_text = sb->len - 1,
+      .address_text = sb->len,
   };
 
   // Backpatched with `program.label_addresses`.
@@ -779,7 +779,7 @@ static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
 
   *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
       .label = instruction.lhs.label,
-      .address_text = sb->len - 1,
+      .address_text = sb->len,
   };
 
   // Backpatched with `program.label_addresses`.
@@ -847,7 +847,7 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
     PG_ASSERT(instruction.lhs.label.value > 0);
     *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
         .label = instruction.lhs.label,
-        .address_text = sb->len - 1,
+        .address_text = sb->len,
     };
     break;
 
@@ -879,11 +879,14 @@ static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
         PG_SLICE_AT(program->jumps_to_backpatch, i);
     PG_ASSERT(jump_to_backpatch.label.value > 0);
     PG_ASSERT(jump_to_backpatch.address_text > 0);
+    PG_ASSERT(jump_to_backpatch.address_text <= sb->len - 1);
 
     LabelAddress label = {0};
     for (u64 j = 0; j < program->label_addresses.len; j++) {
       label = PG_SLICE_AT(program->label_addresses, j);
       PG_ASSERT(label.label.value > 0);
+      PG_ASSERT(label.address_text <= sb->len - 1);
+
       if (label.label.value == jump_to_backpatch.label.value) {
         break;
       }
@@ -893,8 +896,8 @@ static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
 
     u8 *jump_displacement_encoded =
         PG_SLICE_AT_PTR(sb, jump_to_backpatch.address_text);
-    i64 displacement =
-        (i64)label.address_text - (i64)jump_to_backpatch.address_text;
+    i64 displacement = (i64)label.address_text -
+                       (i64)jump_to_backpatch.address_text - (i64)sizeof(i32);
     PG_ASSERT(displacement <= INT32_MAX);
 
     memcpy(jump_displacement_encoded, &displacement, sizeof(i32));
