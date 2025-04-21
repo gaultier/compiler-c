@@ -39,6 +39,6 @@ typedef struct {
 typedef struct {
   Label label;
   u64 address_text;
-} LabelLocation;
-PG_SLICE(LabelLocation) LabelLocationSlice;
-PG_DYN(LabelLocation) LabelLocationDyn;
+} LabelAddress;
+PG_SLICE(LabelAddress) LabelAddressSlice;
+PG_DYN(LabelAddress) LabelAddressDyn;
