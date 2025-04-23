@@ -173,9 +173,9 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     //               / \
     //               3  4
     // =>
-    // x1 = 2
-    // x2 = 3 + 4
-    // x3 = x2 + x1
+    // %1 = 2
+    // %2 = 3 + 4
+    // %3 = %2 + %1
     PG_ASSERT(2 == node.operands.len);
     IrVar lhs =
         ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
