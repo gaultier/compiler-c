@@ -158,14 +158,12 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    IrVar res = {.id = ir_emitter_next_var_id(emitter)};
-
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
-        .var = res,
+        .var = ir.var,
         .start = ir.id,
         .end = ir.id,
     };
-    return res;
+    return ir.var;
   }
   case AST_NODE_KIND_ADD: {
     // `2 + 3 + 4`:  +
@@ -266,8 +264,6 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ir.id = ir_emitter_next_ir_id(emitter);
     ir.var.id = ir_emitter_next_var_id(emitter);
     ir.var.identifier = node.identifier;
-
-    PG_ASSERT(rhs.id.value < ir.id.value);
 
     *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_VAR,
