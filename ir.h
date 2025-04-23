@@ -15,6 +15,10 @@ typedef enum {
 
 typedef struct {
   u32 value;
+} IrVarId;
+
+typedef struct {
+  IrVarId id;
   PgString identifier;
 } IrVar;
 
@@ -49,6 +53,8 @@ typedef struct {
   IrValueDyn operands;
   Origin origin;
   IrId id;
+  // Out var.
+  IrVar var;
 } Ir;
 PG_SLICE(Ir) IrSlice;
 PG_DYN(Ir) IrDyn;
@@ -66,16 +72,9 @@ typedef struct {
   IrDyn irs;
   IrId ir_id;
   IrLabelId label_id;
+  IrVarId var_id;
   IrVarLifetimeDyn var_lifetimes;
 } IrEmitter;
-
-[[nodiscard]]
-static IrVar ir_id_to_var(IrId ir_id, PgString identifier) {
-  return (IrVar){
-      .value = ir_id.value,
-      .identifier = identifier,
-  };
-}
 
 [[nodiscard]]
 static IrId ir_emitter_next_ir_id(IrEmitter *emitter) {
@@ -91,11 +90,22 @@ static IrLabelId ir_emitter_next_label_id(IrEmitter *emitter) {
   return id;
 }
 
+[[nodiscard]]
+static IrVarId ir_emitter_next_var_id(IrEmitter *emitter) {
+  IrVarId id = emitter->var_id;
+  emitter->var_id.value += 1;
+  return id;
+}
+
 static IrVarLifetime *
-ir_find_var_lifetime_by_var_id(IrVarLifetimeDyn var_lifetimes, IrVar var) {
+ir_find_var_lifetime_by_var_id(IrVarLifetimeDyn var_lifetimes, IrVarId var_id) {
+  if (0 == var_id.value) {
+    return nullptr;
+  }
+
   for (u64 i = 0; i < var_lifetimes.len; i++) {
     IrVarLifetime *var_lifetime = PG_SLICE_AT_PTR(&var_lifetimes, i);
-    if (var_lifetime->var.value == var.value) {
+    if (var_lifetime->var.id.value == var_id.value) {
       return var_lifetime;
     }
   }
@@ -117,14 +127,14 @@ ir_find_var_lifetime_by_var_identifier(IrVarLifetimeDyn var_lifetimes,
 static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn var_lifetimes,
                                               IrVar var, IrId ir_id) {
   IrVarLifetime *lifetime_var =
-      ir_find_var_lifetime_by_var_id(var_lifetimes, var);
+      ir_find_var_lifetime_by_var_id(var_lifetimes, var.id);
   PG_ASSERT(lifetime_var);
   lifetime_var->end = ir_id;
 
   // Variable pointed to needs to live at least as long as the pointer to it.
-  if (lifetime_var->ref.value != 0) {
+  if (lifetime_var->ref.id.value != 0) {
     IrVarLifetime *lifetime_var_ref =
-        ir_find_var_lifetime_by_var_id(var_lifetimes, lifetime_var->ref);
+        ir_find_var_lifetime_by_var_id(var_lifetimes, lifetime_var->ref.id);
     PG_ASSERT(lifetime_var_ref);
     lifetime_var_ref->end = ir_id;
   }
@@ -148,7 +158,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    IrVar res = ir_id_to_var(ir.id, PG_S(""));
+    IrVar res = {.id = ir_emitter_next_var_id(emitter)};
 
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
         .var = res,
@@ -173,13 +183,14 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     IrVar rhs =
         ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
 
-    Ir ir = {
-        .kind = IR_KIND_ADD,
-        .origin = node.origin,
-        .id = ir_emitter_next_ir_id(emitter),
-    };
-    PG_ASSERT(lhs.value < ir.id.value);
-    PG_ASSERT(rhs.value < ir.id.value);
+    Ir ir = {0};
+    ir.kind = IR_KIND_ADD;
+    ir.origin = node.origin;
+    ir.id = ir_emitter_next_ir_id(emitter);
+    ir.var.id = ir_emitter_next_var_id(emitter);
+
+    PG_ASSERT(lhs.id.value < ir.id.value);
+    PG_ASSERT(rhs.id.value < ir.id.value);
 
     *PG_DYN_PUSH(&ir.operands, allocator) =
         (IrValue){.kind = IR_VALUE_KIND_VAR, .var = lhs};
@@ -188,10 +199,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    IrVar res = ir_id_to_var(ir.id, PG_S(""));
-
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
-        .var = res,
+        .var = ir.var,
         .start = ir.id,
         .end = ir.id,
     };
@@ -199,7 +208,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, lhs, ir.id);
     ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs, ir.id);
 
-    return res;
+    return ir.var;
   }
 
   case AST_NODE_KIND_SYSCALL: {
@@ -212,31 +221,30 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
           (IrValue){.kind = IR_VALUE_KIND_VAR, .var = operand};
     }
 
-    Ir ir = {
-        .kind = IR_KIND_SYSCALL,
-        .origin = node.origin,
-        .id = ir_emitter_next_ir_id(emitter),
-        .operands = operands,
-    };
+    Ir ir = {0};
+    ir.kind = IR_KIND_SYSCALL;
+    ir.origin = node.origin;
+    ir.id = ir_emitter_next_ir_id(emitter);
+    ir.operands = operands;
+    ir.var.id = ir_emitter_next_var_id(emitter);
+
     for (u64 i = 0; i < node.operands.len; i++) {
       IrValue val = PG_SLICE_AT(ir.operands, i);
       PG_ASSERT(IR_VALUE_KIND_VAR == val.kind);
       IrVar var = val.var;
-      PG_ASSERT(var.value < ir.id.value);
 
       ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, var, ir.id);
     }
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    IrVar res = ir_id_to_var(ir.id, PG_S(""));
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
-        .var = res,
+        .var = ir.var,
         .start = ir.id,
         .end = ir.id,
     };
 
-    return res;
+    return ir.var;
   }
   case AST_NODE_KIND_BLOCK: {
     for (u64 i = 0; i < node.operands.len; i++) {
@@ -249,16 +257,17 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     PG_ASSERT(1 == node.operands.len);
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
-    IrVar rhs =
-        ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
-    rhs.identifier = node.identifier;
+    AstNode rhs_node = PG_SLICE_AT(node.operands, 0);
+    IrVar rhs = ast_to_ir(rhs_node, emitter, errors, allocator);
 
-    Ir ir = {
-        .kind = IR_KIND_LOAD,
-        .origin = node.origin,
-        .id = ir_emitter_next_ir_id(emitter),
-    };
-    PG_ASSERT(rhs.value < ir.id.value);
+    Ir ir = {0};
+    ir.kind = IR_KIND_LOAD;
+    ir.origin = node.origin;
+    ir.id = ir_emitter_next_ir_id(emitter);
+    ir.var.id = ir_emitter_next_var_id(emitter);
+    ir.var.identifier = node.identifier;
+
+    PG_ASSERT(rhs.id.value < ir.id.value);
 
     *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_VAR,
@@ -268,15 +277,13 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    IrVar res = ir_id_to_var(ir.id, node.identifier);
-
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
-        .var = res,
+        .var = ir.var,
         .start = ir.id,
         .end = ir.id,
     };
 
-    return res;
+    return ir.var;
   }
 
   case AST_NODE_KIND_IDENTIFIER: {
@@ -303,12 +310,13 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
 
     IrVar rhs = ast_to_ir(operand, emitter, errors, allocator);
-    Ir ir = {
-        .kind = IR_KIND_ADDRESS_OF,
-        .origin = node.origin,
-        .id = ir_emitter_next_ir_id(emitter),
-    };
-    PG_ASSERT(rhs.value < ir.id.value);
+    Ir ir = {0};
+    ir.kind = IR_KIND_ADDRESS_OF;
+    ir.origin = node.origin;
+    ir.id = ir_emitter_next_ir_id(emitter);
+    ir.var.id = ir_emitter_next_var_id(emitter);
+
+    PG_ASSERT(rhs.id.value < ir.id.value);
 
     *PG_DYN_PUSH(&ir.operands, allocator) =
         (IrValue){.kind = IR_VALUE_KIND_VAR, .var = rhs};
@@ -317,29 +325,28 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    IrVar res = ir_id_to_var(ir.id, PG_S(""));
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
-        .var = res,
+        .var = ir.var,
         .start = ir.id,
         .end = ir.id,
         .ref = rhs,
     };
 
-    return res;
+    return ir.var;
   }
 
   case AST_NODE_KIND_IF: {
     PG_ASSERT(2 == node.operands.len);
     IrVar cond =
         ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
-    // TODO: then, else.
+    // TODO: else.
 
     Ir ir_cond_jump = {
         .kind = IR_KIND_JUMP_IF_FALSE,
         .origin = node.origin,
         .id = ir_emitter_next_ir_id(emitter),
     };
-    PG_ASSERT(cond.value < ir_cond_jump.id.value);
+    PG_ASSERT(cond.id.value < ir_cond_jump.id.value);
     *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_VAR,
         .var = cond,
@@ -408,12 +415,13 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
   }
 }
 
+#if 0
 // TODO: Constant folding.
 static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len;) {
     Ir ir = PG_SLICE_AT(*irs, i);
-    IrVarLifetime *var_lifetime = ir_find_var_lifetime_by_var_id(
-        *var_lifetimes, ir_id_to_var(ir.id, PG_S("")));
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var_id(*var_lifetimes, ir.var.id);
 
     // Some IRs do not result in a variable e.g. if-then-else.
     if (!var_lifetime) {
@@ -453,6 +461,16 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
     PG_DYN_REMOVE_AT(var_lifetimes, var_lifetime_idx);
   }
 }
+#endif
+
+static void ir_print_var(IrVar var) {
+  if (!pg_string_is_empty(var.identifier)) {
+    printf("%.*s%%%" PRIu32, (i32)var.identifier.len, var.identifier.data,
+           var.id.value);
+  } else {
+    printf("%%%" PRIu32, var.id.value);
+  }
+}
 
 static void ir_print_value(IrValue value) {
   switch (value.kind) {
@@ -462,12 +480,7 @@ static void ir_print_value(IrValue value) {
     printf("%" PRIu64, value.n64);
     break;
   case IR_VALUE_KIND_VAR:
-    if (!pg_string_is_empty(value.var.identifier)) {
-      printf("%.*s%" PRIu32, (i32)value.var.identifier.len,
-             value.var.identifier.data, value.var.value);
-    } else {
-      printf("__x%" PRIu32, value.var.value);
-    }
+    ir_print_var(value.var);
     break;
   case IR_VALUE_KIND_LABEL:
     printf(".%" PRIu32 "", value.label.value);
@@ -480,20 +493,21 @@ static void ir_print_value(IrValue value) {
 static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   Ir ir = PG_SLICE_AT(emitter.irs, i);
   origin_print(ir.origin);
-  printf(": ");
+  printf(": [%u] [%u] ", i, ir.id.value);
 
   switch (ir.kind) {
   case IR_KIND_NONE:
     PG_ASSERT(0);
   case IR_KIND_ADD: {
     PG_ASSERT(2 == ir.operands.len);
-    printf("[%u] [%u] __x%u := ", i, ir.id.value, ir.id.value);
+    ir_print_var(ir.var);
+    printf(" := ");
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf(" + ");
     ir_print_value(PG_SLICE_AT(ir.operands, 1));
 
-    IrVarLifetime *var_lifetime = ir_find_var_lifetime_by_var_id(
-        emitter.var_lifetimes, ir_id_to_var(ir.id, PG_S("")));
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
     PG_ASSERT(var_lifetime);
     printf(" // lifetime: [%u:%u]\n", var_lifetime->start.value,
            var_lifetime->end.value);
@@ -501,34 +515,32 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
     IrValue rhs = PG_SLICE_AT(ir.operands, 0);
-    if (IR_VALUE_KIND_VAR == rhs.kind &&
-        !pg_string_is_empty(rhs.var.identifier)) {
-      printf("[%u] [%u] %.*s%u := ", i, ir.id.value,
-             (i32)rhs.var.identifier.len, rhs.var.identifier.data, ir.id.value);
-    } else {
-      printf("[%u] [%u] __x%u := ", i, ir.id.value, ir.id.value);
-    }
+    ir_print_var(ir.var);
+    printf(" := ");
     ir_print_value(rhs);
 
-    IrVarLifetime *var_lifetime = ir_find_var_lifetime_by_var_id(
-        emitter.var_lifetimes, ir_id_to_var(ir.id, PG_S("")));
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
     PG_ASSERT(var_lifetime);
     printf(" // lifetime: [%u:%u]\n", var_lifetime->start.value,
            var_lifetime->end.value);
   } break;
   case IR_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir.operands.len);
-    printf("[%u] [%u] __x%u := &", i, ir.id.value, ir.id.value);
+    ir_print_var(ir.var);
+    printf(" := &");
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
 
-    IrVarLifetime *var_lifetime = ir_find_var_lifetime_by_var_id(
-        emitter.var_lifetimes, ir_id_to_var(ir.id, PG_S("")));
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
     PG_ASSERT(var_lifetime);
     printf(" // lifetime: [%u:%u]\n", var_lifetime->start.value,
            var_lifetime->end.value);
   } break;
   case IR_KIND_SYSCALL: {
-    printf("[%u] [%u] __x%u := syscall(", i, ir.id.value, ir.id.value);
+    ir_print_var(ir.var);
+    printf(" := syscall(");
+
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
       ir_print_value(val);
@@ -538,8 +550,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
       }
     }
 
-    IrVarLifetime *var_lifetime = ir_find_var_lifetime_by_var_id(
-        emitter.var_lifetimes, ir_id_to_var(ir.id, PG_S("")));
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
     PG_ASSERT(var_lifetime);
     printf(") // lifetime: [%u:%u]\n", var_lifetime->start.value,
            var_lifetime->end.value);
@@ -551,7 +563,7 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
 
     IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
 
-    printf("[%u] [%u] jump_if_false(", i, ir.id.value);
+    printf("jump_if_false(");
     ir_print_value(cond);
     printf(", ");
     ir_print_value(branch_else);
@@ -561,7 +573,7 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     PG_ASSERT(1 == ir.operands.len);
     IrValue label = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
-    printf("[%u] [%u] jump .%u\n", i, ir.id.value, label.label.value);
+    printf("jump .%u\n", label.label.value);
   } break;
 
   case IR_KIND_LABEL: {
@@ -569,7 +581,7 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     IrValue label = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
 
-    printf("[%u] [%u] .%u:\n", i, ir.id.value, label.label.value);
+    printf(".%u:\n", label.label.value);
   } break;
   default:
     PG_ASSERT(0);
@@ -585,7 +597,9 @@ static void ir_emitter_print_irs(IrEmitter emitter) {
 static void ir_emitter_print_var_lifetimes(IrEmitter emitter) {
   for (u64 i = 0; i < emitter.var_lifetimes.len; i++) {
     IrVarLifetime var_lifetime = PG_SLICE_AT(emitter.var_lifetimes, i);
-    printf("[%lu] x%u lifetime: [%u:%u]\n", i, var_lifetime.var.value,
-           var_lifetime.start.value, var_lifetime.end.value);
+    printf("[%lu] ", i);
+    ir_print_var(var_lifetime.var);
+    printf(" lifetime: [%u:%u]\n", var_lifetime.start.value,
+           var_lifetime.end.value);
   }
 }
