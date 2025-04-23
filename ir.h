@@ -452,7 +452,7 @@ static void ir_print_value(IrValue value) {
     printf("x%" PRIu32, value.var.value);
     break;
   case IR_VALUE_KIND_LABEL:
-    printf(".%" PRIu64 "", value.n64);
+    printf(".%" PRIu32 "", value.label.value);
     break;
   default:
     PG_ASSERT(0);
