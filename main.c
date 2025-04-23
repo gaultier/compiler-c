@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
 
   IrEmitter ir_emitter = {
       .ir_id = {1},
-      .label_num = 1,
+      .label_id = {1},
   };
   ast_to_ir(*root, &ir_emitter, &errors, allocator);
   if (errors.len) {

@@ -1,4 +1,5 @@
 #pragma once
+#include "ir.h"
 #include "submodules/cstd/lib.c"
 
 typedef struct {
@@ -33,11 +34,7 @@ typedef struct {
 } MemoryLocation;
 
 typedef struct {
-  u32 value;
-} Label;
-
-typedef struct {
-  Label label;
+  IrLabelId label;
   u64 address_text;
 } LabelAddress;
 PG_SLICE(LabelAddress) LabelAddressSlice;

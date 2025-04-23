@@ -113,7 +113,7 @@ typedef struct {
     Register reg;
     u64 immediate;
     Amd64EffectiveAddress effective_address;
-    Label label;
+    IrLabelId label;
   };
 } Amd64Operand;
 

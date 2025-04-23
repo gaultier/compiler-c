@@ -1,5 +1,4 @@
 #pragma once
-#include "asm.h"
 #include "ast.h"
 #include "submodules/cstd/lib.c"
 
@@ -26,11 +25,15 @@ typedef enum {
 } IrValueKind;
 
 typedef struct {
+  u32 value;
+} IrLabelId;
+
+typedef struct {
   IrValueKind kind;
   union {
     u64 n64;
     IrVar var;
-    Label label;
+    IrLabelId label;
   };
 } IrValue;
 PG_SLICE(IrValue) IrValueSlice;
@@ -67,7 +70,7 @@ PG_DYN(IrVarLifetime) IrVarLifetimeDyn;
 typedef struct {
   IrDyn irs;
   IrId ir_id;
-  u32 label_num;
+  IrLabelId label_id;
   IrIdentifierToVarDyn identifier_to_vars;
   IrVarLifetimeDyn var_lifetimes;
 } IrEmitter;
@@ -81,6 +84,13 @@ static IrVar ir_id_to_var(IrId ir_id) {
 static IrId ir_emitter_next_ir_id(IrEmitter *emitter) {
   IrId id = emitter->ir_id;
   emitter->ir_id.value += 1;
+  return id;
+}
+
+[[nodiscard]]
+static IrLabelId ir_emitter_next_label_id(IrEmitter *emitter) {
+  IrLabelId id = emitter->label_id;
+  emitter->label_id.value += 1;
   return id;
 }
 
@@ -352,8 +362,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     u64 ir_cond_jump_idx = emitter->irs.len - 1;
 
-    Label branch_if_cont_label = {emitter->label_num++};
-    Label branch_else_label = {emitter->label_num++};
+    IrLabelId branch_if_cont_label = ir_emitter_next_label_id(emitter);
+    IrLabelId branch_else_label = ir_emitter_next_label_id(emitter);
 
     // 'then' branch.
     {
