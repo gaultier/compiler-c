@@ -513,7 +513,7 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var(emitter.var_lifetimes, (IrVar){ir.num});
     PG_ASSERT(var_lifetime);
-    printf(" // lifetime: [%u:%u]\n", var_lifetime->start, var_lifetime->end);
+    printf(") // lifetime: [%u:%u]\n", var_lifetime->start, var_lifetime->end);
   } break;
   case IR_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir.operands.len);
