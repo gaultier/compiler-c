@@ -73,9 +73,11 @@ int main(int argc, char *argv[]) {
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
   irs_print(irs_slice);
   puts("------------");
-  irs_simplify(&ir_emitter.irs);
+  irs_simplify(&ir_emitter.irs, &ir_emitter.var_lifetimes);
   irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
   irs_print(irs_slice);
+  puts("------------");
+  ir_emitter_print_var_lifetimes(ir_emitter);
   puts("------------");
 
   Amd64RegisterAllocator reg_alloc = amd64_make_register_allocator(allocator);
