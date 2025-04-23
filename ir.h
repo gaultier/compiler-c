@@ -501,11 +501,14 @@ static void irs_simplify_remove_trivial_vars(IrDyn *irs,
   (void)var_lifetimes;
 }
 
-// TODO: Constant folding.
 static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Loop until a fixed point (or a limit) is reached.
+  // TODO: Recompute var lifetimes after each step?
+
   irs_simplify_remove_unused_vars(irs, var_lifetimes);
   irs_simplify_remove_trivial_vars(irs, var_lifetimes);
+  // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
+  // TODO: Constant folding e.g. `x1 := 1; x2 := 2; x3 := x1 + x2` => `x3 := 3`.
 }
 
 static void ir_print_var(IrVar var) {
