@@ -415,6 +415,12 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
       continue;
     }
 
+    // Possible side-effects, keep this IR.
+    if (IR_KIND_SYSCALL == ir.kind) {
+      i++;
+      continue;
+    }
+
     PG_DYN_REMOVE_AT(irs, i);
     u32 ir_num_to_remove = ir.num;
 
@@ -430,8 +436,7 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
       }
     }
 
-    u64 var_lifetime_idx =
-        (u64)(var_lifetime - var_lifetimes->data) / sizeof(IrVarLifetime);
+    u64 var_lifetime_idx = (u64)(var_lifetime - var_lifetimes->data);
     PG_DYN_REMOVE_AT(var_lifetimes, var_lifetime_idx);
   }
 }
