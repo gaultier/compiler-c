@@ -415,15 +415,15 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 static void irs_simplify_remove_unused_vars(IrDyn *irs,
                                             IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len;) {
-    Ir ir = PG_SLICE_AT(*irs, i);
+    Ir *ir = PG_SLICE_AT_PTR(irs, i);
     // Some IRs do not result in a variable.
-    if (0 == ir.var.id.value) {
+    if (0 == ir->var.id.value) {
       i++;
       continue;
     }
 
     IrVarLifetime *var_lifetime =
-        ir_find_var_lifetime_by_var_id(*var_lifetimes, ir.var.id);
+        ir_find_var_lifetime_by_var_id(*var_lifetimes, ir->var.id);
     PG_ASSERT(var_lifetime);
 
     PG_ASSERT(var_lifetime->start.value <= var_lifetime->end.value);
@@ -438,8 +438,8 @@ static void irs_simplify_remove_unused_vars(IrDyn *irs,
     PG_DYN_REMOVE_AT(var_lifetimes, var_lifetime_idx);
 
     // Possible side-effects: keep this IR but erase the variable.
-    if (IR_KIND_SYSCALL == ir.kind) {
-      ir.var.id.value = 0;
+    if (IR_KIND_SYSCALL == ir->kind) {
+      ir->var.id.value = 0;
 
       i++;
       continue;
@@ -455,6 +455,10 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
 }
 
 static void ir_print_var(IrVar var) {
+  if (0 == var.id.value) {
+    return;
+  }
+
   if (!pg_string_is_empty(var.identifier)) {
     printf("%.*s%%%" PRIu32, (i32)var.identifier.len, var.identifier.data,
            var.id.value);
@@ -491,6 +495,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     PG_ASSERT(0);
   case IR_KIND_ADD: {
     PG_ASSERT(2 == ir.operands.len);
+    PG_ASSERT(0 != ir.var.id.value);
+
     ir_print_var(ir.var);
     printf(" := ");
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
@@ -505,6 +511,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   } break;
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(0 != ir.var.id.value);
+
     IrValue rhs = PG_SLICE_AT(ir.operands, 0);
     ir_print_var(ir.var);
     printf(" := ");
@@ -518,6 +526,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   } break;
   case IR_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(0 != ir.var.id.value);
+
     ir_print_var(ir.var);
     printf(" := &");
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
@@ -530,7 +540,7 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   } break;
   case IR_KIND_SYSCALL: {
     ir_print_var(ir.var);
-    printf(" := syscall(");
+    printf("%ssyscall(", 0 == ir.var.id.value ? "" : " := ");
 
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
@@ -541,14 +551,18 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
       }
     }
 
-    IrVarLifetime *var_lifetime =
-        ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
-    PG_ASSERT(var_lifetime);
-    printf(") // lifetime: [%u:%u]\n", var_lifetime->start.value,
-           var_lifetime->end.value);
+    if (0 != ir.var.id.value) {
+      IrVarLifetime *var_lifetime =
+          ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
+      PG_ASSERT(var_lifetime);
+      printf(") // lifetime: [%u:%u]\n", var_lifetime->start.value,
+             var_lifetime->end.value);
+    }
   } break;
   case IR_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir.operands.len);
+    PG_ASSERT(0 == ir.var.id.value);
+
     IrValue cond = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
 
@@ -562,6 +576,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   } break;
   case IR_KIND_JUMP: {
     PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(0 == ir.var.id.value);
+
     IrValue label = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
     printf("jump .%u\n", label.label.value);
@@ -569,6 +585,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
 
   case IR_KIND_LABEL: {
     PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(0 == ir.var.id.value);
+
     IrValue label = PG_SLICE_AT(ir.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
 
