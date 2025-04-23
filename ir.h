@@ -54,6 +54,7 @@ PG_DYN(IrIdentifierToVar) IrIdentifierToVarDyn;
 typedef struct {
   IrVar var;
   u32 start, end;
+  IrVar ref; // In case of `IR_KIND_ADDRESS_OF`.
 } IrVarLifetime;
 PG_SLICE(IrVarLifetime) IrVarLifetimeSlice;
 PG_DYN(IrVarLifetime) IrVarLifetimeDyn;
@@ -103,6 +104,21 @@ ir_find_var_lifetime_by_var(IrVarLifetimeDyn var_lifetimes, IrVar var) {
     }
   }
   return nullptr;
+}
+
+static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn var_lifetimes,
+                                              IrVar var, u32 ir_num) {
+  IrVarLifetime *lifetime_var = ir_find_var_lifetime_by_var(var_lifetimes, var);
+  PG_ASSERT(lifetime_var);
+  lifetime_var->end = ir_num + 1;
+
+  // Variable pointed to needs to live at least as long as the pointer to it.
+  if (lifetime_var->ref.value != 0) {
+    IrVarLifetime *lifetime_var_ref =
+        ir_find_var_lifetime_by_var(var_lifetimes, lifetime_var->ref);
+    PG_ASSERT(lifetime_var_ref);
+    lifetime_var_ref->end = ir_num + 1;
+  }
 }
 
 static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
@@ -166,15 +182,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .end = ir.num + 1,
     };
 
-    IrVarLifetime *lifetime_lhs =
-        ir_find_var_lifetime_by_var(emitter->var_lifetimes, lhs);
-    PG_ASSERT(lifetime_lhs);
-    lifetime_lhs->end = ir.num + 1;
-
-    IrVarLifetime *lifetime_rhs =
-        ir_find_var_lifetime_by_var(emitter->var_lifetimes, rhs);
-    PG_ASSERT(lifetime_rhs);
-    lifetime_rhs->end = ir.num + 1;
+    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, lhs, ir.num);
+    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs, ir.num);
 
     return (IrVar){ir.num};
   }
@@ -201,10 +210,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       IrVar var = val.var;
       PG_ASSERT(var.value < ir.num);
 
-      IrVarLifetime *lifetime_operand =
-          ir_find_var_lifetime_by_var(emitter->var_lifetimes, var);
-      PG_ASSERT(lifetime_operand);
-      lifetime_operand->end = ir.num + 1;
+      ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, var, ir.num);
     }
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
@@ -241,10 +247,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .kind = IR_VALUE_KIND_VAR,
         .var = rhs,
     };
-    IrVarLifetime *lifetime_rhs =
-        ir_find_var_lifetime_by_var(emitter->var_lifetimes, rhs);
-    PG_ASSERT(lifetime_rhs);
-    lifetime_rhs->end = ir.num + 1;
+    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs, ir.num);
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
@@ -273,10 +276,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       return (IrVar){0};
     }
 
-    IrVarLifetime *lifetime = ir_find_var_lifetime_by_var(
-        emitter->var_lifetimes, identifier_to_var->var);
-    PG_ASSERT(lifetime);
-    lifetime->end = emitter->ir_num + 1;
+    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes,
+                                      identifier_to_var->var, emitter->ir_num);
 
     return identifier_to_var->var;
   }
@@ -297,10 +298,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     *PG_DYN_PUSH(&ir.operands, allocator) =
         (IrValue){.kind = IR_VALUE_KIND_VAR, .var = rhs};
 
-    IrVarLifetime *lifetime_rhs =
-        ir_find_var_lifetime_by_var(emitter->var_lifetimes, rhs);
-    PG_ASSERT(lifetime_rhs);
-    lifetime_rhs->end = ir.num + 1;
+    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs, ir.num);
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
@@ -308,6 +306,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .var = {ir.num},
         .start = ir.num,
         .end = ir.num + 1,
+        .ref = rhs,
     };
 
     return (IrVar){ir.num};
@@ -331,10 +330,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     };
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir_cond_jump;
 
-    IrVarLifetime *lifetime_cond =
-        ir_find_var_lifetime_by_var(emitter->var_lifetimes, cond);
-    PG_ASSERT(lifetime_cond);
-    lifetime_cond->end = ir_cond_jump.num + 1;
+    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, cond,
+                                      ir_cond_jump.num);
 
     u64 ir_cond_jump_idx = emitter->irs.len - 1;
 
