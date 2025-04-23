@@ -18,6 +18,10 @@ typedef struct {
 } IrVarId;
 
 typedef struct {
+  u32 value;
+} IrId;
+
+typedef struct {
   IrVarId id;
   PgString identifier;
 } IrVar;
@@ -43,10 +47,6 @@ typedef struct {
 } IrValue;
 PG_SLICE(IrValue) IrValueSlice;
 PG_DYN(IrValue) IrValueDyn;
-
-typedef struct {
-  u32 value;
-} IrId;
 
 typedef struct {
   IrKind kind;
@@ -509,15 +509,74 @@ static void irs_simplify_remove_trivial_vars(IrDyn *irs,
   }
 }
 
+static void
+irs_simplify_add_rhs_when_immediate(IrDyn *irs,
+                                    IrVarLifetimeDyn *var_lifetimes) {
+  for (u64 i = 0; i < irs->len; i++) {
+    Ir *ir = PG_SLICE_AT_PTR(irs, i);
+    if (ir->tombstone) {
+      continue;
+    }
+
+    if (!(IR_KIND_ADD == ir->kind)) {
+      continue;
+    }
+
+    PG_ASSERT(2 == ir->operands.len);
+
+    IrValue *rhs = PG_SLICE_AT_PTR(&ir->operands, 1);
+
+    if (!(IR_VALUE_KIND_VAR == rhs->kind)) {
+      continue;
+    }
+
+    IrVar rhs_var = rhs->var;
+    PG_ASSERT(rhs_var.id.value != 0);
+
+    Ir *rhs_ir = nullptr;
+    for (u64 j = 0; j < irs->len; j++) {
+      Ir *it = PG_SLICE_AT_PTR(irs, j);
+      if (it->var.id.value == rhs_var.id.value) {
+        rhs_ir = it;
+        break;
+      }
+    }
+    PG_ASSERT(rhs_ir);
+
+    if (!(IR_KIND_LOAD == rhs_ir->kind)) {
+      continue;
+    }
+
+    PG_ASSERT(1 == rhs_ir->operands.len);
+
+    IrValue rhs_ir_op0 = PG_SLICE_AT(rhs_ir->operands, 0);
+    if (!(IR_VALUE_KIND_U64 == rhs_ir_op0.kind)) {
+      continue;
+    }
+
+    *rhs = rhs_ir_op0;
+    rhs_ir->tombstone = true;
+
+    PG_ASSERT(rhs_var.id.value == rhs_ir->var.id.value);
+
+    IrVarLifetime *lifetime =
+        ir_find_var_lifetime_by_var_id(*var_lifetimes, rhs_ir->var.id);
+    PG_ASSERT(!lifetime->tombstone);
+    lifetime->tombstone = true;
+  }
+}
+
 static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Loop until a fixed point (or a limit) is reached.
   // TODO: Recompute var lifetimes after each step?
 
   irs_simplify_remove_unused_vars(irs, var_lifetimes);
   irs_simplify_remove_trivial_vars(irs, var_lifetimes);
+  irs_simplify_add_rhs_when_immediate(irs, var_lifetimes);
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Constant folding e.g. `x1 := 1; x2 := 2; x3 := x1 + x2` => `x3 := 3`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
+  // TODO: Remove empty labels.
 }
 
 static void ir_print_var(IrVar var) {
