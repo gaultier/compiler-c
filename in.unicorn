@@ -14,5 +14,6 @@ syscall(syscall_write_linux_amd64, stdout, &write_val, write_val_len)
 syscall_exit := 60
 exit_code := 1 + 1
 syscall(syscall_exit, exit_code)
+syscall(syscall_exit, 0)
 
 foo := ptr

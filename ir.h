@@ -234,10 +234,10 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     for (u64 i = 0; i < node.operands.len; i++) {
       IrValue val = PG_SLICE_AT(ir.operands, i);
-      PG_ASSERT(IR_VALUE_KIND_VAR == val.kind);
-      IrVar var = val.var;
-
-      ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, var, ir.id);
+      if (IR_VALUE_KIND_VAR == val.kind) {
+        IrVar var = val.var;
+        ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, var, ir.id);
+      }
     }
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
@@ -615,7 +615,6 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   irs_simplify_add_rhs_when_immediate(irs, var_lifetimes);
   irs_simplify_fold_constants(irs);
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
-  // TODO: Constant folding e.g. `x1 := 1; x2 := 2; x3 := x1 + x2` => `x3 := 3`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
   // TODO: Remove empty labels.
 }
