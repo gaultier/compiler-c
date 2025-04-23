@@ -6,10 +6,14 @@ write_val := 478560413032
 write_val_len := 5
 if 1 {
   stderr := 2
-  syscall(syscall_write_linux_amd64, stderr, &write_val, write_val_len)
+  ptr := &write_val
+  syscall(syscall_write_linux_amd64, stderr, ptr, write_val_len)
 }
 syscall(syscall_write_linux_amd64, stdout, &write_val, write_val_len)
 
 syscall_exit := 60
 exit_code := 1 + 1
 syscall(syscall_exit, exit_code)
+
+foo := ptr
+bar := &write_val
