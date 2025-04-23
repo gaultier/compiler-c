@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
   ast_print(*root, 0);
 
   IrEmitter ir_emitter = {
-      .ir_num = 1,
+      .ir_id = {1},
       .label_num = 1,
   };
   ast_to_ir(*root, &ir_emitter, &errors, allocator);

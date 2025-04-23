@@ -16,4 +16,3 @@ exit_code := 1 + 1
 syscall(syscall_exit, exit_code)
 
 foo := ptr
-bar := &write_val
