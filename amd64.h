@@ -280,7 +280,8 @@ static void amd64_print_var_to_memory_location(
     VarToMemoryLocationDyn var_to_memory_location) {
   for (u64 i = 0; i < var_to_memory_location.len; i++) {
     VarToMemoryLocation var_to_mem_loc = PG_SLICE_AT(var_to_memory_location, i);
-    printf("x%" PRIu32 ":", var_to_mem_loc.var.id.value);
+    ir_print_var(var_to_mem_loc.var);
+    printf(":");
     switch (var_to_mem_loc.location.kind) {
     case MEMORY_LOCATION_KIND_REGISTER:
       amd64_print_register(var_to_mem_loc.location.reg);
@@ -299,7 +300,6 @@ static void amd64_print_var_to_memory_location(
     }
     printf(" ");
   }
-  printf("\n");
 }
 
 static void amd64_print_instructions(Amd64InstructionSlice instructions) {
@@ -1343,6 +1343,10 @@ static Amd64Operand amd64_insert_mem_to_register_load_if_necessary(
 static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                             Amd64RegisterAllocator *reg_alloc,
                             PgAllocator *allocator) {
+  if (ir.tombstone) {
+    return;
+  }
+
   switch (ir.kind) {
   case IR_KIND_NONE:
     PG_ASSERT(0);
