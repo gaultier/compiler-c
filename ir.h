@@ -617,6 +617,7 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
   // TODO: Remove empty labels.
+  // TODO: Simplify syscall IR: replace vars by immediates.
 }
 
 static void ir_print_var(IrVar var) {
