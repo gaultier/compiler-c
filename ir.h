@@ -449,9 +449,63 @@ static void irs_simplify_remove_unused_vars(IrDyn *irs,
   }
 }
 
+// Simplify: `x1 := 1; x2 := x1; x3 := x2 + x2` => `x1 := 1; x3 := x1 + x1`.
+static void irs_simplify_remove_trivial_vars(IrDyn *irs,
+                                             IrVarLifetimeDyn *var_lifetimes) {
+  for (u64 i = 0; i < irs->len;) {
+    Ir ir = PG_SLICE_AT(*irs, i);
+
+    if (0 == ir.var.id.value) {
+      i++;
+      continue;
+    }
+
+    if (1 != ir.operands.len) {
+      i++;
+      continue;
+    }
+
+    // TODO: Are there other IR kinds candidate to this simplification?
+    if (!(IR_KIND_LOAD == ir.kind)) {
+      i++;
+      continue;
+    }
+
+    IrValue rhs = PG_SLICE_AT(ir.operands, 0);
+
+    // TODO: We could also simplify `x1 := 1; x2 := 2; x3 := x2 + x1` => `x2 :=
+    // 2; x3 := x2 + 1`.
+    if (!(IR_VALUE_KIND_VAR == rhs.kind)) {
+      i++;
+      continue;
+    }
+
+    IrVar rhs_var = rhs.var;
+    IrVar var_to_rm = ir.var;
+
+    for (u64 j = i + 1; j < irs->len; j++) {
+      Ir ir_to_fix = PG_SLICE_AT(*irs, j);
+
+      for (u64 k = 0; k < ir_to_fix.operands.len; k++) {
+        IrValue *op = PG_SLICE_AT_PTR(&ir_to_fix.operands, k);
+
+        if (IR_VALUE_KIND_VAR == op->kind &&
+            op->var.id.value == var_to_rm.id.value) {
+          op->var = rhs_var;
+        }
+      }
+    }
+    PG_DYN_REMOVE_AT(irs, i);
+  }
+  // TODO: Remove var lifetime.
+  (void)var_lifetimes;
+}
+
 // TODO: Constant folding.
 static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
+  // TODO: Loop until a fixed point (or a limit) is reached.
   irs_simplify_remove_unused_vars(irs, var_lifetimes);
+  irs_simplify_remove_trivial_vars(irs, var_lifetimes);
 }
 
 static void ir_print_var(IrVar var) {
@@ -551,13 +605,16 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
       }
     }
 
+    printf(")");
+
     if (0 != ir.var.id.value) {
       IrVarLifetime *var_lifetime =
           ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
       PG_ASSERT(var_lifetime);
-      printf(") // lifetime: [%u:%u]\n", var_lifetime->start.value,
+      printf("// lifetime: [%u:%u]", var_lifetime->start.value,
              var_lifetime->end.value);
     }
+    printf("\n");
   } break;
   case IR_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir.operands.len);
