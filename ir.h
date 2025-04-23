@@ -518,6 +518,7 @@ static void irs_simplify_remove_trivial_vars(IrDyn *irs,
   }
 }
 
+// Replace: `x1 := 1; x2 := 2; x3:= x2 + x1` => `x2 := 2; x3 := x2 + 1`.
 static void
 irs_simplify_add_rhs_when_immediate(IrDyn *irs,
                                     IrVarLifetimeDyn *var_lifetimes) {
@@ -575,6 +576,36 @@ irs_simplify_add_rhs_when_immediate(IrDyn *irs,
   }
 }
 
+static void irs_simplify_fold_constants(IrDyn *irs) {
+  for (u64 i = 0; i < irs->len; i++) {
+    Ir *ir = PG_SLICE_AT_PTR(irs, i);
+    if (ir->tombstone) {
+      continue;
+    }
+
+    if (!(IR_KIND_ADD == ir->kind)) {
+      continue;
+    }
+
+    PG_ASSERT(2 == ir->operands.len);
+
+    IrValue *lhs = PG_SLICE_AT_PTR(&ir->operands, 0);
+    IrValue *rhs = PG_SLICE_AT_PTR(&ir->operands, 1);
+
+    if (!(IR_VALUE_KIND_U64 == lhs->kind && IR_VALUE_KIND_U64 == rhs->kind)) {
+      continue;
+    }
+
+    ir->kind = IR_KIND_LOAD;
+    ir->operands.len = 0;
+    IrValue val = {
+        .kind = IR_VALUE_KIND_U64,
+        .n64 = lhs->n64 + rhs->n64,
+    };
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&ir->operands) = val;
+  }
+}
+
 static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Loop until a fixed point (or a limit) is reached.
   // TODO: Recompute var lifetimes after each step?
@@ -582,6 +613,7 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   irs_simplify_remove_unused_vars(irs, var_lifetimes);
   irs_simplify_remove_trivial_vars(irs, var_lifetimes);
   irs_simplify_add_rhs_when_immediate(irs, var_lifetimes);
+  irs_simplify_fold_constants(irs);
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Constant folding e.g. `x1 := 1; x2 := 2; x3 := x1 + x2` => `x3 := 3`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
