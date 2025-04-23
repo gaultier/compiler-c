@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
       .label_id = {1},
       .var_id = {1},
   };
-  ast_to_ir(*root, &ir_emitter, &errors, allocator);
+  ast_to_ir(*root, &ir_emitter, &errors, false, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);

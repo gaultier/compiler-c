@@ -144,12 +144,15 @@ static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn var_lifetimes,
   }
 }
 
-static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
-                       PgAllocator *allocator) {
+static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
+                         bool is_immediate_ok, PgAllocator *allocator) {
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
+    if (is_immediate_ok) {
+      return (IrValue){.kind = IR_VALUE_KIND_U64, .n64 = node.n64};
+    }
     Ir ir = {
         .kind = IR_KIND_LOAD,
         .origin = node.origin,
@@ -168,7 +171,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .start = ir.id,
         .end = ir.id,
     };
-    return ir.var;
+    return (IrValue){.kind = IR_VALUE_KIND_VAR, .var = ir.var};
   }
   case AST_NODE_KIND_ADD: {
     // `2 + 3 + 4`:  +
@@ -181,10 +184,10 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     // %2 = 3 + 4
     // %3 = %2 + %1
     PG_ASSERT(2 == node.operands.len);
-    IrVar lhs =
-        ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
-    IrVar rhs =
-        ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
+    IrValue lhs = ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors,
+                            true, allocator);
+    IrValue rhs = ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors,
+                            true, allocator);
 
     Ir ir = {0};
     ir.kind = IR_KIND_ADD;
@@ -192,13 +195,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ir.id = ir_emitter_next_ir_id(emitter);
     ir.var.id = ir_emitter_next_var_id(emitter);
 
-    PG_ASSERT(lhs.id.value < ir.id.value);
-    PG_ASSERT(rhs.id.value < ir.id.value);
-
-    *PG_DYN_PUSH(&ir.operands, allocator) =
-        (IrValue){.kind = IR_VALUE_KIND_VAR, .var = lhs};
-    *PG_DYN_PUSH(&ir.operands, allocator) =
-        (IrValue){.kind = IR_VALUE_KIND_VAR, .var = rhs};
+    *PG_DYN_PUSH(&ir.operands, allocator) = lhs;
+    *PG_DYN_PUSH(&ir.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
@@ -208,20 +206,23 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .end = ir.id,
     };
 
-    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, lhs, ir.id);
-    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs, ir.id);
+    if (IR_VALUE_KIND_VAR == lhs.kind) {
+      ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, lhs.var, ir.id);
+    }
+    if (IR_VALUE_KIND_VAR == rhs.kind) {
+      ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs.var, ir.id);
+    }
 
-    return ir.var;
+    return (IrValue){.kind = IR_VALUE_KIND_VAR, .var = ir.var};
   }
 
   case AST_NODE_KIND_SYSCALL: {
     IrValueDyn operands = {0};
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      IrVar operand = ast_to_ir(child, emitter, errors, allocator);
+      IrValue operand = ast_to_ir(child, emitter, errors, true, allocator);
 
-      *PG_DYN_PUSH(&operands, allocator) =
-          (IrValue){.kind = IR_VALUE_KIND_VAR, .var = operand};
+      *PG_DYN_PUSH(&operands, allocator) = operand;
     }
 
     Ir ir = {0};
@@ -247,21 +248,22 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .end = ir.id,
     };
 
-    return ir.var;
+    return (IrValue){.kind = IR_VALUE_KIND_VAR, .var = ir.var};
   }
   case AST_NODE_KIND_BLOCK: {
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      ast_to_ir(child, emitter, errors, allocator);
+      ast_to_ir(child, emitter, errors, false, allocator);
     }
-    return (IrVar){0};
+    // TODO: Label?
+    return (IrValue){0};
   }
   case AST_NODE_KIND_VAR_DECL: {
     PG_ASSERT(1 == node.operands.len);
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
     AstNode rhs_node = PG_SLICE_AT(node.operands, 0);
-    IrVar rhs = ast_to_ir(rhs_node, emitter, errors, allocator);
+    IrValue rhs = ast_to_ir(rhs_node, emitter, errors, true, allocator);
 
     Ir ir = {0};
     ir.kind = IR_KIND_LOAD;
@@ -270,11 +272,10 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ir.var.id = ir_emitter_next_var_id(emitter);
     ir.var.identifier = node.identifier;
 
-    *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
-        .kind = IR_VALUE_KIND_VAR,
-        .var = rhs,
-    };
-    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs, ir.id);
+    *PG_DYN_PUSH(&ir.operands, allocator) = rhs;
+    if (IR_VALUE_KIND_VAR == rhs.kind) {
+      ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs.var, ir.id);
+    }
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
@@ -284,7 +285,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .end = ir.id,
     };
 
-    return ir.var;
+    return (IrValue){.kind = IR_VALUE_KIND_VAR, .var = ir.var};
   }
 
   case AST_NODE_KIND_IDENTIFIER: {
@@ -296,13 +297,16 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
           .kind = ERROR_KIND_UNDEFINED_VAR,
           .origin = node.origin,
       };
-      return (IrVar){0};
+      return (IrValue){0};
     }
 
     ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, lifetime->var,
                                       emitter->ir_id);
 
-    return lifetime->var;
+    return (IrValue){
+        .kind = IR_VALUE_KIND_VAR,
+        .var = lifetime->var,
+    };
   }
 
   case AST_NODE_KIND_ADDRESS_OF: {
@@ -310,19 +314,18 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     AstNode operand = PG_SLICE_AT(node.operands, 0);
     PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
 
-    IrVar rhs = ast_to_ir(operand, emitter, errors, allocator);
+    IrValue rhs = ast_to_ir(operand, emitter, errors, false, allocator);
     Ir ir = {0};
     ir.kind = IR_KIND_ADDRESS_OF;
     ir.origin = node.origin;
     ir.id = ir_emitter_next_ir_id(emitter);
     ir.var.id = ir_emitter_next_var_id(emitter);
 
-    PG_ASSERT(rhs.id.value < ir.id.value);
+    *PG_DYN_PUSH(&ir.operands, allocator) = rhs;
 
-    *PG_DYN_PUSH(&ir.operands, allocator) =
-        (IrValue){.kind = IR_VALUE_KIND_VAR, .var = rhs};
-
-    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs, ir.id);
+    if (IR_VALUE_KIND_VAR == rhs.kind) {
+      ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs.var, ir.id);
+    }
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
@@ -330,16 +333,16 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .var = ir.var,
         .start = ir.id,
         .end = ir.id,
-        .ref = rhs,
+        .ref = (IR_VALUE_KIND_VAR == rhs.kind) ? rhs.var : (IrVar){0},
     };
 
-    return ir.var;
+    return (IrValue){.kind = IR_VALUE_KIND_VAR, .var = ir.var};
   }
 
   case AST_NODE_KIND_IF: {
     PG_ASSERT(2 == node.operands.len);
-    IrVar cond =
-        ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors, allocator);
+    IrValue cond = ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors,
+                             false, allocator);
     // TODO: else.
 
     Ir ir_cond_jump = {
@@ -347,15 +350,13 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .origin = node.origin,
         .id = ir_emitter_next_ir_id(emitter),
     };
-    PG_ASSERT(cond.id.value < ir_cond_jump.id.value);
-    *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = (IrValue){
-        .kind = IR_VALUE_KIND_VAR,
-        .var = cond,
-    };
+    *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir_cond_jump;
 
-    ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, cond,
-                                      ir_cond_jump.id);
+    if (IR_VALUE_KIND_VAR == cond.kind) {
+      ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, cond.var,
+                                        ir_cond_jump.id);
+    }
 
     u64 ir_cond_jump_idx = emitter->irs.len - 1;
 
@@ -364,7 +365,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     // 'then' branch.
     {
-      ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, allocator);
+      ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors, false,
+                allocator);
       Ir ir_jump = {
           .kind = IR_KIND_JUMP,
           .id = ir_emitter_next_ir_id(emitter),
@@ -388,7 +390,8 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       };
       *PG_DYN_PUSH(&emitter->irs, allocator) = ir_label_else;
       if (3 == node.operands.len) {
-        ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, allocator);
+        ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, false,
+                  allocator);
       }
     }
     Ir ir_label_if_cont = {
@@ -408,7 +411,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .label = branch_else_label,
     };
 
-    return (IrVar){0};
+    return (IrValue){0};
   }
 
   default:
