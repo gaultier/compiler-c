@@ -399,39 +399,40 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len;) {
     Ir ir = PG_SLICE_AT(*irs, i);
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var(*var_lifetimes, (IrVar){ir.num});
 
-    // TODO: Work on lifetimes instead?
-    // `x1 := x0`: Remove.
-    if (IR_KIND_LOAD == ir.kind && 1 == ir.operands.len &&
-        IR_VALUE_KIND_VAR == PG_SLICE_AT(ir.operands, 0).kind) {
-      PG_DYN_REMOVE_AT(irs, i);
-      u32 ir_num_to_remove = ir.num;
-
-      for (u64 j = i + 1; j < irs->len; j++) {
-        Ir ir_to_fix = PG_SLICE_AT(*irs, j);
-
-        for (u64 k = 0; k < ir_to_fix.operands.len; k++) {
-          IrValue *operand = PG_SLICE_AT_PTR(&ir_to_fix.operands, k);
-          if (IR_VALUE_KIND_VAR == operand->kind &&
-              operand->var.value == ir_num_to_remove) {
-            operand->var.value = PG_SLICE_AT(ir.operands, 0).var.value;
-          }
-        }
-      }
-
-      for (u64 j = 0; j < var_lifetimes->len;) {
-        IrVarLifetime var_lifetime = PG_SLICE_AT(*var_lifetimes, j);
-        if (var_lifetime.var.value == ir_num_to_remove) {
-          PG_DYN_REMOVE_AT(var_lifetimes, j);
-          break;
-        }
-        j++;
-      }
-
+    // Some IRs do not result in a variable e.g. if-then-else.
+    if (!var_lifetime) {
+      i++;
       continue;
     }
 
-    i += 1;
+    PG_ASSERT(var_lifetime->start < var_lifetime->end);
+    u64 duration = var_lifetime->end - var_lifetime->start;
+    if (duration > 1) {
+      i++;
+      continue;
+    }
+
+    PG_DYN_REMOVE_AT(irs, i);
+    u32 ir_num_to_remove = ir.num;
+
+    for (u64 j = i + 1; j < irs->len; j++) {
+      Ir ir_to_fix = PG_SLICE_AT(*irs, j);
+
+      for (u64 k = 0; k < ir_to_fix.operands.len; k++) {
+        IrValue *operand = PG_SLICE_AT_PTR(&ir_to_fix.operands, k);
+        if (IR_VALUE_KIND_VAR == operand->kind &&
+            operand->var.value == ir_num_to_remove) {
+          operand->var.value = PG_SLICE_AT(ir.operands, 0).var.value;
+        }
+      }
+    }
+
+    u64 var_lifetime_idx =
+        (u64)(var_lifetime - var_lifetimes->data) / sizeof(IrVarLifetime);
+    PG_DYN_REMOVE_AT(var_lifetimes, var_lifetime_idx);
   }
 }
 
