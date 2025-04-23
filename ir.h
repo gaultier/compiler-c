@@ -459,34 +459,46 @@ static void ir_print_value(IrValue value) {
   }
 }
 
-static void ir_print(IrSlice irs, u32 i) {
-  Ir ir = PG_SLICE_AT(irs, i);
+static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
+  Ir ir = PG_SLICE_AT(emitter.irs, i);
   origin_print(ir.origin);
   printf(": ");
 
   switch (ir.kind) {
   case IR_KIND_NONE:
     PG_ASSERT(0);
-  case IR_KIND_ADD:
+  case IR_KIND_ADD: {
     PG_ASSERT(2 == ir.operands.len);
     printf("[%u] [%u] x%u := ", i, ir.num, ir.num);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
     printf(" + ");
     ir_print_value(PG_SLICE_AT(ir.operands, 1));
-    printf("\n");
-    break;
-  case IR_KIND_LOAD:
+
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var(emitter.var_lifetimes, (IrVar){ir.num});
+    PG_ASSERT(var_lifetime);
+    printf(" // lifetime: [%u:%u]\n", var_lifetime->start, var_lifetime->end);
+  } break;
+  case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
     printf("[%u] [%u] x%u := ", i, ir.num, ir.num);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
-    printf("\n");
-    break;
-  case IR_KIND_ADDRESS_OF:
+
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var(emitter.var_lifetimes, (IrVar){ir.num});
+    PG_ASSERT(var_lifetime);
+    printf(" // lifetime: [%u:%u]\n", var_lifetime->start, var_lifetime->end);
+  } break;
+  case IR_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir.operands.len);
     printf("[%u] [%u] x%u := &", i, ir.num, ir.num);
     ir_print_value(PG_SLICE_AT(ir.operands, 0));
-    printf("\n");
-    break;
+
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var(emitter.var_lifetimes, (IrVar){ir.num});
+    PG_ASSERT(var_lifetime);
+    printf(" // lifetime: [%u:%u]\n", var_lifetime->start, var_lifetime->end);
+  } break;
   case IR_KIND_SYSCALL: {
     printf("[%u] [%u] x%u := syscall(", i, ir.num, ir.num);
     for (u64 j = 0; j < ir.operands.len; j++) {
@@ -497,7 +509,11 @@ static void ir_print(IrSlice irs, u32 i) {
         printf(", ");
       }
     }
-    printf(")\n");
+
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var(emitter.var_lifetimes, (IrVar){ir.num});
+    PG_ASSERT(var_lifetime);
+    printf(" // lifetime: [%u:%u]\n", var_lifetime->start, var_lifetime->end);
   } break;
   case IR_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir.operands.len);
@@ -531,16 +547,16 @@ static void ir_print(IrSlice irs, u32 i) {
   }
 }
 
-static void irs_print(IrSlice irs) {
-  for (u64 i = 0; i < irs.len; i++) {
-    ir_print(irs, (u32)i);
+static void ir_emitter_print_irs(IrEmitter emitter) {
+  for (u64 i = 0; i < emitter.irs.len; i++) {
+    ir_emitter_print_ir(emitter, (u32)i);
   }
 }
 
 static void ir_emitter_print_var_lifetimes(IrEmitter emitter) {
   for (u64 i = 0; i < emitter.var_lifetimes.len; i++) {
     IrVarLifetime var_lifetime = PG_SLICE_AT(emitter.var_lifetimes, i);
-    printf("[%lu] x%u lifetime=[%u:%u]\n", i, var_lifetime.var.value,
+    printf("[%lu] x%u lifetime: [%u:%u]\n", i, var_lifetime.var.value,
            var_lifetime.start, var_lifetime.end);
   }
 }

@@ -38,8 +38,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, tokens);
+  printf("\n------------ Lex tokens ------------\n");
   lex_tokens_print(tokens_slice);
-  puts("------------");
 
   AstNode *root = lex_to_ast(tokens_slice, &errors, allocator);
   if (errors.len) {
@@ -52,8 +52,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  printf("\n------------ AST ------------\n");
   ast_print(*root, 0);
-  puts("------------");
 
   IrEmitter ir_emitter = {
       .ir_num = 1,
@@ -70,15 +70,14 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
-  irs_print(irs_slice);
-  puts("------------");
+  printf("\n------------ IR ------------\n");
+  ir_emitter_print_irs(ir_emitter);
   irs_simplify(&ir_emitter.irs, &ir_emitter.var_lifetimes);
-  irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
-  irs_print(irs_slice);
-  puts("------------");
+  printf("\n------------ IR simplified ------------\n");
+  ir_emitter_print_irs(ir_emitter);
+  printf("\n------------ IR var lifetimes simplified ------------\n");
   ir_emitter_print_var_lifetimes(ir_emitter);
-  puts("------------");
+  IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
 
   Amd64RegisterAllocator reg_alloc = amd64_make_register_allocator(allocator);
 
@@ -87,8 +86,8 @@ int main(int argc, char *argv[]) {
   amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc, allocator);
   amd64_emit_epilog(&instructions, allocator);
 
+  printf("\n------------ ASM ------------\n");
   amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
-  puts("------------");
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
