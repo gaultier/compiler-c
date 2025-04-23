@@ -517,6 +517,7 @@ static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   irs_simplify_remove_trivial_vars(irs, var_lifetimes);
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Constant folding e.g. `x1 := 1; x2 := 2; x3 := x1 + x2` => `x3 := 3`.
+  // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
 }
 
 static void ir_print_var(IrVar var) {
