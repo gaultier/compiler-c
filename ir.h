@@ -325,6 +325,12 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     if (IR_VALUE_KIND_VAR == rhs.kind) {
       ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs.var, ir.id);
+    } else {
+      *PG_DYN_PUSH(errors, allocator) = (Error){
+          .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
+          .origin = node.origin,
+      };
+      return (IrValue){0};
     }
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
@@ -333,7 +339,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .var = ir.var,
         .start = ir.id,
         .end = ir.id,
-        .ref = (IR_VALUE_KIND_VAR == rhs.kind) ? rhs.var : (IrVar){0},
+        .ref = rhs.var,
     };
 
     return (IrValue){.kind = IR_VALUE_KIND_VAR, .var = ir.var};
