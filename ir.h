@@ -412,53 +412,47 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
   }
 }
 
-#if 0
-// TODO: Constant folding.
-static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
+static void irs_simplify_remove_unused_vars(IrDyn *irs,
+                                            IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len;) {
     Ir ir = PG_SLICE_AT(*irs, i);
-    IrVarLifetime *var_lifetime =
-        ir_find_var_lifetime_by_var_id(*var_lifetimes, ir.var.id);
-
-    // Some IRs do not result in a variable e.g. if-then-else.
-    if (!var_lifetime) {
+    // Some IRs do not result in a variable.
+    if (0 == ir.var.id.value) {
       i++;
       continue;
     }
+
+    IrVarLifetime *var_lifetime =
+        ir_find_var_lifetime_by_var_id(*var_lifetimes, ir.var.id);
+    PG_ASSERT(var_lifetime);
 
     PG_ASSERT(var_lifetime->start.value <= var_lifetime->end.value);
     u64 duration = var_lifetime->end.value - var_lifetime->start.value;
     if (duration > 0) {
+      // Used: no-op.
       i++;
       continue;
     }
 
-    // Possible side-effects, keep this IR.
+    u64 var_lifetime_idx = (u64)(var_lifetime - var_lifetimes->data);
+    PG_DYN_REMOVE_AT(var_lifetimes, var_lifetime_idx);
+
+    // Possible side-effects: keep this IR but erase the variable.
     if (IR_KIND_SYSCALL == ir.kind) {
+      ir.var.id.value = 0;
+
       i++;
       continue;
     }
 
     PG_DYN_REMOVE_AT(irs, i);
-    IrId ir_num_to_remove = ir.id;
-
-    for (u64 j = i + 1; j < irs->len; j++) {
-      Ir ir_to_fix = PG_SLICE_AT(*irs, j);
-
-      for (u64 k = 0; k < ir_to_fix.operands.len; k++) {
-        IrValue *operand = PG_SLICE_AT_PTR(&ir_to_fix.operands, k);
-        if (IR_VALUE_KIND_VAR == operand->kind &&
-            operand->var.value == ir_num_to_remove.value) {
-          operand->var.value = PG_SLICE_AT(ir.operands, 0).var.value;
-        }
-      }
-    }
-
-    u64 var_lifetime_idx = (u64)(var_lifetime - var_lifetimes->data);
-    PG_DYN_REMOVE_AT(var_lifetimes, var_lifetime_idx);
   }
 }
-#endif
+
+// TODO: Constant folding.
+static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
+  irs_simplify_remove_unused_vars(irs, var_lifetimes);
+}
 
 static void ir_print_var(IrVar var) {
   if (!pg_string_is_empty(var.identifier)) {

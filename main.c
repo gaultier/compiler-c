@@ -73,11 +73,9 @@ int main(int argc, char *argv[]) {
 
   printf("\n------------ IR ------------\n");
   ir_emitter_print_irs(ir_emitter);
-#if 0
   irs_simplify(&ir_emitter.irs, &ir_emitter.var_lifetimes);
   printf("\n------------ IR simplified ------------\n");
   ir_emitter_print_irs(ir_emitter);
-#endif
   printf("\n------------ IR var lifetimes ------------\n");
   ir_emitter_print_var_lifetimes(ir_emitter);
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
