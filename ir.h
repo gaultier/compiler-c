@@ -150,6 +150,7 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .kind = IR_KIND_LOAD,
         .origin = node.origin,
         .id = ir_emitter_next_ir_id(emitter),
+        .var.id = ir_emitter_next_var_id(emitter),
     };
     *PG_DYN_PUSH(&ir.operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_U64,
