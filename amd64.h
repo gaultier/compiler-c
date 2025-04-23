@@ -505,7 +505,8 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
               "todo");
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
+    if (amd64_is_register_64_bits_only(
+            instruction.lhs.effective_address.base)) {
       rex |= AMD64_REX_MASK_B;
     }
     if (amd64_is_register_64_bits_only(instruction.rhs.reg)) {
@@ -518,7 +519,40 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
     u8 modrm =
         (0b10 /* [rbp] + disp32 */ << 6) |
         (u8)((amd64_encode_register_value(instruction.rhs.reg) & 0b111) << 3) |
-        (u8)(amd64_encode_register_value(instruction.lhs.reg) & 0b111);
+        (u8)(amd64_encode_register_value(
+                 instruction.lhs.effective_address.base) &
+             0b111);
+    *PG_DYN_PUSH(sb, allocator) = modrm;
+
+    pg_byte_buffer_append_u32(
+        sb, (u32)instruction.lhs.effective_address.displacement, allocator);
+
+    return;
+  }
+
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind) {
+    PG_ASSERT(amd64_rbp.value == instruction.rhs.effective_address.base.value &&
+              "todo");
+
+    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
+    if (amd64_is_register_64_bits_only(instruction.lhs.reg)) {
+      rex |= AMD64_REX_MASK_B;
+    }
+    if (amd64_is_register_64_bits_only(
+            instruction.rhs.effective_address.base)) {
+      rex |= AMD64_REX_MASK_R;
+    }
+    *PG_DYN_PUSH(sb, allocator) = rex;
+
+    u8 opcode = 0x8b;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+    u8 modrm =
+        (0b10 /* [rbp] + disp32 */ << 6) |
+        (u8)((amd64_encode_register_value(instruction.lhs.reg) & 0b111) << 3) |
+        (u8)(amd64_encode_register_value(
+                 instruction.rhs.effective_address.base) &
+             0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
     pg_byte_buffer_append_u32(
@@ -1121,7 +1155,43 @@ amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, u32 size, IrVar var,
   return mem_loc_stack;
 }
 
-// FIXME: allocate a memory location (register or stack).
+[[nodiscard]]
+static Register
+amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
+                                u32 size, Amd64InstructionDyn *instructions,
+                                PgAllocator *allocator) {
+  // Easy path: a register is free.
+  if (reg_alloc->available.len > 0) {
+    Register reg = PG_SLICE_AT(reg_alloc->available, 0);
+    PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
+
+    MemoryLocation mem_loc = {
+        .kind = MEMORY_LOCATION_KIND_REGISTER,
+        .reg = reg,
+    };
+    amd64_upsert_var_to_memory_location_by_var(
+        &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
+
+    return reg;
+  }
+
+  // Need to first free a register.
+
+  Register reg = amd64_r11;
+  VarToMemoryLocation *var_mem_loc_old =
+      amd64_find_var_to_memory_location_by_register(
+          reg_alloc->var_to_memory_location, reg);
+  PG_ASSERT(var_mem_loc_old);
+  PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == var_mem_loc_old->location.kind);
+
+  MemoryLocation mem_loc_new = amd64_store_var_on_stack(
+      reg_alloc, size, var, var_mem_loc_old->location, instructions, allocator);
+  var_mem_loc_old->location = mem_loc_new;
+
+  *PG_DYN_PUSH(&reg_alloc->available, allocator) = reg;
+  return reg;
+}
+
 [[nodiscard]]
 static MemoryLocation
 amd64_allocate_memory_location_for_var(Amd64RegisterAllocator *reg_alloc,
@@ -1234,6 +1304,42 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
   *PG_DYN_PUSH(instructions, allocator) = instruction;
 }
 
+[[nodiscard]]
+static Amd64Operand amd64_insert_mem_to_register_load_if_necessary(
+    Amd64InstructionDyn *instructions, Amd64Operand lhs, Amd64Operand rhs,
+    IrValue rhs_val, Amd64RegisterAllocator *reg_alloc,
+    PgAllocator *allocator) {
+  if (!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
+        AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind)) {
+    // No-op.
+    return rhs;
+  }
+
+  // No-op.
+  if (IR_VALUE_KIND_VAR != rhs_val.kind) {
+    return rhs;
+  }
+
+  IrVar var = rhs_val.var;
+
+  Register reg = amd64_allocate_register_for_var(reg_alloc, var, sizeof(u64),
+                                                 instructions, allocator);
+  PG_ASSERT(0 != reg.value);
+
+  amd64_store_var_into_register(reg_alloc, reg,
+                                (IrValue){
+                                    .kind = IR_VALUE_KIND_VAR,
+                                    .var = var,
+                                },
+                                (Origin){.synthetic = true}, instructions,
+                                allocator);
+
+  return (Amd64Operand){
+      .kind = AMD64_OPERAND_KIND_REGISTER,
+      .reg = reg,
+  };
+}
+
 static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                             Amd64RegisterAllocator *reg_alloc,
                             PgAllocator *allocator) {
@@ -1242,12 +1348,20 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     PG_ASSERT(0);
   case IR_KIND_ADD: {
     PG_ASSERT(2 == ir.operands.len);
+    Amd64Operand op_lhs = amd64_ir_value_to_operand(
+        PG_SLICE_AT(ir.operands, 0), reg_alloc->var_to_memory_location);
+
+    Amd64Operand op_rhs = amd64_ir_value_to_operand(
+        PG_SLICE_AT(ir.operands, 1), reg_alloc->var_to_memory_location);
+
+    op_rhs = amd64_insert_mem_to_register_load_if_necessary(
+        instructions, op_lhs, op_rhs, PG_SLICE_AT(ir.operands, 1), reg_alloc,
+        allocator);
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
-        .rhs = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 0),
-                                         reg_alloc->var_to_memory_location),
-        .lhs = amd64_ir_value_to_operand(PG_SLICE_AT(ir.operands, 1),
-                                         reg_alloc->var_to_memory_location),
+        .rhs = op_rhs,
+        .lhs = op_lhs,
         .origin = ir.origin,
     };
     IrVar var = {ir.num};
