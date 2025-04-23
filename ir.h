@@ -55,6 +55,8 @@ typedef struct {
   IrId id;
   // Out var.
   IrVar var;
+
+  bool tombstone;
 } Ir;
 PG_SLICE(Ir) IrSlice;
 PG_DYN(Ir) IrDyn;
@@ -64,6 +66,8 @@ typedef struct {
   // Inclusive, inclusive.
   IrId start, end;
   IrVar ref; // In case of `IR_KIND_ADDRESS_OF`.
+
+  bool tombstone;
 } IrVarLifetime;
 PG_SLICE(IrVarLifetime) IrVarLifetimeSlice;
 PG_DYN(IrVarLifetime) IrVarLifetimeDyn;
@@ -414,77 +418,79 @@ static IrVar ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
 static void irs_simplify_remove_unused_vars(IrDyn *irs,
                                             IrVarLifetimeDyn *var_lifetimes) {
-  for (u64 i = 0; i < irs->len;) {
+  for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
+    if (ir->tombstone) {
+      continue;
+    }
+
     // Some IRs do not result in a variable.
     if (0 == ir->var.id.value) {
-      i++;
       continue;
     }
 
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(*var_lifetimes, ir->var.id);
     PG_ASSERT(var_lifetime);
+    PG_ASSERT(!var_lifetime->tombstone);
 
     PG_ASSERT(var_lifetime->start.value <= var_lifetime->end.value);
     u64 duration = var_lifetime->end.value - var_lifetime->start.value;
     if (duration > 0) {
       // Used: no-op.
-      i++;
       continue;
     }
 
-    u64 var_lifetime_idx = (u64)(var_lifetime - var_lifetimes->data);
-    PG_DYN_REMOVE_AT(var_lifetimes, var_lifetime_idx);
+    var_lifetime->tombstone = true;
 
     // Possible side-effects: keep this IR but erase the variable.
     if (IR_KIND_SYSCALL == ir->kind) {
       ir->var.id.value = 0;
-
-      i++;
       continue;
     }
 
-    PG_DYN_REMOVE_AT(irs, i);
+    ir->tombstone = true;
   }
 }
 
 // Simplify: `x1 := 1; x2 := x1; x3 := x2 + x2` => `x1 := 1; x3 := x1 + x1`.
 static void irs_simplify_remove_trivial_vars(IrDyn *irs,
                                              IrVarLifetimeDyn *var_lifetimes) {
-  for (u64 i = 0; i < irs->len;) {
-    Ir ir = PG_SLICE_AT(*irs, i);
-
-    if (0 == ir.var.id.value) {
-      i++;
+  for (u64 i = 0; i < irs->len; i++) {
+    Ir *ir = PG_SLICE_AT_PTR(irs, i);
+    if (ir->tombstone) {
       continue;
     }
 
-    if (1 != ir.operands.len) {
-      i++;
+    if (0 == ir->var.id.value) {
+      continue;
+    }
+
+    if (1 != ir->operands.len) {
       continue;
     }
 
     // TODO: Are there other IR kinds candidate to this simplification?
-    if (!(IR_KIND_LOAD == ir.kind)) {
-      i++;
+    if (!(IR_KIND_LOAD == ir->kind)) {
       continue;
     }
 
-    IrValue rhs = PG_SLICE_AT(ir.operands, 0);
+    IrValue rhs = PG_SLICE_AT(ir->operands, 0);
 
     // TODO: We could also simplify `x1 := 1; x2 := 2; x3 := x2 + x1` => `x2 :=
     // 2; x3 := x2 + 1`.
     if (!(IR_VALUE_KIND_VAR == rhs.kind)) {
-      i++;
       continue;
     }
 
     IrVar rhs_var = rhs.var;
-    IrVar var_to_rm = ir.var;
+    IrVar var_to_rm = ir->var;
 
     for (u64 j = i + 1; j < irs->len; j++) {
       Ir ir_to_fix = PG_SLICE_AT(*irs, j);
+      if (ir_to_fix.tombstone) {
+        continue;
+      }
 
       for (u64 k = 0; k < ir_to_fix.operands.len; k++) {
         IrValue *op = PG_SLICE_AT_PTR(&ir_to_fix.operands, k);
@@ -495,10 +501,12 @@ static void irs_simplify_remove_trivial_vars(IrDyn *irs,
         }
       }
     }
-    PG_DYN_REMOVE_AT(irs, i);
+    ir->tombstone = true;
+    IrVarLifetime *lifetime =
+        ir_find_var_lifetime_by_var_id(*var_lifetimes, ir->var.id);
+    PG_ASSERT(!lifetime->tombstone);
+    lifetime->tombstone = true;
   }
-  // TODO: Remove var lifetime.
-  (void)var_lifetimes;
 }
 
 static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
@@ -544,6 +552,11 @@ static void ir_print_value(IrValue value) {
 
 static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   Ir ir = PG_SLICE_AT(emitter.irs, i);
+
+  if (ir.tombstone) {
+    printf("\x1B[9m"); // Strikethrough.
+  }
+
   origin_print(ir.origin);
   printf(": [%u] [%u] ", i, ir.id.value);
 
@@ -655,6 +668,9 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   default:
     PG_ASSERT(0);
   }
+  if (ir.tombstone) {
+    printf("\x1B[0m"); // Reset.
+  }
 }
 
 static void ir_emitter_print_irs(IrEmitter emitter) {
@@ -666,9 +682,17 @@ static void ir_emitter_print_irs(IrEmitter emitter) {
 static void ir_emitter_print_var_lifetimes(IrEmitter emitter) {
   for (u64 i = 0; i < emitter.var_lifetimes.len; i++) {
     IrVarLifetime var_lifetime = PG_SLICE_AT(emitter.var_lifetimes, i);
+    if (var_lifetime.tombstone) {
+      printf("\x1B[9m"); // Strikethrough.
+    }
+
     printf("[%lu] ", i);
     ir_print_var(var_lifetime.var);
     printf(" lifetime: [%u:%u]\n", var_lifetime.start.value,
            var_lifetime.end.value);
+
+    if (var_lifetime.tombstone) {
+      printf("\x1B[0m"); // Strikethrough.
+    }
   }
 }
