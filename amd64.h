@@ -1323,8 +1323,7 @@ static void amd64_store_immediate_into_register(
     };
 
     amd64_memory_location_record_var_copy(&reg_alloc->var_to_memory_location,
-                                          var_to_mem_loc_by_reg->var,
-                                          mem_loc.reg);
+                                          var_to_mem_loc_by_reg->var, mem_loc);
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
 
