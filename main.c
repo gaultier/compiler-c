@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_KiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 

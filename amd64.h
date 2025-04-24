@@ -950,6 +950,31 @@ static PgString amd64_encode_program_text(Amd64Program *program,
   return PG_DYN_SLICE(PgString, sb);
 }
 
+[[nodiscard]] static VarToMemoryLocationDyn
+amd64_memory_location_clone(VarToMemoryLocationDyn var_to_memory_location,
+                            PgAllocator *allocator) {
+  VarToMemoryLocationDyn res = {0};
+  if (0 == var_to_memory_location.len) {
+    return res;
+  }
+
+  PG_DYN_ENSURE_CAP(&res, var_to_memory_location.len, allocator);
+  res.len = var_to_memory_location.len;
+
+  for (u64 i = 0; i < var_to_memory_location.len; i++) {
+    VarToMemoryLocation var_mem_loc_src =
+        PG_SLICE_AT(var_to_memory_location, i);
+    VarToMemoryLocation *var_mem_loc_dst = PG_SLICE_AT_PTR(&res, i);
+    PG_DYN_ENSURE_CAP(&var_mem_loc_dst->locations,
+                      var_mem_loc_src.locations.len, allocator);
+
+    PG_DYN_CLONE(&var_mem_loc_dst->locations, var_mem_loc_src.locations,
+                 allocator);
+    var_mem_loc_dst->var = var_mem_loc_src.var;
+  }
+  return res;
+}
+
 [[nodiscard]]
 static MemoryLocationDyn *
 amd64_memory_location_find_var(VarToMemoryLocationDyn var_to_memory_location,
@@ -970,6 +995,10 @@ static MemoryLocation *amd64_memory_location_find_var_on_stack(
   MemoryLocationDyn *locations =
       amd64_memory_location_find_var(var_to_memory_location, var);
 
+  if (!locations) {
+    return nullptr;
+  }
+
   for (u64 i = 0; i < locations->len; i++) {
     MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
     if (MEMORY_LOCATION_KIND_STACK == loc->kind) {
@@ -984,6 +1013,9 @@ static MemoryLocation *amd64_memory_location_find_var_in_register_any(
     VarToMemoryLocationDyn var_to_memory_location, IrVar var) {
   MemoryLocationDyn *locations =
       amd64_memory_location_find_var(var_to_memory_location, var);
+  if (!locations) {
+    return nullptr;
+  }
 
   for (u64 i = 0; i < locations->len; i++) {
     MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
@@ -1174,8 +1206,8 @@ amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, u32 size, IrVar var,
       .lhs = amd64_memory_location_to_operand(mem_loc_stack),
       .rhs = amd64_memory_location_to_operand(location_src),
   };
-  PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-               reg_alloc->var_to_memory_location, allocator);
+  instruction.var_to_memory_location_frozen =
+      amd64_memory_location_clone(reg_alloc->var_to_memory_location, allocator);
 
   *PG_DYN_PUSH(instructions, allocator) = instruction;
 
@@ -1299,8 +1331,8 @@ static void amd64_store_immediate_into_register(
     amd64_memory_location_record_var_copy(&reg_alloc->var_to_memory_location,
                                           var_to_mem_loc_by_reg->var, mem_loc,
                                           allocator);
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
   }
@@ -1320,8 +1352,8 @@ static void amd64_store_immediate_into_register(
       .origin = origin,
   };
   // TODO: Should we remember what immediate is in the register?
-  PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-               reg_alloc->var_to_memory_location, allocator);
+  instruction.var_to_memory_location_frozen =
+      amd64_memory_location_clone(reg_alloc->var_to_memory_location, allocator);
   *PG_DYN_PUSH(instructions, allocator) = instruction;
 
   amd64_memory_location_empty_register(&reg_alloc->var_to_memory_location, dst);
@@ -1363,8 +1395,8 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
                                           var_to_mem_loc->var, mem_loc,
                                           allocator);
 
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
   }
@@ -1387,8 +1419,8 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
     amd64_memory_location_record_var_copy(&reg_alloc->var_to_memory_location,
                                           val.var, mem_loc, allocator);
   }
-  PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-               reg_alloc->var_to_memory_location, allocator);
+  instruction.var_to_memory_location_frozen =
+      amd64_memory_location_clone(reg_alloc->var_to_memory_location, allocator);
   *PG_DYN_PUSH(instructions, allocator) = instruction;
 }
 
@@ -1504,8 +1536,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     MemoryLocation mem_loc = amd64_operand_to_memory_location(instruction.lhs);
     amd64_memory_location_add(&reg_alloc->var_to_memory_location, ir.var,
                               mem_loc, allocator);
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
@@ -1542,8 +1574,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
         .rhs = op_rhs,
         .origin = ir.origin,
     };
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
   } break;
@@ -1607,8 +1639,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                                            amd64_rax);
     }
 
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
   } break;
@@ -1637,8 +1669,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
         .lhs = amd64_memory_location_to_operand(mem_loc),
         .rhs = amd64_memory_location_to_operand(*loc_rhs),
     };
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
@@ -1654,11 +1686,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
     PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);
 
-    MemoryLocationDyn *cond_mem_locs = amd64_memory_location_find_var(
+    MemoryLocation cond_mem_loc = amd64_memory_location_find_var_best(
         reg_alloc->var_to_memory_location, cond.var);
-    PG_ASSERT(cond_mem_locs);
-    PG_ASSERT(cond_mem_locs->len > 0);
-    MemoryLocation cond_mem_loc = PG_SLICE_AT(*cond_mem_locs, 0);
 
     Amd64Instruction instruction_cmp = {
         .kind = AMD64_INSTRUCTION_KIND_CMP,
@@ -1670,8 +1699,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                 .immediate = 0,
             },
     };
-    PG_DYN_CLONE(&instruction_cmp.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction_cmp.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction_cmp;
 
     Amd64Instruction instruction_je = {
@@ -1683,8 +1712,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                 .label = branch_else.label,
             },
     };
-    PG_DYN_CLONE(&instruction_je.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction_je.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction_je;
 
   } break;
@@ -1703,8 +1732,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                 .label = operand.label,
             },
     };
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
   } break;
@@ -1723,8 +1752,8 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                 .label = label.label,
             },
     };
-    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    instruction.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
 
@@ -1782,8 +1811,8 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
             },
         .origin.synthetic = true,
     };
-    PG_DYN_CLONE(&stack_add.var_to_memory_location_frozen,
-                 reg_alloc->var_to_memory_location, allocator);
+    stack_add.var_to_memory_location_frozen = amd64_memory_location_clone(
+        reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = stack_add;
   } else {
