@@ -302,7 +302,7 @@ static void amd64_print_var_to_memory_location(
 
 static void amd64_print_instructions(Amd64InstructionSlice instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
-    printf("[%" PRIu64 "] ", i);
+    printf("[%" PRIu64 "]\n", i);
 
     Amd64Instruction instruction = PG_SLICE_AT(instructions, i);
     amd64_print_var_to_memory_location(
@@ -1135,6 +1135,7 @@ static i32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
   return -(i32)reg_alloc->rbp_offset;
 }
 
+// FIXME: First check if the var is already present on the stack.
 static MemoryLocation
 amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, u32 size, IrVar var,
                          MemoryLocation location_src,
@@ -1522,27 +1523,26 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     // will override `rax` with the return value and thus we might lose the
     // first operand.
     // Only necessary if the variable gets used afterwards.
-    IrVarLifetime *res_var_lifetime =
-        ir_find_var_lifetime_by_var_id(var_lifetimes, ir.var.id);
-    bool syscall_res_used =
-        res_var_lifetime &&
-        res_var_lifetime->end.value - res_var_lifetime->start.value > 0;
-    if (syscall_res_used) {
-      IrValue op0 = PG_SLICE_AT(ir.operands, 0);
-      PG_ASSERT(IR_VALUE_KIND_VAR == op0.kind);
-      Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, 0);
-      amd64_store_var_into_register(reg_alloc, dst, op0, ir.origin,
-                                    instructions, allocator);
+    IrValue op0 = PG_SLICE_AT(ir.operands, 0);
+    if (IR_VALUE_KIND_VAR == op0.kind) {
+      IrVarLifetime *res_var_lifetime =
+          ir_find_var_lifetime_by_var_id(var_lifetimes, op0.var.id);
 
-      MemoryLocation mem_loc = {
-          .kind = MEMORY_LOCATION_KIND_REGISTER,
-          .reg = dst,
-      };
-      amd64_store_var_on_stack(reg_alloc, sizeof(u64), op0.var, mem_loc,
-                               instructions, allocator);
+      bool need_rax_saved =
+          res_var_lifetime && res_var_lifetime->end.value > ir.id.value;
+
+      if (need_rax_saved) {
+        VarToMemoryLocation *var_mem_loc_op0 =
+            amd64_find_var_to_memory_location_by_var(
+                reg_alloc->var_to_memory_location, op0.var);
+        PG_ASSERT(var_mem_loc_op0);
+        amd64_store_var_on_stack(reg_alloc, sizeof(u64), op0.var,
+                                 var_mem_loc_op0->location, instructions,
+                                 allocator);
+      }
     }
 
-    for (u64 j = 1; j < ir.operands.len; j++) {
+    for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
       Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, j);
       if (IR_VALUE_KIND_VAR == val.kind) {
@@ -1560,6 +1560,9 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
         .origin = ir.origin,
     };
+
+    // Syscall result used?
+    bool syscall_res_used = ir.var.id.value != 0;
     if (syscall_res_used) {
       MemoryLocation mem_loc = {
           .kind = MEMORY_LOCATION_KIND_REGISTER,
@@ -1567,7 +1570,14 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
       };
       amd64_upsert_var_to_memory_location_by_var(
           &reg_alloc->var_to_memory_location, ir.var, mem_loc, allocator);
+    } else {
+      VarToMemoryLocation *var_mem_loc_op0 =
+          amd64_find_var_to_memory_location_by_register(
+              reg_alloc->var_to_memory_location, amd64_rax);
+      u64 idx = (u64)(var_mem_loc_op0 - reg_alloc->var_to_memory_location.data);
+      PG_DYN_SWAP_REMOVE(&reg_alloc->var_to_memory_location, idx);
     }
+
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction;
