@@ -32,6 +32,8 @@ typedef struct {
     u64 memory_address;
   };
 } MemoryLocation;
+PG_SLICE(MemoryLocation) MemoryLocationSlice;
+PG_DYN(MemoryLocation) MemoryLocationDyn;
 
 typedef struct {
   IrLabelId label;
@@ -39,3 +41,22 @@ typedef struct {
 } LabelAddress;
 PG_SLICE(LabelAddress) LabelAddressSlice;
 PG_DYN(LabelAddress) LabelAddressDyn;
+
+[[nodiscard]] static bool asm_memory_location_eq(MemoryLocation a,
+                                                 MemoryLocation b) {
+  if (a.kind != b.kind) {
+    return false;
+  }
+
+  switch (a.kind) {
+  case MEMORY_LOCATION_KIND_REGISTER:
+    return a.reg.value == b.reg.value;
+  case MEMORY_LOCATION_KIND_STACK:
+    return a.base_pointer_offset == b.base_pointer_offset;
+  case MEMORY_LOCATION_KIND_MEMORY:
+    return a.memory_address == b.memory_address;
+  case MEMORY_LOCATION_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
