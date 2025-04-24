@@ -84,7 +84,8 @@ int main(int argc, char *argv[]) {
 
   Amd64InstructionDyn instructions = {0};
   amd64_emit_prolog(&instructions, allocator);
-  amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc, allocator);
+  amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc,
+                   ir_emitter.var_lifetimes, allocator);
   amd64_emit_epilog(&instructions, allocator);
 
   printf("\n------------ ASM ------------\n");

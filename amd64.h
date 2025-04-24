@@ -1153,10 +1153,10 @@ amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, u32 size, IrVar var,
 }
 
 [[nodiscard]]
-static Register
-amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
-                                u32 size, Amd64InstructionDyn *instructions,
-                                PgAllocator *allocator) {
+static Register amd64_create_register_for_var(Amd64RegisterAllocator *reg_alloc,
+                                              IrVar var, u32 size,
+                                              Amd64InstructionDyn *instructions,
+                                              PgAllocator *allocator) {
   // Easy path: a register is free.
   if (reg_alloc->available.len > 0) {
     Register reg = PG_SLICE_AT(reg_alloc->available, 0);
@@ -1172,7 +1172,7 @@ amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
     return reg;
   }
 
-  // Need to first free a register.
+  // Need to first free a register by spilling it to the stack.
 
   Register reg = amd64_r11;
   VarToMemoryLocation *var_mem_loc_old =
@@ -1180,6 +1180,7 @@ amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
           reg_alloc->var_to_memory_location, reg);
   PG_ASSERT(var_mem_loc_old);
   PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == var_mem_loc_old->location.kind);
+  PG_ASSERT(reg.value == var_mem_loc_old->location.reg.value);
 
   MemoryLocation mem_loc_new = amd64_store_var_on_stack(
       reg_alloc, size, var, var_mem_loc_old->location, instructions, allocator);
@@ -1187,6 +1188,22 @@ amd64_allocate_register_for_var(Amd64RegisterAllocator *reg_alloc, IrVar var,
 
   *PG_DYN_PUSH(&reg_alloc->available, allocator) = reg;
   return reg;
+}
+
+[[nodiscard]]
+static Register amd64_find_or_create_register_for_var(
+    Amd64RegisterAllocator *reg_alloc, IrVar var, u32 size,
+    Amd64InstructionDyn *instructions, PgAllocator *allocator) {
+  VarToMemoryLocation *var_mem_loc = amd64_find_var_to_memory_location_by_var(
+      reg_alloc->var_to_memory_location, var);
+  PG_ASSERT(var_mem_loc);
+
+  // Easy path: var already in register.
+  if (MEMORY_LOCATION_KIND_REGISTER == var_mem_loc->location.kind) {
+    return var_mem_loc->location.reg;
+  }
+  return amd64_create_register_for_var(reg_alloc, var, size, instructions,
+                                       allocator);
 }
 
 [[nodiscard]]
@@ -1301,37 +1318,35 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
   *PG_DYN_PUSH(instructions, allocator) = instruction;
 }
 
-[[nodiscard]]
-static Amd64Operand amd64_insert_mem_to_register_load_if_necessary(
-    Amd64InstructionDyn *instructions, Amd64Operand lhs, Amd64Operand rhs,
+// Convert:
+// `<op> [rbp+8], [rbp+16]`
+// to (TODO) `mov rax, [rbp+8]; <op> rax, [rbp+16]`.
+// or `mov rax, [rbp+16]; <op> [rbp+16], rax`.
+static void
+amd64_insert_mem_to_register_load_if_both_operands_are_effective_address(
+    Amd64InstructionDyn *instructions, Amd64Operand *lhs, Amd64Operand *rhs,
     IrValue rhs_val, Amd64RegisterAllocator *reg_alloc,
     PgAllocator *allocator) {
-  if (!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
-        AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind)) {
+  if (!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs->kind &&
+        AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs->kind)) {
     // No-op.
-    return rhs;
+    return;
   }
 
-  // No-op.
-  if (IR_VALUE_KIND_VAR != rhs_val.kind) {
-    return rhs;
-  }
+  PG_ASSERT(IR_VALUE_KIND_VAR == rhs_val.kind);
 
+  // TODO: lhs.
   IrVar var = rhs_val.var;
 
-  Register reg = amd64_allocate_register_for_var(reg_alloc, var, sizeof(u64),
-                                                 instructions, allocator);
+  Register reg = amd64_find_or_create_register_for_var(
+      reg_alloc, var, sizeof(u64), instructions, allocator);
   PG_ASSERT(0 != reg.value);
 
-  amd64_store_var_into_register(reg_alloc, reg,
-                                (IrValue){
-                                    .kind = IR_VALUE_KIND_VAR,
-                                    .var = var,
-                                },
+  amd64_store_var_into_register(reg_alloc, reg, rhs_val,
                                 (Origin){.synthetic = true}, instructions,
                                 allocator);
 
-  return (Amd64Operand){
+  *rhs = (Amd64Operand){
       .kind = AMD64_OPERAND_KIND_REGISTER,
       .reg = reg,
   };
@@ -1339,6 +1354,7 @@ static Amd64Operand amd64_insert_mem_to_register_load_if_necessary(
 
 static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                             Amd64RegisterAllocator *reg_alloc,
+                            IrVarLifetimeDyn var_lifetimes,
                             PgAllocator *allocator) {
   if (ir.tombstone) {
     return;
@@ -1349,15 +1365,21 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     PG_ASSERT(0);
   case IR_KIND_ADD: {
     PG_ASSERT(2 == ir.operands.len);
-    Amd64Operand op_lhs = amd64_ir_value_to_operand(
-        PG_SLICE_AT(ir.operands, 0), reg_alloc->var_to_memory_location);
+    PG_ASSERT(ir.var.id.value);
+    IrValue val_lhs = PG_SLICE_AT(ir.operands, 0);
+    IrValue val_rhs = PG_SLICE_AT(ir.operands, 1);
+    PG_ASSERT(IR_VALUE_KIND_VAR == val_lhs.kind);
+    PG_ASSERT(IR_VALUE_KIND_VAR == val_rhs.kind ||
+              IR_VALUE_KIND_U64 == val_rhs.kind);
 
-    Amd64Operand op_rhs = amd64_ir_value_to_operand(
-        PG_SLICE_AT(ir.operands, 1), reg_alloc->var_to_memory_location);
+    Amd64Operand op_lhs =
+        amd64_ir_value_to_operand(val_lhs, reg_alloc->var_to_memory_location);
 
-    op_rhs = amd64_insert_mem_to_register_load_if_necessary(
-        instructions, op_lhs, op_rhs, PG_SLICE_AT(ir.operands, 1), reg_alloc,
-        allocator);
+    Amd64Operand op_rhs =
+        amd64_ir_value_to_operand(val_rhs, reg_alloc->var_to_memory_location);
+
+    amd64_insert_mem_to_register_load_if_both_operands_are_effective_address(
+        instructions, &op_lhs, &op_rhs, val_rhs, reg_alloc, allocator);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
@@ -1365,11 +1387,10 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
         .lhs = op_lhs,
         .origin = ir.origin,
     };
-    IrVar var = ir.var;
 
     MemoryLocation mem_loc = amd64_operand_to_memory_location(instruction.lhs);
     amd64_upsert_var_to_memory_location_by_var(
-        &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
+        &reg_alloc->var_to_memory_location, ir.var, mem_loc, allocator);
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
 
@@ -1378,15 +1399,18 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
   } break;
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
-    IrValue src = PG_SLICE_AT(ir.operands, 0);
-    Amd64InstructionKind kind =
-        // TODO: Smarter mov vs lea selection.
-        (IR_VALUE_KIND_U64 == src.kind || IR_VALUE_KIND_VAR == src.kind)
-            ? AMD64_INSTRUCTION_KIND_MOV
-            : AMD64_INSTRUCTION_KIND_LEA;
+    PG_ASSERT(ir.var.id.value);
 
-    MemoryLocation mem_loc =
-        amd64_allocate_memory_location_for_var(reg_alloc, ir.var, allocator);
+    IrValue src = PG_SLICE_AT(ir.operands, 0);
+
+    Amd64InstructionKind kind = AMD64_INSTRUCTION_KIND_MOV;
+
+    Register reg_dst = amd64_create_register_for_var(
+        reg_alloc, ir.var, sizeof(u64), instructions, allocator);
+    MemoryLocation mem_loc = {
+        .kind = MEMORY_LOCATION_KIND_REGISTER,
+        .reg = reg_dst,
+    };
 
     Amd64Instruction instruction = {
         .kind = kind,
@@ -1407,8 +1431,13 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     // Save the first operand on the stack before the syscall since the syscall
     // will override `rax` with the return value and thus we might lose the
     // first operand.
-    // TODO: Only if necessary i.e. if the variable gets used afterwards.
-    {
+    // Only necessary if the variable gets used afterwards.
+    IrVarLifetime *res_var_lifetime =
+        ir_find_var_lifetime_by_var_id(var_lifetimes, ir.var.id);
+    bool syscall_res_used =
+        res_var_lifetime &&
+        res_var_lifetime->end.value - res_var_lifetime->start.value > 0;
+    if (syscall_res_used) {
       IrValue op0 = PG_SLICE_AT(ir.operands, 0);
       PG_ASSERT(IR_VALUE_KIND_VAR == op0.kind);
       Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, 0);
@@ -1434,13 +1463,14 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
         .origin = ir.origin,
     };
-    IrVar var = ir.var;
-    MemoryLocation mem_loc = {
-        .kind = MEMORY_LOCATION_KIND_REGISTER,
-        .reg = amd64_arch.return_value,
-    };
-    amd64_upsert_var_to_memory_location_by_var(
-        &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
+    if (syscall_res_used) {
+      MemoryLocation mem_loc = {
+          .kind = MEMORY_LOCATION_KIND_REGISTER,
+          .reg = amd64_arch.return_value,
+      };
+      amd64_upsert_var_to_memory_location_by_var(
+          &reg_alloc->var_to_memory_location, ir.var, mem_loc, allocator);
+    }
     PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
                  reg_alloc->var_to_memory_location, allocator);
     *PG_DYN_PUSH(instructions, allocator) = instruction;
@@ -1572,6 +1602,7 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
 
 static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
                              Amd64RegisterAllocator *reg_alloc,
+                             IrVarLifetimeDyn var_lifetimes,
                              PgAllocator *allocator) {
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
@@ -1591,7 +1622,8 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
   u64 stack_sub_instruction_idx = instructions->len - 1;
 
   for (u64 i = 0; i < irs.len; i++) {
-    amd64_ir_to_asm(PG_SLICE_AT(irs, i), instructions, reg_alloc, allocator);
+    amd64_ir_to_asm(PG_SLICE_AT(irs, i), instructions, reg_alloc, var_lifetimes,
+                    allocator);
   }
 
   if (reg_alloc->rbp_max_offset > 0) {
