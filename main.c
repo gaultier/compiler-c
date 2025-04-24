@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
 
   printf("\n------------ IR ------------\n");
   ir_emitter_print_irs(ir_emitter);
-  irs_simplify(&ir_emitter.irs, &ir_emitter.var_lifetimes);
+  irs_optimize(&ir_emitter.irs, &ir_emitter.var_lifetimes);
   printf("\n------------ IR simplified ------------\n");
   ir_emitter_print_irs(ir_emitter);
   printf("\n------------ IR var lifetimes ------------\n");

@@ -430,7 +430,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
   }
 }
 
-static void irs_simplify_remove_unused_vars(IrDyn *irs,
+static void irs_optimize_remove_unused_vars(IrDyn *irs,
                                             IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
@@ -468,7 +468,7 @@ static void irs_simplify_remove_unused_vars(IrDyn *irs,
 }
 
 // Simplify: `x1 := 1; x2 := x1; x3 := x2 + x2` => `x1 := 1; x3 := x1 + x1`.
-static void irs_simplify_remove_trivial_vars(IrDyn *irs,
+static void irs_optimize_remove_trivial_vars(IrDyn *irs,
                                              IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
@@ -525,7 +525,7 @@ static void irs_simplify_remove_trivial_vars(IrDyn *irs,
 
 // Replace: `x1 := 1; x2 := 2; x3:= x2 + x1` => `x2 := 2; x3 := x2 + 1`.
 static void
-irs_simplify_add_rhs_when_immediate(IrDyn *irs,
+irs_optimize_add_rhs_when_immediate(IrDyn *irs,
                                     IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
@@ -581,7 +581,7 @@ irs_simplify_add_rhs_when_immediate(IrDyn *irs,
   }
 }
 
-static void irs_simplify_fold_constants(IrDyn *irs) {
+static void irs_optimize_fold_constants(IrDyn *irs) {
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
     if (ir->tombstone) {
@@ -611,14 +611,14 @@ static void irs_simplify_fold_constants(IrDyn *irs) {
   }
 }
 
-static void irs_simplify(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
+static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Loop until a fixed point (or a limit) is reached.
   // TODO: Recompute var lifetimes after each step?
 
-  irs_simplify_remove_unused_vars(irs, var_lifetimes);
-  irs_simplify_remove_trivial_vars(irs, var_lifetimes);
-  irs_simplify_add_rhs_when_immediate(irs, var_lifetimes);
-  irs_simplify_fold_constants(irs);
+  irs_optimize_remove_unused_vars(irs, var_lifetimes);
+  irs_optimize_remove_trivial_vars(irs, var_lifetimes);
+  irs_optimize_add_rhs_when_immediate(irs, var_lifetimes);
+  irs_optimize_fold_constants(irs);
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
   // TODO: Remove empty labels.
