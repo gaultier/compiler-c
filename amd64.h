@@ -962,6 +962,18 @@ static VarToMemoryLocation *amd64_find_var_to_memory_location_by_var(
   return var_to_mem_loc;
 }
 
+static void amd64_remove_var_to_memory_location_by_var(
+    VarToMemoryLocationDyn *var_to_memory_location, IrVar var) {
+  for (u64 i = 0; i < var_to_memory_location->len;) {
+    VarToMemoryLocation elem = PG_SLICE_AT(*var_to_memory_location, i);
+    if (elem.var.id.value == var.id.value) {
+      PG_DYN_SWAP_REMOVE(var_to_memory_location, i);
+      return;
+    }
+    i++;
+  }
+}
+
 static void amd64_upsert_var_to_memory_location_by_var(
     VarToMemoryLocationDyn *var_to_memory_location, IrVar var,
     MemoryLocation mem_loc, PgAllocator *allocator) {
@@ -1398,10 +1410,42 @@ amd64_insert_mem_to_register_load_if_both_operands_are_effective_address(
   };
 }
 
+// For now only expire registers.
+// TODO: expire stack slots.
+static void
+amd64_expire_vars_if_lifetime_end_reached(Amd64RegisterAllocator *reg_alloc,
+                                          IrVarLifetimeDyn var_lifetimes,
+                                          IrId ir_id) {
+  for (u64 i = 0; i < reg_alloc->var_to_memory_location.len; i++) {
+    VarToMemoryLocation mem_loc =
+        PG_SLICE_AT(reg_alloc->var_to_memory_location, i);
+
+    if (MEMORY_LOCATION_KIND_REGISTER != mem_loc.location.kind) {
+      continue;
+    }
+
+    IrVarLifetime *lifetime =
+        ir_find_var_lifetime_by_var_id(var_lifetimes, mem_loc.var.id);
+    PG_ASSERT(lifetime);
+
+    if (ir_id.value > lifetime->end.value) {
+      amd64_remove_var_to_memory_location_by_var(
+          &reg_alloc->var_to_memory_location, mem_loc.var);
+
+      printf("[D001] [%u] expire: ", ir_id.value);
+      amd64_print_register(mem_loc.location.reg);
+      printf(" ");
+      ir_print_var(mem_loc.var);
+      printf("\n");
+    }
+  }
+}
+
 static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
                             Amd64RegisterAllocator *reg_alloc,
                             IrVarLifetimeDyn var_lifetimes,
                             PgAllocator *allocator) {
+  amd64_expire_vars_if_lifetime_end_reached(reg_alloc, var_lifetimes, ir.id);
   if (ir.tombstone) {
     return;
   }

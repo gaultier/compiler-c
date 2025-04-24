@@ -137,10 +137,9 @@ static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn var_lifetimes,
 
   // Variable pointed to needs to live at least as long as the pointer to it.
   if (lifetime_var->ref.id.value != 0) {
-    IrVarLifetime *lifetime_var_ref =
-        ir_find_var_lifetime_by_var_id(var_lifetimes, lifetime_var->ref.id);
-    PG_ASSERT(lifetime_var_ref);
-    lifetime_var_ref->end = ir_id;
+    ir_var_extend_lifetime_on_var_use(var_lifetimes, lifetime_var->ref, ir_id);
+    // FIXME: If there are multiple aliases to the same pointer, all aliases
+    // should have their lifetime extended to this point!
   }
 }
 
@@ -273,17 +272,23 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ir.var.identifier = node.identifier;
 
     *PG_DYN_PUSH(&ir.operands, allocator) = rhs;
+    IrVarLifetime *rhs_lifetime = nullptr;
     if (IR_VALUE_KIND_VAR == rhs.kind) {
       ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, rhs.var, ir.id);
+      rhs_lifetime =
+          ir_find_var_lifetime_by_var_id(emitter->var_lifetimes, rhs.var.id);
+      PG_ASSERT(rhs_lifetime);
     }
 
     *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
 
-    *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
+    IrVarLifetime lifetime = {
         .var = ir.var,
         .start = ir.id,
         .end = ir.id,
+        .ref = rhs_lifetime ? rhs_lifetime->var : (IrVar){0},
     };
+    *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = lifetime;
 
     return (IrValue){.kind = IR_VALUE_KIND_VAR, .var = ir.var};
   }
@@ -651,6 +656,25 @@ static void ir_print_value(IrValue value) {
   }
 }
 
+static void ir_emitter_print_var_lifetime(u64 i, IrVarLifetime var_lifetime) {
+  if (var_lifetime.tombstone) {
+    printf("\x1B[9m"); // Strikethrough.
+  }
+
+  printf("[%lu] ", i);
+  ir_print_var(var_lifetime.var);
+  printf(" lifetime: [%u:%u]", var_lifetime.start.value,
+         var_lifetime.end.value);
+  if (var_lifetime.ref.id.value) {
+    printf(" ref=%u", var_lifetime.ref.id.value);
+  }
+
+  printf("\n");
+  if (var_lifetime.tombstone) {
+    printf("\x1B[0m"); // Strikethrough.
+  }
+}
+
 static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   Ir ir = PG_SLICE_AT(emitter.irs, i);
 
@@ -677,8 +701,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
     PG_ASSERT(var_lifetime);
-    printf(" // lifetime: [%u:%u]\n", var_lifetime->start.value,
-           var_lifetime->end.value);
+    printf(" // ");
+    ir_emitter_print_var_lifetime(i, *var_lifetime);
   } break;
   case IR_KIND_LOAD: {
     PG_ASSERT(1 == ir.operands.len);
@@ -692,8 +716,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
     PG_ASSERT(var_lifetime);
-    printf(" // lifetime: [%u:%u]\n", var_lifetime->start.value,
-           var_lifetime->end.value);
+    printf(" // ");
+    ir_emitter_print_var_lifetime(i, *var_lifetime);
   } break;
   case IR_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir.operands.len);
@@ -705,9 +729,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
 
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
-    PG_ASSERT(var_lifetime);
-    printf(" // lifetime: [%u:%u]\n", var_lifetime->start.value,
-           var_lifetime->end.value);
+    printf(" // ");
+    ir_emitter_print_var_lifetime(i, *var_lifetime);
   } break;
   case IR_KIND_SYSCALL: {
     ir_print_var(ir.var);
@@ -728,8 +751,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
       IrVarLifetime *var_lifetime =
           ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ir.var.id);
       PG_ASSERT(var_lifetime);
-      printf("// lifetime: [%u:%u]", var_lifetime->start.value,
-             var_lifetime->end.value);
+      printf(" // ");
+      ir_emitter_print_var_lifetime(i, *var_lifetime);
     }
     printf("\n");
   } break;
@@ -783,17 +806,6 @@ static void ir_emitter_print_irs(IrEmitter emitter) {
 static void ir_emitter_print_var_lifetimes(IrEmitter emitter) {
   for (u64 i = 0; i < emitter.var_lifetimes.len; i++) {
     IrVarLifetime var_lifetime = PG_SLICE_AT(emitter.var_lifetimes, i);
-    if (var_lifetime.tombstone) {
-      printf("\x1B[9m"); // Strikethrough.
-    }
-
-    printf("[%lu] ", i);
-    ir_print_var(var_lifetime.var);
-    printf(" lifetime: [%u:%u]\n", var_lifetime.start.value,
-           var_lifetime.end.value);
-
-    if (var_lifetime.tombstone) {
-      printf("\x1B[0m"); // Strikethrough.
-    }
+    ir_emitter_print_var_lifetime(i, var_lifetime);
   }
 }
