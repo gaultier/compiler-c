@@ -1233,6 +1233,64 @@ amd64_allocate_memory_location_for_var(Amd64RegisterAllocator *reg_alloc,
   return mem_loc;
 }
 
+static void amd64_store_immediate_into_register(
+    Amd64RegisterAllocator *reg_alloc, Register dst, u64 val, Origin origin,
+    Amd64InstructionDyn *instructions, PgAllocator *allocator) {
+  VarToMemoryLocation *var_to_mem_loc_by_reg =
+      amd64_find_var_to_memory_location_by_register(
+          reg_alloc->var_to_memory_location, dst);
+
+  if (var_to_mem_loc_by_reg) { // Target register is occupied by a different
+                               // variable.
+    // Move things around to free the target register.
+
+    // FIXME: allocate a memory location (register or stack).
+    MemoryLocation mem_loc = amd64_allocate_memory_location_for_var(
+        reg_alloc, var_to_mem_loc_by_reg->var, allocator);
+
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .lhs = amd64_memory_location_to_operand(mem_loc),
+        .rhs =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                .reg = dst,
+            },
+        .origin = {.synthetic = true},
+    };
+
+    amd64_upsert_var_to_memory_location_by_var(
+        &reg_alloc->var_to_memory_location, var_to_mem_loc_by_reg->var, mem_loc,
+        allocator);
+    PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
+                 reg_alloc->var_to_memory_location, allocator);
+
+    *PG_DYN_PUSH(instructions, allocator) = instruction;
+  }
+  // `dst` register is free.
+  PG_ASSERT(nullptr == amd64_find_var_to_memory_location_by_register(
+                           reg_alloc->var_to_memory_location, dst));
+
+  Amd64Instruction instruction = {
+      .kind = AMD64_INSTRUCTION_KIND_MOV,
+      .lhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .reg = dst,
+          },
+      .rhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+              .immediate = val,
+          },
+      .origin = origin,
+  };
+  // TODO: Should we remember what immediate is in the register?
+  PG_DYN_CLONE(&instruction.var_to_memory_location_frozen,
+               reg_alloc->var_to_memory_location, allocator);
+  *PG_DYN_PUSH(instructions, allocator) = instruction;
+}
+
 static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
                                           Register dst, IrValue val,
                                           Origin origin,
@@ -1443,8 +1501,15 @@ static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
     for (u64 j = 1; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
       Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, j);
-      amd64_store_var_into_register(reg_alloc, dst, val, ir.origin,
-                                    instructions, allocator);
+      if (IR_VALUE_KIND_VAR == val.kind) {
+        amd64_store_var_into_register(reg_alloc, dst, val, ir.origin,
+                                      instructions, allocator);
+      } else if (IR_VALUE_KIND_U64 == val.kind) {
+        amd64_store_immediate_into_register(reg_alloc, dst, val.n64, ir.origin,
+                                            instructions, allocator);
+      } else {
+        PG_ASSERT(0);
+      }
     }
 
     Amd64Instruction instruction = {
