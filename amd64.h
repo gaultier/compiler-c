@@ -377,9 +377,6 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
 
 [[maybe_unused]]
 static void amd64_print_section(Amd64Section section) {
-  printf("BITS 64\n");
-  printf("CPU X64\n");
-
   if (AMD64_SECTION_FLAG_GLOBAL & section.flags) {
     printf("global ");
     printf("%.*s", (i32)section.name.len, section.name.data);
@@ -1084,7 +1081,7 @@ amd64_ir_value_to_operand(IrValue val,
         .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
         .effective_address =
             {
-                .displacement = 0, // FIXME
+                .displacement = 0, // Backpatched.
             },
     };
   }
