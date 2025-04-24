@@ -461,8 +461,11 @@ static void irs_recompute_var_lifetimes(IrDyn irs, IrVarLifetimeDyn lifetimes) {
   }
 }
 
-static void irs_optimize_remove_unused_vars(IrDyn *irs,
+[[nodiscard]]
+static bool irs_optimize_remove_unused_vars(IrDyn *irs,
                                             IrVarLifetimeDyn *var_lifetimes) {
+  bool changed = false;
+
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
     if (ir->tombstone) {
@@ -495,12 +498,17 @@ static void irs_optimize_remove_unused_vars(IrDyn *irs,
     }
 
     ir->tombstone = true;
+    changed = true;
   }
+  return changed;
 }
 
 // Simplify: `x1 := 1; x2 := x1; x3 := x2 + x2` => `x1 := 1; x3 := x1 + x1`.
-static void irs_optimize_remove_trivial_vars(IrDyn *irs,
+[[nodiscard]]
+static bool irs_optimize_remove_trivial_vars(IrDyn *irs,
                                              IrVarLifetimeDyn *var_lifetimes) {
+  bool changed = false;
+
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
     if (ir->tombstone) {
@@ -551,13 +559,17 @@ static void irs_optimize_remove_trivial_vars(IrDyn *irs,
         ir_find_var_lifetime_by_var_id(*var_lifetimes, ir->var.id);
     PG_ASSERT(!lifetime->tombstone);
     lifetime->tombstone = true;
+    changed = true;
   }
+  return changed;
 }
 
 // Replace: `x1 := 1; x2 := 2; x3:= x2 + x1` => `x2 := 2; x3 := x2 + 1`.
-static void
+[[nodiscard]]
+static bool
 irs_optimize_add_rhs_when_immediate(IrDyn *irs,
                                     IrVarLifetimeDyn *var_lifetimes) {
+  bool changed = false;
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
     if (ir->tombstone) {
@@ -609,10 +621,14 @@ irs_optimize_add_rhs_when_immediate(IrDyn *irs,
         ir_find_var_lifetime_by_var_id(*var_lifetimes, rhs_ir->var.id);
     PG_ASSERT(!lifetime->tombstone);
     lifetime->tombstone = true;
+    changed = true;
   }
+  return changed;
 }
 
-static void irs_optimize_fold_constants(IrDyn *irs) {
+[[nodiscard]]
+static bool irs_optimize_fold_constants(IrDyn *irs) {
+  bool changed = false;
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
     if (ir->tombstone) {
@@ -639,29 +655,38 @@ static void irs_optimize_fold_constants(IrDyn *irs) {
         .n64 = lhs->n64 + rhs->n64,
     };
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ir->operands) = val;
+    changed = true;
   }
+  return changed;
 }
 
 static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
-  // TODO: Loop until a fixed point (or a limit) is reached.
-  // TODO: Recompute var lifetimes after each step?
+  bool changed = false;
 
-  irs_optimize_remove_unused_vars(irs, var_lifetimes);
-  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+  u64 optimization_rounds = 0;
+  do {
+    changed = false;
+    changed |= irs_optimize_remove_unused_vars(irs, var_lifetimes);
+    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
 
-  irs_optimize_remove_trivial_vars(irs, var_lifetimes);
-  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    changed |= irs_optimize_remove_trivial_vars(irs, var_lifetimes);
+    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
 
-  irs_optimize_add_rhs_when_immediate(irs, var_lifetimes);
-  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    changed |= irs_optimize_add_rhs_when_immediate(irs, var_lifetimes);
+    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
 
-  irs_optimize_fold_constants(irs);
-  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    changed |= irs_optimize_fold_constants(irs);
+    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+
+    optimization_rounds += 1;
+  } while (changed);
 
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
   // TODO: Remove empty labels.
   // TODO: Simplify syscall IR: replace vars by immediates.
+
+  printf("[D002] %lu\n", optimization_rounds);
 }
 
 static void ir_print_var(IrVar var) {
