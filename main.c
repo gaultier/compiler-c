@@ -80,8 +80,7 @@ int main(int argc, char *argv[]) {
   ir_emitter_print_var_lifetimes(ir_emitter);
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
 
-  Amd64RegisterAllocator reg_alloc = amd64_make_register_allocator(allocator);
-
+  Amd64RegisterAllocator reg_alloc = {0};
   Amd64InstructionDyn instructions = {0};
   amd64_emit_prolog(&instructions, allocator);
   amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc,

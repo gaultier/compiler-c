@@ -190,9 +190,6 @@ typedef struct {
 } Amd64Program;
 
 typedef struct {
-  // TODO: Could remove this and instead track available registers with
-  // `var_to_memory_location` with entries having no variable.
-  RegisterDyn available;
   // Track in which machine register is a var stored currently.
   // Indexed by the var value.
   VarToMemoryLocationDyn var_to_memory_location;
@@ -965,23 +962,6 @@ static VarToMemoryLocation *amd64_find_var_to_memory_location_by_var(
   return var_to_mem_loc;
 }
 
-[[nodiscard]]
-static VarToMemoryLocation *amd64_find_var_to_memory_location_by_register(
-    VarToMemoryLocationDyn var_to_memory_location, Register reg) {
-  VarToMemoryLocation *var_to_mem_loc = nullptr;
-
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation *elem = PG_SLICE_AT_PTR(&var_to_memory_location, i);
-    if (MEMORY_LOCATION_KIND_REGISTER == elem->location.kind &&
-        elem->location.reg.value == reg.value) {
-      var_to_mem_loc = elem;
-      break;
-    }
-  }
-
-  return var_to_mem_loc;
-}
-
 static void amd64_upsert_var_to_memory_location_by_var(
     VarToMemoryLocationDyn *var_to_memory_location, IrVar var,
     MemoryLocation mem_loc, PgAllocator *allocator) {
@@ -1090,27 +1070,49 @@ amd64_ir_value_to_operand(IrValue val,
   }
 }
 
-[[nodiscard]] static Amd64RegisterAllocator
-amd64_make_register_allocator(PgAllocator *allocator) {
-  Amd64RegisterAllocator reg_alloc = {0};
-  PG_DYN_ENSURE_CAP(&reg_alloc.available, 16, allocator);
+[[nodiscard]]
+static VarToMemoryLocation *amd64_find_var_to_memory_location_by_register(
+    VarToMemoryLocationDyn var_to_memory_location, Register reg) {
+  VarToMemoryLocation *var_to_mem_loc = nullptr;
 
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rax;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rbx;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rcx;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rdx;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rdi;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_rsi;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r8;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r9;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r10;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r11;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r12;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r13;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r14;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc.available) = amd64_r15;
+  for (u64 i = 0; i < var_to_memory_location.len; i++) {
+    VarToMemoryLocation *elem = PG_SLICE_AT_PTR(&var_to_memory_location, i);
+    if (MEMORY_LOCATION_KIND_REGISTER == elem->location.kind &&
+        elem->location.reg.value == reg.value) {
+      var_to_mem_loc = elem;
+      break;
+    }
+  }
 
-  return reg_alloc;
+  return var_to_mem_loc;
+}
+
+[[nodiscard]] static Register
+amd64_get_free_register(Amd64RegisterAllocator *reg_alloc) {
+  Register amd64_all_grp_registers[] = {
+      amd64_rax, amd64_rbx, amd64_rcx, amd64_rdx, amd64_rdi,
+      amd64_rsi, amd64_r8,  amd64_r9,  amd64_r10, amd64_r11,
+      amd64_r12, amd64_r13, amd64_r14, amd64_r15,
+  };
+
+  RegisterSlice amd64_all_grp_registers_slice = {
+      .data = (Register *)amd64_all_grp_registers,
+      .len = PG_STATIC_ARRAY_LEN(amd64_all_grp_registers),
+  };
+
+  for (u64 i = 0; i < amd64_all_grp_registers_slice.len;) {
+    Register reg = PG_SLICE_AT(amd64_all_grp_registers_slice, i);
+    if (amd64_find_var_to_memory_location_by_register(
+            reg_alloc->var_to_memory_location, reg)) {
+      PG_DYN_SWAP_REMOVE(&amd64_all_grp_registers_slice, i);
+      continue;
+    }
+    i++;
+  }
+
+  return amd64_all_grp_registers_slice.len > 0
+             ? PG_SLICE_AT(amd64_all_grp_registers_slice, 0)
+             : (Register){0};
 }
 
 static i32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
@@ -1158,18 +1160,16 @@ static Register amd64_create_register_for_var(Amd64RegisterAllocator *reg_alloc,
                                               Amd64InstructionDyn *instructions,
                                               PgAllocator *allocator) {
   // Easy path: a register is free.
-  if (reg_alloc->available.len > 0) {
-    Register reg = PG_SLICE_AT(reg_alloc->available, 0);
-    PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
-
+  Register reg_free = amd64_get_free_register(reg_alloc);
+  if (reg_free.value) {
     MemoryLocation mem_loc = {
         .kind = MEMORY_LOCATION_KIND_REGISTER,
-        .reg = reg,
+        .reg = reg_free,
     };
     amd64_upsert_var_to_memory_location_by_var(
         &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
 
-    return reg;
+    return reg_free;
   }
 
   // Need to first free a register by spilling it to the stack.
@@ -1186,7 +1186,6 @@ static Register amd64_create_register_for_var(Amd64RegisterAllocator *reg_alloc,
       reg_alloc, size, var, var_mem_loc_old->location, instructions, allocator);
   var_mem_loc_old->location = mem_loc_new;
 
-  *PG_DYN_PUSH(&reg_alloc->available, allocator) = reg;
   return reg;
 }
 
@@ -1211,12 +1210,12 @@ static MemoryLocation
 amd64_allocate_memory_location_for_var(Amd64RegisterAllocator *reg_alloc,
                                        IrVar var, PgAllocator *allocator) {
   // Register.
-  if (reg_alloc->available.len > 0) {
-    Register reg = PG_SLICE_AT(reg_alloc->available, 0);
-    PG_DYN_SWAP_REMOVE(&reg_alloc->available, 0);
-
-    MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER,
-                              .reg = reg};
+  Register reg_free = amd64_get_free_register(reg_alloc);
+  if (reg_free.value) {
+    MemoryLocation mem_loc = {
+        .kind = MEMORY_LOCATION_KIND_REGISTER,
+        .reg = reg_free,
+    };
     amd64_upsert_var_to_memory_location_by_var(
         &reg_alloc->var_to_memory_location, var, mem_loc, allocator);
 
@@ -1283,21 +1282,10 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
                  reg_alloc->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(instructions, allocator) = instruction;
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&reg_alloc->available) = dst;
   }
   // `dst` register is free.
   PG_ASSERT(nullptr == amd64_find_var_to_memory_location_by_register(
                            reg_alloc->var_to_memory_location, dst));
-
-  i64 reg_idx = -1;
-  for (u64 i = 0; i < reg_alloc->available.len; i++) {
-    if (PG_SLICE_AT(reg_alloc->available, i).value == dst.value) {
-      reg_idx = (i64)i;
-      break;
-    }
-  }
-  PG_ASSERT(-1 != reg_idx);
-  PG_DYN_SWAP_REMOVE(&reg_alloc->available, reg_idx);
 
   Amd64Instruction instruction = {
       .kind = AMD64_INSTRUCTION_KIND_MOV,
