@@ -430,6 +430,37 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
   }
 }
 
+static void irs_recompute_var_lifetimes(IrDyn irs, IrVarLifetimeDyn lifetimes) {
+  for (u64 i = 0; i < irs.len; i++) {
+    Ir ir = PG_SLICE_AT(irs, i);
+    switch (ir.kind) {
+    case IR_KIND_ADD:
+    case IR_KIND_LOAD:
+    case IR_KIND_SYSCALL:
+    case IR_KIND_ADDRESS_OF:
+    case IR_KIND_JUMP_IF_FALSE: {
+      for (u64 j = 0; j < ir.operands.len; j++) {
+        IrValue val = PG_SLICE_AT(ir.operands, j);
+        if (IR_VALUE_KIND_VAR != val.kind) {
+          continue;
+        }
+
+        IrVarLifetime *lifetime =
+            ir_find_var_lifetime_by_var_id(lifetimes, val.var.id);
+        PG_ASSERT(lifetime);
+        lifetime->end = ir.id;
+      }
+    } break;
+    case IR_KIND_JUMP:
+    case IR_KIND_LABEL:
+      break;
+    case IR_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+  }
+}
+
 static void irs_optimize_remove_unused_vars(IrDyn *irs,
                                             IrVarLifetimeDyn *var_lifetimes) {
   for (u64 i = 0; i < irs->len; i++) {
@@ -616,9 +647,17 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Recompute var lifetimes after each step?
 
   irs_optimize_remove_unused_vars(irs, var_lifetimes);
+  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+
   irs_optimize_remove_trivial_vars(irs, var_lifetimes);
+  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+
   irs_optimize_add_rhs_when_immediate(irs, var_lifetimes);
+  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+
   irs_optimize_fold_constants(irs);
+  irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
   // TODO: Remove empty labels.
@@ -764,6 +803,7 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
 
     IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);
 
     printf("jump_if_false(");
     ir_print_value(cond);
