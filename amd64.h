@@ -277,6 +277,7 @@ static void amd64_print_var_to_memory_location(
     VarToMemoryLocationDyn var_to_memory_location) {
   for (u64 i = 0; i < var_to_memory_location.len; i++) {
     VarToMemoryLocation var_to_mem_loc = PG_SLICE_AT(var_to_memory_location, i);
+    printf("; ");
     ir_print_var(var_to_mem_loc.var);
     printf(":");
     switch (var_to_mem_loc.location.kind) {
@@ -295,7 +296,7 @@ static void amd64_print_var_to_memory_location(
     default:
       PG_ASSERT(0);
     }
-    printf(" ");
+    printf("\n");
   }
 }
 
@@ -304,6 +305,9 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
     printf("[%" PRIu64 "] ", i);
 
     Amd64Instruction instruction = PG_SLICE_AT(instructions, i);
+    amd64_print_var_to_memory_location(
+        instruction.var_to_memory_location_frozen);
+
     origin_print(instruction.origin);
     printf(": ");
 
@@ -363,10 +367,6 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       printf(", ");
       amd64_print_operand(instruction.rhs);
     }
-
-    printf(" ; ");
-    amd64_print_var_to_memory_location(
-        instruction.var_to_memory_location_frozen);
 
     printf("\n");
   }
