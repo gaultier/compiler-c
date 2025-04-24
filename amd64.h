@@ -1135,12 +1135,19 @@ static i32 amd64_stack_alloc(Amd64RegisterAllocator *reg_alloc, u32 size) {
   return -(i32)reg_alloc->rbp_offset;
 }
 
-// FIXME: First check if the var is already present on the stack.
 static MemoryLocation
 amd64_store_var_on_stack(Amd64RegisterAllocator *reg_alloc, u32 size, IrVar var,
                          MemoryLocation location_src,
                          Amd64InstructionDyn *instructions,
                          PgAllocator *allocator) {
+  VarToMemoryLocation *var_mem_loc = amd64_find_var_to_memory_location_by_var(
+      reg_alloc->var_to_memory_location, var);
+
+  // No-op.
+  if (var_mem_loc && MEMORY_LOCATION_KIND_STACK == var_mem_loc->location.kind) {
+    return var_mem_loc->location;
+  }
+
   i32 rbp_offset = amd64_stack_alloc(reg_alloc, size);
 
   MemoryLocation mem_loc_stack = {
@@ -1236,10 +1243,10 @@ amd64_allocate_memory_location_for_var(Amd64RegisterAllocator *reg_alloc,
   }
 
   // Stack.
-  i32 stack_pointer_offset = amd64_stack_alloc(reg_alloc, 8);
+  i32 stack_offset = amd64_stack_alloc(reg_alloc, 8);
   MemoryLocation mem_loc = {
       .kind = MEMORY_LOCATION_KIND_STACK,
-      .base_pointer_offset = stack_pointer_offset,
+      .base_pointer_offset = stack_offset,
   };
   amd64_upsert_var_to_memory_location_by_var(&reg_alloc->var_to_memory_location,
                                              var, mem_loc, allocator);
@@ -1257,7 +1264,6 @@ static void amd64_store_immediate_into_register(
                                // variable.
     // Move things around to free the target register.
 
-    // FIXME: allocate a memory location (register or stack).
     MemoryLocation mem_loc = amd64_allocate_memory_location_for_var(
         reg_alloc, var_to_mem_loc_by_reg->var, allocator);
 
@@ -1331,7 +1337,6 @@ static void amd64_store_var_into_register(Amd64RegisterAllocator *reg_alloc,
     // Move things around to free the target register.
     PG_ASSERT(var_to_mem_loc_by_var);
 
-    // FIXME: allocate a memory location (register or stack).
     MemoryLocation mem_loc = amd64_allocate_memory_location_for_var(
         reg_alloc, var_to_mem_loc_by_reg->var, allocator);
 
