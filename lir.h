@@ -514,6 +514,8 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
         VirtualRegister reg = lir_make_virtual_register(emitter);
         lir_emit_copy_var_to_register(emitter, rhs_ir_val.var, *rhs_mem_loc,
                                       reg, ir.origin, allocator);
+        lir_emit_copy_register_to(emitter, ir.var, reg, *dst_mem_loc, ir.origin,
+                                  allocator);
       }
 
     } break;
