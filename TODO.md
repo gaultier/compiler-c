@@ -9,3 +9,4 @@
 - aarch64 codegen
 - riscv codegen
 - macho format
+- choose target(s) on CLI
