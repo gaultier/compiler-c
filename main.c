@@ -145,14 +145,14 @@ int main(int argc, char *argv[]) {
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
 
   Amd64Emitter amd64_emitter = {0};
-  Amd64InstructionDyn instructions = {0};
-  amd64_emit_prolog(&instructions, allocator);
+  amd64_emit_prolog(&amd64_emitter.instructions, allocator);
   amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice, allocator);
-  amd64_emit_epilog(&instructions, allocator);
+  amd64_emit_epilog(&amd64_emitter.instructions, allocator);
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM ------------\n");
-    amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
+    amd64_print_instructions(
+        PG_DYN_SLICE(Amd64InstructionSlice, amd64_emitter.instructions));
   }
 
   u64 vm_start = 1 << 22;
@@ -170,7 +170,8 @@ int main(int argc, char *argv[]) {
   Amd64Section section_start = {
       .name = PG_S("_start"),
       .flags = AMD64_SECTION_FLAG_GLOBAL,
-      .instructions = PG_DYN_SLICE(Amd64InstructionSlice, instructions),
+      .instructions =
+          PG_DYN_SLICE(Amd64InstructionSlice, amd64_emitter.instructions),
   };
 
   Amd64Program program = {
