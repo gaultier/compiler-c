@@ -10,3 +10,10 @@
 - riscv codegen
 - macho format
 - choose target(s) on CLI
+- lang: loops
+- lang: functions
+- lang: structs
+- lang: arrays
+- lang: types
+- typechecker, pass type information to codegen for sizes
+- lang: strings
