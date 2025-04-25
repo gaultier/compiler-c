@@ -439,6 +439,9 @@ static void irs_recompute_var_lifetimes(IrDyn irs, IrVarLifetimeDyn lifetimes) {
 
   for (u64 i = 0; i < irs.len; i++) {
     Ir ir = PG_SLICE_AT(irs, i);
+    if (ir.tombstone) {
+      continue;
+    }
 
     switch (ir.kind) {
     case IR_KIND_ADD:
@@ -515,11 +518,12 @@ static bool irs_optimize_remove_unused_vars(IrDyn *irs,
   return changed;
 }
 
-// Simplify: `x1 := 1; x2 := x1; x3 := x2 + x2` => `x1 := 1; x3 := x1 + x1`.
+// Simplify: `x1 := 1; x2 := x1` => `x2 := 1`
+// and update subsequent IRs referencing the old var to use the new var.
 [[nodiscard]]
 static bool
-irs_optimize_remove_trivial_aliased_vars(IrDyn *irs,
-                                         IrVarLifetimeDyn *var_lifetimes) {
+irs_optimize_remove_trivially_aliased_vars(IrDyn *irs,
+                                           IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
 
   for (u64 i = 0; i < irs->len; i++) {
@@ -598,7 +602,8 @@ static bool irs_optimize_replace_immediate_vars_by_immediate(
       continue;
     }
 
-    if (!(IR_KIND_LOAD == ir->kind || IR_KIND_ADD == ir->kind)) {
+    if (!(IR_KIND_LOAD == ir->kind || IR_KIND_ADD == ir->kind ||
+          IR_KIND_SYSCALL == ir->kind)) {
       continue;
     }
 
@@ -618,7 +623,9 @@ static bool irs_optimize_replace_immediate_vars_by_immediate(
       IrId var_def_ir_id = lifetime->start;
       Ir *var_def_ir = irs_find_ir_by_id(*irs, var_def_ir_id);
       PG_ASSERT(var_def_ir);
-      PG_ASSERT(IR_KIND_LOAD == var_def_ir->kind);
+      if (IR_KIND_LOAD != var_def_ir->kind) {
+        continue;
+      }
       PG_ASSERT(1 == var_def_ir->operands.len);
       IrValue var_def_val = PG_SLICE_AT(var_def_ir->operands, 0);
       bool is_immediate = IR_VALUE_KIND_U64 == var_def_val.kind;
@@ -678,7 +685,7 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
       irs_recompute_var_lifetimes(*irs, *var_lifetimes);
     }
 
-    changed |= irs_optimize_remove_trivial_aliased_vars(irs, var_lifetimes);
+    changed |= irs_optimize_remove_trivially_aliased_vars(irs, var_lifetimes);
     if (changed) {
       irs_recompute_var_lifetimes(*irs, *var_lifetimes);
     }
