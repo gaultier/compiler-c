@@ -708,6 +708,7 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
 
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
+  // TODO: Simplify `if(false) { <then> } else { <else> }` => `<else>`
   // TODO: Remove empty labels.
 
   printf("[D010] optimization_rounds=%lu\n", optimization_rounds);
