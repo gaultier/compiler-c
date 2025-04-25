@@ -431,8 +431,15 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 }
 
 static void irs_recompute_var_lifetimes(IrDyn irs, IrVarLifetimeDyn lifetimes) {
+  for (u64 i = 0; i < lifetimes.len; i++) {
+    IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
+    lifetime.tombstone = true;
+    lifetime.end = lifetime.start;
+  }
+
   for (u64 i = 0; i < irs.len; i++) {
     Ir ir = PG_SLICE_AT(irs, i);
+
     switch (ir.kind) {
     case IR_KIND_ADD:
     case IR_KIND_LOAD:
@@ -449,6 +456,7 @@ static void irs_recompute_var_lifetimes(IrDyn irs, IrVarLifetimeDyn lifetimes) {
             ir_find_var_lifetime_by_var_id(lifetimes, val.var.id);
         PG_ASSERT(lifetime);
         lifetime->end = ir.id;
+        lifetime->tombstone = false;
       }
     } break;
     case IR_KIND_JUMP:
@@ -505,8 +513,9 @@ static bool irs_optimize_remove_unused_vars(IrDyn *irs,
 
 // Simplify: `x1 := 1; x2 := x1; x3 := x2 + x2` => `x1 := 1; x3 := x1 + x1`.
 [[nodiscard]]
-static bool irs_optimize_remove_trivial_vars(IrDyn *irs,
-                                             IrVarLifetimeDyn *var_lifetimes) {
+static bool
+irs_optimize_remove_trivial_aliased_vars(IrDyn *irs,
+                                         IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
 
   for (u64 i = 0; i < irs->len; i++) {
@@ -564,11 +573,20 @@ static bool irs_optimize_remove_trivial_vars(IrDyn *irs,
   return changed;
 }
 
+[[nodiscard]] static Ir *irs_find_ir_by_id(IrDyn irs, IrId ir_id) {
+  for (u64 i = 0; i < irs.len; i++) {
+    Ir *ir = PG_SLICE_AT_PTR(&irs, i);
+    if (ir->id.value == ir_id.value) {
+      return ir;
+    }
+  }
+  return nullptr;
+}
+
 // Replace: `x1 := 1; x2 := 2; x3:= x2 + x1` => `x2 := 2; x3 := x2 + 1`.
 [[nodiscard]]
-static bool
-irs_optimize_add_rhs_when_immediate(IrDyn *irs,
-                                    IrVarLifetimeDyn *var_lifetimes) {
+static bool irs_optimize_replace_immediate_vars_by_immediate(
+    IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
   for (u64 i = 0; i < irs->len; i++) {
     Ir *ir = PG_SLICE_AT_PTR(irs, i);
@@ -576,52 +594,37 @@ irs_optimize_add_rhs_when_immediate(IrDyn *irs,
       continue;
     }
 
-    if (!(IR_KIND_ADD == ir->kind)) {
+    if (!(IR_KIND_LOAD == ir->kind || IR_KIND_ADD == ir->kind)) {
       continue;
     }
 
-    PG_ASSERT(2 == ir->operands.len);
-
-    IrValue *rhs = PG_SLICE_AT_PTR(&ir->operands, 1);
-
-    if (!(IR_VALUE_KIND_VAR == rhs->kind)) {
-      continue;
-    }
-
-    IrVar rhs_var = rhs->var;
-    PG_ASSERT(rhs_var.id.value != 0);
-
-    Ir *rhs_ir = nullptr;
-    for (u64 j = 0; j < irs->len; j++) {
-      Ir *it = PG_SLICE_AT_PTR(irs, j);
-      if (it->var.id.value == rhs_var.id.value) {
-        rhs_ir = it;
-        break;
+    for (u64 j = 0; j < ir->operands.len; j++) {
+      IrValue *val = PG_SLICE_AT_PTR(&ir->operands, j);
+      if (!(IR_VALUE_KIND_VAR == val->kind)) {
+        continue;
       }
+
+      IrVar var = val->var;
+      PG_ASSERT(var.id.value != 0);
+
+      IrVarLifetime *lifetime =
+          ir_find_var_lifetime_by_var_id(*var_lifetimes, var.id);
+      PG_ASSERT(lifetime);
+
+      IrId var_def_ir_id = lifetime->start;
+      Ir *var_def_ir = irs_find_ir_by_id(*irs, var_def_ir_id);
+      PG_ASSERT(var_def_ir);
+      PG_ASSERT(IR_KIND_LOAD == var_def_ir->kind);
+      PG_ASSERT(1 == var_def_ir->operands.len);
+      IrValue var_def_val = PG_SLICE_AT(var_def_ir->operands, 0);
+      bool is_immediate = IR_VALUE_KIND_U64 == var_def_val.kind;
+      if (!is_immediate) {
+        continue;
+      }
+
+      *val = var_def_val;
+      changed = true;
     }
-    PG_ASSERT(rhs_ir);
-
-    if (!(IR_KIND_LOAD == rhs_ir->kind)) {
-      continue;
-    }
-
-    PG_ASSERT(1 == rhs_ir->operands.len);
-
-    IrValue rhs_ir_op0 = PG_SLICE_AT(rhs_ir->operands, 0);
-    if (!(IR_VALUE_KIND_U64 == rhs_ir_op0.kind)) {
-      continue;
-    }
-
-    *rhs = rhs_ir_op0;
-    rhs_ir->tombstone = true;
-
-    PG_ASSERT(rhs_var.id.value == rhs_ir->var.id.value);
-
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(*var_lifetimes, rhs_ir->var.id);
-    PG_ASSERT(!lifetime->tombstone);
-    lifetime->tombstone = true;
-    changed = true;
   }
   return changed;
 }
@@ -667,16 +670,25 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   do {
     changed = false;
     changed |= irs_optimize_remove_unused_vars(irs, var_lifetimes);
-    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    if (changed) {
+      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    }
 
-    changed |= irs_optimize_remove_trivial_vars(irs, var_lifetimes);
-    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    changed |= irs_optimize_remove_trivial_aliased_vars(irs, var_lifetimes);
+    if (changed) {
+      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    }
 
-    changed |= irs_optimize_add_rhs_when_immediate(irs, var_lifetimes);
-    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    changed |=
+        irs_optimize_replace_immediate_vars_by_immediate(irs, var_lifetimes);
+    if (changed) {
+      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    }
 
     changed |= irs_optimize_fold_constants(irs);
-    irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    if (changed) {
+      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    }
 
     optimization_rounds += 1;
   } while (changed);

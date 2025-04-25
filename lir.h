@@ -695,6 +695,10 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
                         PgAllocator *allocator) {
   lir_memory_location_expire_vars_in_register_at_lifetime_end(emitter, ir.id);
 
+  if (ir.tombstone) {
+    return;
+  }
+
   // TODO(IMPROVEMENT): for now we store all local variables on the stack.
   if (ir.var.id.value) {
     lir_reserve_stack_slot_for_var(emitter, ir.var, allocator);
