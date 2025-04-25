@@ -5,18 +5,61 @@
 #include "lex.h"
 #include "submodules/cstd/lib.c"
 
-int main(int argc, char *argv[]) {
+typedef struct {
+  bool verbose;
+  bool optimize;
+  char *filename;
+} CliOptions;
+
+static void cli_print_help(char *exe) {
+  printf("Usage: %s <in.unicorn> [-O] [-v]\n", exe);
+}
+
+static CliOptions cli_options_parse(int argc, char *argv[]) {
   PG_ASSERT(argc >= 1);
-  if (2 != argc) {
-    fprintf(stderr, "Usage: %s <source file>\n", argv[0]);
-    return 1;
+  char *exe = argv[0];
+  if (argc < 2) {
+    cli_print_help(exe);
+    exit(0);
   }
+
+  CliOptions res = {0};
+
+  i32 c = 0;
+  while ((c = getopt(argc, argv, "Ov") != -1)) {
+    switch (c) {
+    case 'O':
+      res.optimize = true;
+      break;
+    case 'v':
+      res.verbose = true;
+      break;
+    default:
+      fprintf(stderr, "Unknown option %c\n", (char)c);
+      cli_print_help(exe);
+      exit(0);
+    }
+  }
+
+  if (optind > argc) {
+    fprintf(stderr, "Missing filename <in.unicorn>\n");
+    cli_print_help(exe);
+    exit(0);
+  }
+
+  res.filename = argv[optind];
+
+  return res;
+}
+
+int main(int argc, char *argv[]) {
+  CliOptions cli_opts = cli_options_parse(argc, argv);
 
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgString file_name = pg_cstr_to_string(argv[1]);
+  PgString file_name = pg_cstr_to_string(cli_opts.filename);
   PgStringResult file_read_res =
       pg_file_read_full_from_path(file_name, allocator);
   if (file_read_res.err) {
