@@ -881,6 +881,9 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
       AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind) {
     u64 immediate = instruction.rhs.immediate;
     Amd64EffectiveAddress effective_address = instruction.lhs.effective_address;
+    PG_ASSERT(effective_address.base.value == amd64_rbp.value && "todo");
+    PG_ASSERT(0 == effective_address.index.value);
+    PG_ASSERT(0 == effective_address.scale);
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
     if (amd64_is_register_64_bits_only(effective_address.base)) {
@@ -894,10 +897,12 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
     u8 modrm =
-        (0b11 << 6) | (u8)(7 << 3) |
+        (0b10 /* rbp+disp32 */ << 6) | (u8)(7 << 3) |
         (u8)(amd64_encode_register_value(effective_address.base) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
+    pg_byte_buffer_append_u32(sb, (u32)effective_address.displacement,
+                              allocator);
     pg_byte_buffer_append_u32(sb, (u32)immediate, allocator);
     return;
   }
