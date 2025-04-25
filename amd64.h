@@ -1,6 +1,6 @@
 #pragma once
-#include "asm.h"
 #include "ir.h"
+#include "lir.h"
 
 static const Register amd64_rax = {1};
 static const Register amd64_rbx = {2};
@@ -132,12 +132,6 @@ typedef enum {
   AMD64_INSTRUCTION_KIND_JMP,
   AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
 } Amd64InstructionKind;
-
-typedef struct {
-  MemoryLocationDyn locations;
-  IrVar var;
-} VarToMemoryLocation;
-PG_DYN(VarToMemoryLocation) VarToMemoryLocationDyn;
 
 typedef struct {
   Amd64InstructionKind kind;
