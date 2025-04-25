@@ -430,7 +430,13 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
   }
 }
 
-static void lir_print_register(Register reg) { printf("reg%lu", reg.value); }
+static void lir_print_register(Register reg) {
+  if (reg.value > lir_base_stack_pointer.value) {
+    printf("reg%lu", reg.value);
+  } else {
+    printf("rbp");
+  }
+}
 
 static void lir_print_var_to_memory_location(
     VarToMemoryLocationDyn var_to_memory_location) {
@@ -446,9 +452,11 @@ static void lir_print_var_to_memory_location(
         lir_print_register(loc.reg);
         break;
       case MEMORY_LOCATION_KIND_STACK: {
+        printf("[");
         lir_print_register(lir_base_stack_pointer);
         i32 offset = loc.base_pointer_offset;
         printf("%" PRIi32, offset);
+        printf("]");
       } break;
       case MEMORY_LOCATION_KIND_MEMORY:
         printf("%#lx", loc.memory_address);
