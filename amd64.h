@@ -161,6 +161,7 @@ typedef struct {
   VarToMemoryLocationDyn var_to_memory_location;
   u32 rbp_offset;
   u32 rbp_max_offset;
+  Amd64InstructionDyn instructions;
 } Amd64Emitter;
 
 static void amd64_print_register(Register reg) {
@@ -917,821 +918,104 @@ static PgString amd64_encode_program_text(Amd64Program *program,
   return PG_DYN_SLICE(PgString, sb);
 }
 
-[[nodiscard]] static VarToMemoryLocationDyn
-amd64_memory_location_clone(VarToMemoryLocationDyn var_to_memory_location,
-                            PgAllocator *allocator) {
-  VarToMemoryLocationDyn res = {0};
-  if (0 == var_to_memory_location.len) {
-    return res;
-  }
-
-  PG_DYN_ENSURE_CAP(&res, var_to_memory_location.len, allocator);
-  res.len = var_to_memory_location.len;
-
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation var_mem_loc_src =
-        PG_SLICE_AT(var_to_memory_location, i);
-    VarToMemoryLocation *var_mem_loc_dst = PG_SLICE_AT_PTR(&res, i);
-    PG_DYN_ENSURE_CAP(&var_mem_loc_dst->locations,
-                      var_mem_loc_src.locations.len, allocator);
-
-    PG_DYN_CLONE(&var_mem_loc_dst->locations, var_mem_loc_src.locations,
-                 allocator);
-    var_mem_loc_dst->var = var_mem_loc_src.var;
-  }
-  return res;
-}
-
-[[nodiscard]]
-static MemoryLocationDyn *
-amd64_memory_location_find_var(VarToMemoryLocationDyn var_to_memory_location,
-                               IrVar var) {
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation *elem = PG_SLICE_AT_PTR(&var_to_memory_location, i);
-    if (elem->var.id.value == var.id.value) {
-      return &elem->locations;
-    }
-  }
-
-  return nullptr;
-}
-
-[[nodiscard]]
-static MemoryLocation *amd64_memory_location_find_var_on_stack(
-    VarToMemoryLocationDyn var_to_memory_location, IrVar var) {
-  MemoryLocationDyn *locations =
-      amd64_memory_location_find_var(var_to_memory_location, var);
-
-  if (!locations) {
-    return nullptr;
-  }
-
-  for (u64 i = 0; i < locations->len; i++) {
-    MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
-    if (MEMORY_LOCATION_KIND_STACK == loc->kind) {
-      return loc;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]]
-static MemoryLocation *amd64_memory_location_find_var_in_register_any(
-    VarToMemoryLocationDyn var_to_memory_location, IrVar var) {
-  MemoryLocationDyn *locations =
-      amd64_memory_location_find_var(var_to_memory_location, var);
-  if (!locations) {
-    return nullptr;
-  }
-
-  for (u64 i = 0; i < locations->len; i++) {
-    MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
-    if (MEMORY_LOCATION_KIND_REGISTER == loc->kind) {
-      return loc;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]]
-static VarToMemoryLocation *amd64_memory_location_find_register(
-    VarToMemoryLocationDyn var_to_memory_location, Register reg) {
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation *var_mem_loc =
-        PG_SLICE_AT_PTR(&var_to_memory_location, i);
-
-    for (u64 j = 0; j < var_mem_loc->locations.len; j++) {
-      MemoryLocation loc = PG_SLICE_AT(var_mem_loc->locations, j);
-      if (MEMORY_LOCATION_KIND_REGISTER == loc.kind &&
-          reg.value == loc.reg.value) {
-        return var_mem_loc;
-      }
-    }
-  }
-  return nullptr;
-}
-
-static void
-amd64_memory_location_add(VarToMemoryLocationDyn *var_to_memory_location,
-                          IrVar var, MemoryLocation mem_loc,
-                          PgAllocator *allocator) {
-  MemoryLocationDyn *locations =
-      amd64_memory_location_find_var(*var_to_memory_location, var);
-
-  if (!locations) {
-    *PG_DYN_PUSH(var_to_memory_location, allocator) =
-        (VarToMemoryLocation){.var = var};
-    locations = &PG_SLICE_LAST_PTR(var_to_memory_location)->locations;
-  }
-
-  PG_ASSERT(locations);
-
-  *PG_DYN_PUSH(locations, allocator) = mem_loc;
-}
-
-static void amd64_memory_location_record_var_copy(
-    VarToMemoryLocationDyn *var_to_memory_location, IrVar var,
-    MemoryLocation loc_new, PgAllocator *allocator) {
-  MemoryLocationDyn *locations =
-      amd64_memory_location_find_var(*var_to_memory_location, var);
-  PG_ASSERT(locations);
-
-  for (u64 i = 0; i < locations->len; i++) {
-    MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
-    if (lir_memory_location_eq(*loc, loc_new)) {
-      *loc = loc_new;
-      return;
-    }
-  }
-
-  *PG_DYN_PUSH(locations, allocator) = loc_new;
-}
-
-static MemoryLocation *amd64_memory_location_find_var_best(
-    VarToMemoryLocationDyn var_to_memory_location, IrVar var) {
-  MemoryLocation *loc = amd64_memory_location_find_var_in_register_any(
-      var_to_memory_location, var);
-  if (loc) {
-    return loc;
-  }
-
-  loc = amd64_memory_location_find_var_on_stack(var_to_memory_location, var);
-  if (loc) {
-    return loc;
-  }
-
-  // TODO: global mem.
-
-  return nullptr;
-}
-
-static void amd64_memory_location_empty_register(
-    VarToMemoryLocationDyn *var_to_memory_location, Register reg) {
-  VarToMemoryLocation *var_mem_loc =
-      amd64_memory_location_find_register(*var_to_memory_location, reg);
-  if (var_mem_loc) {
-    u64 idx = (u64)(var_mem_loc - var_to_memory_location->data);
-    PG_DYN_SWAP_REMOVE(var_to_memory_location, idx);
-  }
-}
-
-[[nodiscard]]
-static LirOperand amd64_memory_location_to_operand(MemoryLocation mem_loc) {
-  LirOperand operand = {0};
-
-  if (MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind) {
-    operand.kind = LIR_OPERAND_KIND_REGISTER;
-    operand.reg = mem_loc.reg;
-  } else if (MEMORY_LOCATION_KIND_STACK == mem_loc.kind) {
-    operand.kind = LIR_OPERAND_KIND_EFFECTIVE_ADDRESS;
-    operand.effective_address.base = amd64_rbp;
-    operand.effective_address.displacement = (i32)mem_loc.base_pointer_offset;
-  } else {
-    PG_ASSERT(0);
-  }
-
-  return operand;
-}
-
-[[nodiscard]]
-static MemoryLocation amd64_operand_to_memory_location(LirOperand operand) {
-  MemoryLocation mem_loc = {0};
-
-  if (LIR_OPERAND_KIND_REGISTER == operand.kind) {
-    mem_loc.kind = MEMORY_LOCATION_KIND_REGISTER;
-    mem_loc.reg = operand.reg;
-  } else if (LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == operand.kind &&
-             operand.reg.value == amd64_rbp.value) {
-    mem_loc.kind = MEMORY_LOCATION_KIND_STACK;
-    mem_loc.base_pointer_offset = operand.effective_address.displacement;
-  } else {
-    PG_ASSERT(0);
-  }
-
-  return mem_loc;
-}
-
-[[nodiscard]] static Register amd64_get_free_register(Amd64Emitter *emitter) {
-  Register amd64_all_grp_registers[] = {
-      amd64_rax, amd64_rbx, amd64_rcx, amd64_rdx, amd64_rdi,
-      amd64_rsi, amd64_r8,  amd64_r9,  amd64_r10, amd64_r11,
-      amd64_r12, amd64_r13, amd64_r14, amd64_r15,
-  };
-
-  RegisterSlice amd64_all_grp_registers_slice = {
-      .data = (Register *)amd64_all_grp_registers,
-      .len = PG_STATIC_ARRAY_LEN(amd64_all_grp_registers),
-  };
-
-  for (u64 i = 0; i < amd64_all_grp_registers_slice.len;) {
-    Register reg = PG_SLICE_AT(amd64_all_grp_registers_slice, i);
-    if (amd64_memory_location_find_register(emitter->var_to_memory_location,
-                                            reg)) {
-      PG_DYN_SWAP_REMOVE(&amd64_all_grp_registers_slice, i);
-      continue;
-    }
-    i++;
-  }
-
-  return amd64_all_grp_registers_slice.len > 0
-             ? PG_SLICE_AT(amd64_all_grp_registers_slice, 0)
-             : (Register){0};
-}
-
-static i32 amd64_stack_alloc(Amd64Emitter *emitter, u32 size) {
-  emitter->rbp_offset += size;
-  emitter->rbp_max_offset =
-      PG_MAX(emitter->rbp_max_offset, emitter->rbp_offset);
-
-  return -(i32)emitter->rbp_offset;
-}
-
-static MemoryLocation amd64_store_var_on_stack(
-    Amd64Emitter *emitter, u32 size, IrVar var, MemoryLocation location_src,
-    Amd64InstructionDyn *instructions, PgAllocator *allocator) {
-  MemoryLocation *mem_loc = amd64_memory_location_find_var_on_stack(
-      emitter->var_to_memory_location, var);
-
-  // No-op.
-  if (mem_loc) {
-    return *mem_loc;
-  }
-
-  i32 rbp_offset = amd64_stack_alloc(emitter, size);
-
-  MemoryLocation mem_loc_stack = {
-      .kind = MEMORY_LOCATION_KIND_STACK,
-      .base_pointer_offset = rbp_offset,
-  };
-  amd64_memory_location_add(&emitter->var_to_memory_location, var,
-                            mem_loc_stack, allocator);
-
-  Amd64Instruction instruction = {
-      .kind = AMD64_INSTRUCTION_KIND_MOV,
-      .origin = {.synthetic = true},
-      .lhs = amd64_memory_location_to_operand(mem_loc_stack),
-      .rhs = amd64_memory_location_to_operand(location_src),
-  };
-  instruction.var_to_memory_location_frozen =
-      amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-
-  *PG_DYN_PUSH(instructions, allocator) = instruction;
-
-  amd64_memory_location_record_var_copy(&emitter->var_to_memory_location, var,
-                                        mem_loc_stack, allocator);
-
-  return mem_loc_stack;
-}
-
-[[nodiscard]]
-static Register amd64_create_register_for_var(Amd64Emitter *emitter, IrVar var,
-                                              u32 size,
-                                              Amd64InstructionDyn *instructions,
-                                              PgAllocator *allocator) {
-  // Easy path: a register is free.
-  Register reg_free = amd64_get_free_register(emitter);
-  if (reg_free.value) {
-    return reg_free;
-  }
-
-  // Need to first free a register by spilling it to the stack.
-
-  Register reg = amd64_r11; // TODO: Improve.
-  VarToMemoryLocation *var_mem_loc_old =
-      amd64_memory_location_find_register(emitter->var_to_memory_location, reg);
-  PG_ASSERT(var_mem_loc_old);
-  PG_ASSERT(var_mem_loc_old->locations.len > 0);
-
-  MemoryLocation *mem_loc_old = nullptr;
-  for (u64 i = 0; i < var_mem_loc_old->locations.len; i++) {
-    MemoryLocation *it = PG_SLICE_AT_PTR(&var_mem_loc_old->locations, i);
-    if (MEMORY_LOCATION_KIND_REGISTER == it->kind &&
-        it->reg.value == reg.value) {
-      mem_loc_old = it;
-      break;
-    }
-  }
-  PG_ASSERT(mem_loc_old);
-
-  (void)amd64_store_var_on_stack(emitter, size, var, *mem_loc_old, instructions,
-                                 allocator);
-
-  return reg;
-}
-
-[[nodiscard]]
-static Register amd64_find_or_create_register_for_var(
-    Amd64Emitter *emitter, IrVar var, u32 size,
-    Amd64InstructionDyn *instructions, PgAllocator *allocator) {
-  MemoryLocationDyn *mem_locs =
-      amd64_memory_location_find_var(emitter->var_to_memory_location, var);
-  PG_ASSERT(mem_locs);
-
-  for (u64 i = 0; i < mem_locs->len; i++) {
-    MemoryLocation *it = PG_SLICE_AT_PTR(mem_locs, i);
-    // Easy path: var already in register.
-    if (MEMORY_LOCATION_KIND_REGISTER == it->kind) {
-      return it->reg;
-    }
-  }
-
-  return amd64_create_register_for_var(emitter, var, size, instructions,
-                                       allocator);
-}
-
-[[nodiscard]]
-static MemoryLocation
-amd64_make_any_memory_location_for_var(Amd64Emitter *emitter, IrVar var) {
-  // Register.
-  Register reg_free = amd64_get_free_register(emitter);
-  if (reg_free.value) {
-    MemoryLocation mem_loc = {
-        .kind = MEMORY_LOCATION_KIND_REGISTER,
-        .reg = reg_free,
-    };
-    return mem_loc;
-  }
-
-  // Stack.
-  MemoryLocation *mem_loc_stack = amd64_memory_location_find_var_on_stack(
-      emitter->var_to_memory_location, var);
-  // No-op.
-  if (mem_loc_stack) {
-    return *mem_loc_stack;
-  }
-
-  i32 stack_offset = amd64_stack_alloc(emitter, 8);
-  MemoryLocation mem_loc = {
-      .kind = MEMORY_LOCATION_KIND_STACK,
-      .base_pointer_offset = stack_offset,
-  };
-  return mem_loc;
-}
-
-static void amd64_store_immediate_into_register(
-    Amd64Emitter *emitter, Register dst, u64 val, Origin origin,
-    Amd64InstructionDyn *instructions, PgAllocator *allocator) {
-  VarToMemoryLocation *var_to_mem_loc_by_reg =
-      amd64_memory_location_find_register(emitter->var_to_memory_location, dst);
-
-  if (var_to_mem_loc_by_reg) { // Target register is occupied by a different
-                               // variable.
-    // Move things around to free the target register.
-
-    MemoryLocation mem_loc = amd64_make_any_memory_location_for_var(
-        emitter, var_to_mem_loc_by_reg->var);
-
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs = amd64_memory_location_to_operand(mem_loc),
-        .rhs =
-            (LirOperand){
-                .kind = LIR_OPERAND_KIND_REGISTER,
-                .reg = dst,
-            },
-        .origin = {.synthetic = true},
-    };
-
-    amd64_memory_location_record_var_copy(&emitter->var_to_memory_location,
-                                          var_to_mem_loc_by_reg->var, mem_loc,
-                                          allocator);
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
-  }
-
-  Amd64Instruction instruction = {
-      .kind = AMD64_INSTRUCTION_KIND_MOV,
-      .lhs =
-          (LirOperand){
-              .kind = LIR_OPERAND_KIND_REGISTER,
-              .reg = dst,
-          },
-      .rhs =
-          (LirOperand){
-              .kind = LIR_OPERAND_KIND_IMMEDIATE,
-              .immediate = val,
-          },
-      .origin = origin,
-  };
-  // TODO: Should we remember what immediate is in the register?
-  instruction.var_to_memory_location_frozen =
-      amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-  *PG_DYN_PUSH(instructions, allocator) = instruction;
-
-  amd64_memory_location_empty_register(&emitter->var_to_memory_location, dst);
-}
-
-static void amd64_store_var_into_register(Amd64Emitter *emitter, Register dst,
-                                          IrValue val, Origin origin,
-                                          Amd64InstructionDyn *instructions,
-                                          PgAllocator *allocator) {
-
-  PG_ASSERT(IR_VALUE_KIND_VAR == val.kind);
-  VarToMemoryLocation *var_to_mem_loc =
-      amd64_memory_location_find_register(emitter->var_to_memory_location, dst);
-
-  // Nothing to do, the var is already located in the right register.
-  if (var_to_mem_loc && var_to_mem_loc->var.id.value == val.var.id.value) {
-    return;
-  }
-
-  if (var_to_mem_loc) { // Target register is occupied by a different
-                        // variable.
-    // Move things around to free the target register.
-    MemoryLocation mem_loc =
-        amd64_make_any_memory_location_for_var(emitter, var_to_mem_loc->var);
-
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs = amd64_memory_location_to_operand(mem_loc),
-        .rhs =
-            (LirOperand){
-                .kind = LIR_OPERAND_KIND_REGISTER,
-                .reg = dst,
-            },
-        .origin = {.synthetic = true},
-    };
-
-    amd64_memory_location_record_var_copy(&emitter->var_to_memory_location,
-                                          var_to_mem_loc->var, mem_loc,
-                                          allocator);
-
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
-  }
-
-  Amd64Instruction instruction = {
-      .kind = AMD64_INSTRUCTION_KIND_MOV,
-      .lhs =
-          (LirOperand){
-              .kind = LIR_OPERAND_KIND_REGISTER,
-              .reg = dst,
-          },
-      .rhs =
-          amd64_memory_location_to_operand(*amd64_memory_location_find_var_best(
-              emitter->var_to_memory_location, val.var)),
-      .origin = origin,
-  };
-  // Finally the var is in the `dst` register.
-  MemoryLocation mem_loc = {.kind = MEMORY_LOCATION_KIND_REGISTER, .reg = dst};
-  if (IR_VALUE_KIND_VAR == val.kind) {
-    amd64_memory_location_record_var_copy(&emitter->var_to_memory_location,
-                                          val.var, mem_loc, allocator);
-  }
-  instruction.var_to_memory_location_frozen =
-      amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-  *PG_DYN_PUSH(instructions, allocator) = instruction;
-}
-
-// Convert:
-// `<op> [rbp+8], [rbp+16]`
-// to (TODO) `mov rax, [rbp+8]; <op> rax, [rbp+16]`.
-// or `mov rax, [rbp+16]; <op> [rbp+16], rax`.
-static void
-amd64_insert_mem_to_register_load_if_both_operands_are_effective_address(
-    Amd64InstructionDyn *instructions, LirOperand *lhs, LirOperand *rhs,
-    IrValue rhs_val, Amd64Emitter *emitter, PgAllocator *allocator) {
-  if (!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs->kind &&
-        LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs->kind)) {
-    // No-op.
-    return;
-  }
-
-  PG_ASSERT(IR_VALUE_KIND_VAR == rhs_val.kind);
-
-  // TODO: lhs.
-  IrVar var = rhs_val.var;
-
-  Register reg = amd64_find_or_create_register_for_var(
-      emitter, var, sizeof(u64), instructions, allocator);
-  PG_ASSERT(0 != reg.value);
-
-  amd64_store_var_into_register(emitter, reg, rhs_val,
-                                (Origin){.synthetic = true}, instructions,
-                                allocator);
-
-  *rhs = (LirOperand){
-      .kind = LIR_OPERAND_KIND_REGISTER,
-      .reg = reg,
-  };
-}
-
-// For now only expire registers.
-// TODO: expire stack slots.
-static void amd64_expire_vars_if_lifetime_end_reached(
-    Amd64Emitter *emitter, IrVarLifetimeDyn var_lifetimes, IrId ir_id) {
-  for (u64 i = 0; i < emitter->var_to_memory_location.len; i++) {
-    VarToMemoryLocation var_mem_loc =
-        PG_SLICE_AT(emitter->var_to_memory_location, i);
-
-    for (u64 j = 0; j < var_mem_loc.locations.len; j++) {
-      MemoryLocation mem_loc = PG_SLICE_AT(var_mem_loc.locations, j);
-      if (MEMORY_LOCATION_KIND_REGISTER != mem_loc.kind) {
-        continue;
-      }
-
-      IrVarLifetime *lifetime =
-          ir_find_var_lifetime_by_var_id(var_lifetimes, var_mem_loc.var.id);
-      PG_ASSERT(lifetime);
-
-      // TODO: Expire stack slots.
-      if (ir_id.value > lifetime->end.value &&
-          MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind) {
-        amd64_memory_location_empty_register(&emitter->var_to_memory_location,
-                                             mem_loc.reg);
-
-        printf("[D001] [%u] expire: ", ir_id.value);
-        amd64_print_register(mem_loc.reg);
-        printf(" ");
-        ir_print_var(var_mem_loc.var);
-        printf("\n");
-      }
-    }
-  }
-}
-
-static void amd64_ir_to_asm(Ir ir, Amd64InstructionDyn *instructions,
-                            Amd64Emitter *emitter,
-                            IrVarLifetimeDyn var_lifetimes,
-                            PgAllocator *allocator) {
-  amd64_expire_vars_if_lifetime_end_reached(emitter, var_lifetimes, ir.id);
-  if (ir.tombstone) {
-    return;
-  }
-
-  switch (ir.kind) {
-  case IR_KIND_NONE:
-    PG_ASSERT(0);
-  case IR_KIND_ADD: {
-    PG_ASSERT(2 == ir.operands.len);
-    PG_ASSERT(ir.var.id.value);
-    IrValue val_lhs = PG_SLICE_AT(ir.operands, 0);
-    IrValue val_rhs = PG_SLICE_AT(ir.operands, 1);
-    PG_ASSERT(IR_VALUE_KIND_VAR == val_lhs.kind);
-    PG_ASSERT(IR_VALUE_KIND_VAR == val_rhs.kind ||
-              IR_VALUE_KIND_U64 == val_rhs.kind);
-
-    LirOperand op_lhs =
-        amd64_memory_location_to_operand(*amd64_memory_location_find_var_best(
-            emitter->var_to_memory_location, val_lhs.var));
-
-    LirOperand op_rhs =
-        amd64_memory_location_to_operand(*amd64_memory_location_find_var_best(
-            emitter->var_to_memory_location, val_rhs.var));
-
-    amd64_insert_mem_to_register_load_if_both_operands_are_effective_address(
-        instructions, &op_lhs, &op_rhs, val_rhs, emitter, allocator);
+static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
+                             PgAllocator *allocator) {
+  //  amd64_expire_vars_if_lifetime_end_reached(emitter, var_lifetimes, ir.id);
+
+  switch (lir.kind) {
+  case LIR_KIND_ADD: {
+    PG_ASSERT(2 == lir.operands.len);
+    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
+    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
+
+    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
+                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
-        .rhs = op_rhs,
-        .lhs = op_lhs,
-        .origin = ir.origin,
+        .rhs = rhs,
+        .lhs = lhs,
+        .origin = lir.origin,
     };
 
-    MemoryLocation mem_loc = amd64_operand_to_memory_location(instruction.lhs);
-    amd64_memory_location_add(&emitter->var_to_memory_location, ir.var, mem_loc,
-                              allocator);
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
   } break;
-  case IR_KIND_LOAD: {
-    PG_ASSERT(1 == ir.operands.len);
-    PG_ASSERT(ir.var.id.value);
+  case LIR_KIND_SUB: {
+    PG_ASSERT(2 == lir.operands.len);
+    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
+    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
-    IrValue src = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_VAR == src.kind || IR_VALUE_KIND_U64 == src.kind);
-    LirOperand op_rhs = {0};
-    if (IR_VALUE_KIND_U64 == src.kind) {
-      op_rhs.kind = LIR_OPERAND_KIND_IMMEDIATE;
-      op_rhs.immediate = src.n64;
-    } else if (IR_VALUE_KIND_VAR == src.kind) {
-      MemoryLocation *loc_src = amd64_memory_location_find_var_best(
-          emitter->var_to_memory_location, src.var);
-      PG_ASSERT(loc_src);
-      op_rhs = amd64_memory_location_to_operand(*loc_src);
-    }
-
-    Amd64InstructionKind kind = AMD64_INSTRUCTION_KIND_MOV;
-
-    // TODO: Could be any mem location.
-    Register reg_dst = amd64_create_register_for_var(
-        emitter, ir.var, sizeof(u64), instructions, allocator);
-    MemoryLocation mem_loc = {
-        .kind = MEMORY_LOCATION_KIND_REGISTER,
-        .reg = reg_dst,
-    };
+    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
+                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
 
     Amd64Instruction instruction = {
-        .kind = kind,
-        .lhs = amd64_memory_location_to_operand(mem_loc),
-        .rhs = op_rhs,
-        .origin = ir.origin,
+        .kind = AMD64_INSTRUCTION_KIND_SUB,
+        .rhs = rhs,
+        .lhs = lhs,
+        .origin = lir.origin,
     };
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
 
-    // TODO: add mem loc.
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
   } break;
-  case IR_KIND_SYSCALL: {
-    PG_ASSERT(ir.operands.len > 0);
-    PG_ASSERT(ir.operands.len <= amd64_arch.syscall_calling_convention.len);
+  case LIR_KIND_MOV: {
+    PG_ASSERT(2 == lir.operands.len);
 
-    // Save the first operand on the stack before the syscall since the
-    // syscall will override `rax` with the return value and thus we might
-    // lose the first operand. Only necessary if the variable gets used
-    // afterwards.
-    IrValue op0 = PG_SLICE_AT(ir.operands, 0);
-    bool need_rax_saved = false;
-    if (IR_VALUE_KIND_VAR == op0.kind) {
-      IrVarLifetime *res_var_lifetime =
-          ir_find_var_lifetime_by_var_id(var_lifetimes, op0.var.id);
+    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
+    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
-      need_rax_saved =
-          res_var_lifetime && res_var_lifetime->end.value > ir.id.value;
-    }
-
-    for (u64 j = 0; j < ir.operands.len; j++) {
-      IrValue val = PG_SLICE_AT(ir.operands, j);
-      Register dst = PG_SLICE_AT(amd64_arch.syscall_calling_convention, j);
-      if (IR_VALUE_KIND_VAR == val.kind) {
-        amd64_store_var_into_register(emitter, dst, val, ir.origin,
-                                      instructions, allocator);
-
-        if (need_rax_saved && j == 0) {
-          MemoryLocation rax_loc = {
-              .kind = MEMORY_LOCATION_KIND_REGISTER,
-              .reg = amd64_rax,
-          };
-          amd64_store_var_on_stack(emitter, sizeof(u64), op0.var, rax_loc,
-                                   instructions, allocator);
-        }
-      } else if (IR_VALUE_KIND_U64 == val.kind) {
-        amd64_store_immediate_into_register(emitter, dst, val.n64, ir.origin,
-                                            instructions, allocator);
-      } else {
-        PG_ASSERT(0);
-      }
-    }
+    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
+                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
 
     Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-        .origin = ir.origin,
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .rhs = rhs,
+        .lhs = lhs,
+        .origin = lir.origin,
     };
 
-    // Syscall result used?
-    bool syscall_res_used = ir.var.id.value != 0;
-    if (syscall_res_used) {
-      MemoryLocation mem_loc = {
-          .kind = MEMORY_LOCATION_KIND_REGISTER,
-          .reg = amd64_arch.return_value,
-      };
-      amd64_memory_location_add(&emitter->var_to_memory_location, ir.var,
-                                mem_loc, allocator);
-    } else {
-      amd64_memory_location_empty_register(&emitter->var_to_memory_location,
-                                           amd64_rax);
-    }
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
+  } break;
+  case LIR_KIND_SYSCALL: {
+    PG_ASSERT(0 && "todo");
+  } break;
+
+  case LIR_KIND_JUMP_IF_EQ: {
+    PG_ASSERT(0 && "todo");
 
   } break;
 
-  case IR_KIND_ADDRESS_OF: {
-    PG_ASSERT(1 == ir.operands.len);
-    IrValue rhs = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_VAR == rhs.kind);
-
-    MemoryLocation *loc_rhs = amd64_memory_location_find_var_in_register_any(
-        emitter->var_to_memory_location, rhs.var);
-    if (loc_rhs) {
-      amd64_store_var_on_stack(emitter, sizeof(u64), rhs.var, *loc_rhs,
-                               instructions, allocator);
-    }
-    loc_rhs = amd64_memory_location_find_var_on_stack(
-        emitter->var_to_memory_location, rhs.var);
-    PG_ASSERT(loc_rhs);
-
-    MemoryLocation mem_loc =
-        amd64_make_any_memory_location_for_var(emitter, ir.var);
-
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_LEA,
-        .origin = ir.origin,
-        .lhs = amd64_memory_location_to_operand(mem_loc),
-        .rhs = amd64_memory_location_to_operand(*loc_rhs),
-    };
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
-
-    amd64_memory_location_add(&emitter->var_to_memory_location, ir.var, mem_loc,
-                              allocator);
+  case LIR_KIND_LABEL: {
+    PG_ASSERT(0 && "todo");
 
   } break;
 
-  case IR_KIND_JUMP_IF_FALSE: {
-    PG_ASSERT(2 == ir.operands.len);
-    IrValue cond = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
-    IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
-    PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);
-
-    MemoryLocation *cond_mem_loc = amd64_memory_location_find_var_best(
-        emitter->var_to_memory_location, cond.var);
-    PG_ASSERT(cond_mem_loc);
-
-    Amd64Instruction instruction_cmp = {
-        .kind = AMD64_INSTRUCTION_KIND_CMP,
-        .origin = ir.origin,
-        .lhs = amd64_memory_location_to_operand(*cond_mem_loc),
-        .rhs =
-            (LirOperand){
-                .kind = LIR_OPERAND_KIND_IMMEDIATE,
-                .immediate = 0,
-            },
-    };
-    instruction_cmp.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-    *PG_DYN_PUSH(instructions, allocator) = instruction_cmp;
-
-    Amd64Instruction instruction_je = {
-        .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
-        .origin = ir.origin,
-        .lhs =
-            (LirOperand){
-                .kind = LIR_OPERAND_KIND_LABEL,
-                .label = branch_else.label,
-            },
-    };
-    instruction_je.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-    *PG_DYN_PUSH(instructions, allocator) = instruction_je;
+  case LIR_KIND_JUMP: {
+    PG_ASSERT(0 && "todo");
 
   } break;
 
-  case IR_KIND_LABEL: {
-    PG_ASSERT(1 == ir.operands.len);
-    IrValue operand = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_LABEL == operand.kind);
-
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_LABEL,
-        .origin = ir.origin,
-        .lhs =
-            (LirOperand){
-                .kind = LIR_OPERAND_KIND_LABEL,
-                .label = operand.label,
-            },
-    };
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
-  } break;
-
-  case IR_KIND_JUMP: {
-    PG_ASSERT(1 == ir.operands.len);
-    IrValue label = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
-
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_JMP,
-        .origin = ir.origin,
-        .lhs =
-            (LirOperand){
-                .kind = LIR_OPERAND_KIND_LABEL,
-                .label = label.label,
-            },
-    };
-    instruction.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
-
-    *PG_DYN_PUSH(instructions, allocator) = instruction;
+  case LIR_KIND_CMP: {
+    PG_ASSERT(0 && "todo");
 
   } break;
 
+  case LIR_KIND_LOAD_EFFECTIVE_ADDRESS: {
+    PG_ASSERT(0 && "todo");
+
+  } break;
+
+  case LIR_KIND_NONE:
   default:
     PG_ASSERT(0);
   }
 }
 
-static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
-                             Amd64Emitter *emitter,
-                             IrVarLifetimeDyn var_lifetimes,
-                             PgAllocator *allocator) {
+static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
+                                   LirInstructionSlice lirs,
+                                   PgAllocator *allocator) {
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
       .lhs =
@@ -1746,20 +1030,19 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
           },
       .origin.synthetic = true,
   };
-  *PG_DYN_PUSH(instructions, allocator) = stack_sub;
-  u64 stack_sub_instruction_idx = instructions->len - 1;
+  *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_sub;
+  u64 stack_sub_instruction_idx = emitter->instructions.len - 1;
 
-  for (u64 i = 0; i < irs.len; i++) {
-    amd64_ir_to_asm(PG_SLICE_AT(irs, i), instructions, emitter, var_lifetimes,
-                    allocator);
+  for (u64 i = 0; i < lirs.len; i++) {
+    amd64_lir_to_asm(emitter, PG_SLICE_AT(lirs, i), allocator);
   }
 
   if (emitter->rbp_max_offset > 0) {
     u32 rsp_max_offset_aligned_16 =
         (u32)PG_ROUNDUP(emitter->rbp_max_offset, 16);
 
-    PG_SLICE_AT_PTR(instructions, stack_sub_instruction_idx)->rhs.immediate =
-        rsp_max_offset_aligned_16;
+    PG_SLICE_AT_PTR(&emitter->instructions, stack_sub_instruction_idx)
+        ->rhs.immediate = rsp_max_offset_aligned_16;
 
     Amd64Instruction stack_add = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
@@ -1776,10 +1059,10 @@ static void amd64_irs_to_asm(IrSlice irs, Amd64InstructionDyn *instructions,
         .origin.synthetic = true,
     };
     stack_add.var_to_memory_location_frozen =
-        amd64_memory_location_clone(emitter->var_to_memory_location, allocator);
+        lir_memory_location_clone(emitter->var_to_memory_location, allocator);
 
-    *PG_DYN_PUSH(instructions, allocator) = stack_add;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_add;
   } else {
-    PG_DYN_REMOVE_AT(instructions, stack_sub_instruction_idx);
+    PG_DYN_REMOVE_AT(&emitter->instructions, stack_sub_instruction_idx);
   }
 }

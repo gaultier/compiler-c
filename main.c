@@ -141,12 +141,13 @@ int main(int argc, char *argv[]) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_lirs(lir_emitter);
   }
+  LirInstructionSlice lirs_slice =
+      PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
 
-  Amd64Emitter reg_alloc = {0};
+  Amd64Emitter amd64_emitter = {0};
   Amd64InstructionDyn instructions = {0};
   amd64_emit_prolog(&instructions, allocator);
-  amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc,
-                   ir_emitter.var_lifetimes, allocator);
+  amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice, allocator);
   amd64_emit_epilog(&instructions, allocator);
 
   if (cli_opts.verbose) {
