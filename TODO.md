@@ -6,8 +6,8 @@
 - data flow analysis
 - codegen: aarch64
 - codegen: riscv
-- macho format
-- choose target(s) on CLI
+- codegen: macho format
+- cli: choose target(s)
 - lang: else branch
 - lang: comments
 - lang: loops
