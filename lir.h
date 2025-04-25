@@ -710,7 +710,6 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
     PG_ASSERT(ir.var.id.value);
 
     IrValue lhs_ir_val = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_VAR == lhs_ir_val.kind);
 
     MemoryLocation *res_mem_loc = lir_memory_location_find_var_on_stack(
         emitter->var_to_memory_location, ir.var);
@@ -718,7 +717,7 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
 
     // Copy lhs into a register and then into the stack slot of the result
     // var.
-    {
+    if (IR_VALUE_KIND_VAR == lhs_ir_val.kind) {
       MemoryLocation *lhs_mem_loc = lir_memory_location_find_var_on_stack(
           emitter->var_to_memory_location, lhs_ir_val.var);
       PG_ASSERT(lhs_mem_loc);
@@ -730,6 +729,9 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
 
       lir_emit_copy_register_to_var_mem_loc(emitter, ir.var, reg, *res_mem_loc,
                                             ir.origin, allocator);
+    } else if (IR_VALUE_KIND_U64 == lhs_ir_val.kind) {
+      lir_emit_copy_immediate_to(emitter, lhs_ir_val, *res_mem_loc, ir.origin,
+                                 allocator);
     }
     // Now the result stack slot contains lhs. We now need to add rhs to it.
 
@@ -877,7 +879,55 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
     lir_emit_copy_register_to_var_mem_loc(emitter, ir.var, reg, *dst_mem_loc,
                                           ir.origin, allocator);
   } break;
-  case IR_KIND_JUMP_IF_FALSE:
+  case IR_KIND_JUMP_IF_FALSE: {
+    PG_ASSERT(2 == ir.operands.len);
+    PG_ASSERT(0 == ir.var.id.value);
+
+    IrValue cond = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
+
+    IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);
+
+    {
+      LirInstruction ins_cmp = {
+          .kind = LIR_KIND_CMP,
+          .origin = ir.origin,
+          .var_to_memory_location_frozen = lir_memory_location_clone(
+              emitter->var_to_memory_location, allocator),
+      };
+
+      LirOperand lhs = {
+          .kind = LIR_OPERAND_KIND_IMMEDIATE,
+          .immediate = 0,
+      };
+      *PG_DYN_PUSH(&ins_cmp.operands, allocator) = lhs;
+
+      MemoryLocation *cond_mem_loc = lir_memory_location_find_var_on_stack(
+          emitter->var_to_memory_location, cond.var);
+      PG_ASSERT(cond_mem_loc);
+      LirOperand rhs = lir_memory_location_to_operand(*cond_mem_loc);
+      *PG_DYN_PUSH(&ins_cmp.operands, allocator) = rhs;
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
+    }
+    {
+      LirInstruction ins_je = {
+          .kind = LIR_KIND_JUMP_IF_EQ,
+          .origin = ir.origin,
+          .var_to_memory_location_frozen = lir_memory_location_clone(
+              emitter->var_to_memory_location, allocator),
+      };
+
+      LirOperand ins_je_op = {
+          .kind = LIR_OPERAND_KIND_LABEL,
+          .label = branch_else.label,
+      };
+      *PG_DYN_PUSH(&ins_je.operands, allocator) = ins_je_op;
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_je;
+    }
+  } break;
   case IR_KIND_JUMP: {
     PG_ASSERT(1 == ir.operands.len);
     PG_ASSERT(0 == ir.var.id.value);
