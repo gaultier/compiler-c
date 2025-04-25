@@ -1,0 +1,11 @@
+- amd64: print var_to_mem_location
+- generate dwarf debug information
+- else branch
+- ir optimization: show diff output in each step, like git diff
+- comments
+- control flow graph
+- register allocator: graph coloring
+- data flow analysis
+- aarch64 codegen
+- riscv codegen
+- macho format
