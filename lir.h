@@ -354,6 +354,32 @@ static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
                                       dst_mem_loc, allocator);
 }
 
+static void lir_emit_copy_register_to(LirEmitter *emitter, IrVar var,
+                                      Register src, MemoryLocation dst,
+                                      Origin origin, PgAllocator *allocator) {
+  LirInstruction ins = {
+      .kind = LIR_KIND_MOV,
+      .origin = origin,
+      .var_to_memory_location_frozen =
+          lir_memory_location_clone(emitter->var_to_memory_location, allocator),
+  };
+  PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
+
+  LirOperand rhs = {
+      .kind = LIR_OPERAND_KIND_REGISTER,
+      .reg = src,
+  };
+
+  LirOperand lhs = lir_memory_location_to_operand(dst);
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs;
+
+  *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+
+  lir_memory_location_record_var_copy(&emitter->var_to_memory_location, var,
+                                      dst, allocator);
+}
+
 static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
                                        MemoryLocation dst, Origin origin,
                                        PgAllocator *allocator) {
@@ -390,7 +416,76 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
     }
 
     switch (ir.kind) {
-    case IR_KIND_ADD:
+    case IR_KIND_ADD: {
+      PG_ASSERT(2 == ir.operands.len);
+      PG_ASSERT(ir.var.id.value);
+
+      IrValue lhs_ir_val = PG_SLICE_AT(ir.operands, 0);
+      PG_ASSERT(IR_VALUE_KIND_VAR == lhs_ir_val.kind);
+
+      MemoryLocation *res_mem_loc = lir_memory_location_find_var_on_stack(
+          emitter->var_to_memory_location, ir.var);
+      PG_ASSERT(res_mem_loc);
+
+      // Copy lhs into a register and then into the stack slot of the result
+      // var.
+      {
+        MemoryLocation *lhs_mem_loc = lir_memory_location_find_var_on_stack(
+            emitter->var_to_memory_location, lhs_ir_val.var);
+        PG_ASSERT(lhs_mem_loc);
+
+        Register reg = lir_make_virtual_register(emitter);
+        lir_emit_copy_var_to_register(emitter, lhs_ir_val.var, *lhs_mem_loc,
+                                      reg, ir.origin, allocator);
+
+        lir_emit_copy_register_to(emitter, ir.var, reg, *res_mem_loc, ir.origin,
+                                  allocator);
+      }
+      // Now the result stack slot contains lhs. We now need to add rhs to it.
+
+      IrValue rhs_ir_val = PG_SLICE_AT(ir.operands, 1);
+      PG_ASSERT(IR_VALUE_KIND_VAR == rhs_ir_val.kind ||
+                IR_VALUE_KIND_U64 == rhs_ir_val.kind);
+
+      LirOperand rhs_op = {0};
+      // If both lhs and rhs are vars on the stack, we need to load rhs into an
+      // intermediate register. We cannot copy one stack slot to another stack
+      // slot directly.
+      if (IR_VALUE_KIND_VAR == rhs_ir_val.kind) {
+        MemoryLocation *rhs_mem_loc = lir_memory_location_find_var_on_stack(
+            emitter->var_to_memory_location, rhs_ir_val.var);
+        PG_ASSERT(rhs_mem_loc);
+
+        Register reg = lir_make_virtual_register(emitter);
+        lir_emit_copy_var_to_register(emitter, rhs_ir_val.var, *rhs_mem_loc,
+                                      reg, ir.origin, allocator);
+
+        rhs_op.kind = LIR_OPERAND_KIND_REGISTER;
+        rhs_op.reg = reg;
+      } else if (IR_VALUE_KIND_U64 == rhs_ir_val.kind) {
+        rhs_op.kind = LIR_OPERAND_KIND_IMMEDIATE;
+        rhs_op.immediate = rhs_ir_val.n64;
+      }
+
+      LirInstruction ins = {
+          .kind = LIR_KIND_ADD,
+          .origin = ir.origin,
+          .var_to_memory_location_frozen = lir_memory_location_clone(
+              emitter->var_to_memory_location, allocator),
+      };
+      PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
+
+      MemoryLocation *lhs_mem_loc = lir_memory_location_find_var_on_stack(
+          emitter->var_to_memory_location, lhs_ir_val.var);
+      PG_ASSERT(lhs_mem_loc);
+      LirOperand lhs_op = lir_memory_location_to_operand(*lhs_mem_loc);
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs_op;
+
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs_op;
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+
+    } break;
     case IR_KIND_LOAD: {
       PG_ASSERT(1 == ir.operands.len);
       PG_ASSERT(ir.var.id.value);
@@ -417,7 +512,8 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
 
     } break;
     case IR_KIND_SYSCALL:
-    case IR_KIND_ADDRESS_OF:
+    case IR_KIND_ADDRESS_OF: {
+    } break;
     case IR_KIND_JUMP_IF_FALSE:
     case IR_KIND_JUMP:
     case IR_KIND_LABEL:
