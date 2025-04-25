@@ -12,7 +12,7 @@ typedef struct {
 } CliOptions;
 
 static void cli_print_help(char *exe) {
-  printf("Usage: %s <in.unicorn> [-O] [-v]\n", exe);
+  printf("Usage: %s [-O] [-v] <in.unicorn>\n", exe);
 }
 
 static CliOptions cli_options_parse(int argc, char *argv[]) {
@@ -20,13 +20,13 @@ static CliOptions cli_options_parse(int argc, char *argv[]) {
   char *exe = argv[0];
   if (argc < 2) {
     cli_print_help(exe);
-    exit(0);
+    exit(1);
   }
 
   CliOptions res = {0};
 
   i32 c = 0;
-  while ((c = getopt(argc, argv, "Ov") != -1)) {
+  while ((c = getopt(argc, argv, "Ov")) != -1) {
     switch (c) {
     case 'O':
       res.optimize = true;
@@ -37,14 +37,14 @@ static CliOptions cli_options_parse(int argc, char *argv[]) {
     default:
       fprintf(stderr, "Unknown option %c\n", (char)c);
       cli_print_help(exe);
-      exit(0);
+      exit(1);
     }
   }
 
-  if (optind > argc) {
+  if (optind >= argc) {
     fprintf(stderr, "Missing filename <in.unicorn>\n");
     cli_print_help(exe);
-    exit(0);
+    exit(1);
   }
 
   res.filename = argv[optind];
