@@ -488,7 +488,9 @@ static bool irs_optimize_remove_unused_vars(IrDyn *irs,
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(*var_lifetimes, ir->var.id);
     PG_ASSERT(var_lifetime);
-    PG_ASSERT(!var_lifetime->tombstone);
+    if (var_lifetime->tombstone) {
+      goto do_rm;
+    }
 
     PG_ASSERT(var_lifetime->start.value <= var_lifetime->end.value);
     u64 duration = var_lifetime->end.value - var_lifetime->start.value;
@@ -496,6 +498,8 @@ static bool irs_optimize_remove_unused_vars(IrDyn *irs,
       // Used: no-op.
       continue;
     }
+
+  do_rm:
 
     var_lifetime->tombstone = true;
 
