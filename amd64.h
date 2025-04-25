@@ -955,13 +955,19 @@ static PgString amd64_encode_program_text(Amd64Program *program,
 }
 
 [[nodiscard]] static Register amd64_convert_virtual_register_to_register(
-    Amd64Emitter *emitter, VirtualRegister virt_reg, LirInstruction lir_ins) {
+    Amd64Emitter *emitter, VirtualRegister virt_reg, LirInstruction lir_ins,
+    LirOperand lir_op) {
   if (LIR_KIND_SYSCALL == lir_ins.kind) {
     PG_ASSERT(0 && "todo");
   }
 
   if (lir_base_stack_pointer.value == virt_reg.value) {
     return amd64_rbp;
+  }
+
+  if (0 == virt_reg.value) {
+    PG_ASSERT(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lir_op.kind);
+    return (Register){0};
   }
 
   Register reg = amd64_get_free_gpr(emitter);
@@ -975,7 +981,7 @@ static PgString amd64_encode_program_text(Amd64Program *program,
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
         .reg = amd64_convert_virtual_register_to_register(emitter, lir_op.reg,
-                                                          lir_ins),
+                                                          lir_ins, lir_op),
     };
   }
   case LIR_OPERAND_KIND_IMMEDIATE:
@@ -989,9 +995,9 @@ static PgString amd64_encode_program_text(Amd64Program *program,
         .effective_address.scale = lir_op.effective_address.scale,
         .effective_address.displacement = lir_op.effective_address.displacement,
         .effective_address.base = amd64_convert_virtual_register_to_register(
-            emitter, lir_op.effective_address.base, lir_ins),
+            emitter, lir_op.effective_address.base, lir_ins, lir_op),
         .effective_address.index = amd64_convert_virtual_register_to_register(
-            emitter, lir_op.effective_address.index, lir_ins),
+            emitter, lir_op.effective_address.index, lir_ins, lir_op),
     };
   case LIR_OPERAND_KIND_LABEL:
     return (Amd64Operand){
