@@ -1114,13 +1114,32 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   } break;
 
   case LIR_KIND_LABEL: {
-    PG_ASSERT(0 && "todo");
+    PG_ASSERT(1 == lir.operands.len);
 
+    LirOperand label = PG_SLICE_AT(lir.operands, 0);
+    PG_ASSERT(LIR_OPERAND_KIND_LABEL == label.kind);
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_LABEL,
+        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, label),
+        .origin = lir.origin,
+    };
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
 
   case LIR_KIND_JUMP: {
-    PG_ASSERT(0 && "todo");
+    PG_ASSERT(1 == lir.operands.len);
 
+    LirOperand label = PG_SLICE_AT(lir.operands, 0);
+    PG_ASSERT(LIR_OPERAND_KIND_LABEL == label.kind);
+
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_JMP,
+        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, label),
+        .origin = lir.origin,
+    };
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
 
   case LIR_KIND_CMP: {

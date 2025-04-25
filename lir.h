@@ -878,9 +878,50 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
                                           ir.origin, allocator);
   } break;
   case IR_KIND_JUMP_IF_FALSE:
-  case IR_KIND_JUMP:
-  case IR_KIND_LABEL:
-    break;
+  case IR_KIND_JUMP: {
+    PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(0 == ir.var.id.value);
+
+    IrValue label = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
+
+    LirInstruction ins = {
+        .kind = LIR_KIND_JUMP,
+        .origin = ir.origin,
+        .var_to_memory_location_frozen = lir_memory_location_clone(
+            emitter->var_to_memory_location, allocator),
+    };
+
+    LirOperand lir_op = {
+        .kind = LIR_OPERAND_KIND_LABEL,
+        .label = label.label,
+    };
+    *PG_DYN_PUSH(&ins.operands, allocator) = lir_op;
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+  } break;
+  case IR_KIND_LABEL: {
+    PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(0 == ir.var.id.value);
+
+    IrValue label = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
+
+    LirInstruction ins = {
+        .kind = LIR_KIND_LABEL,
+        .origin = ir.origin,
+        .var_to_memory_location_frozen = lir_memory_location_clone(
+            emitter->var_to_memory_location, allocator),
+    };
+
+    LirOperand lir_op = {
+        .kind = LIR_OPERAND_KIND_LABEL,
+        .label = label.label,
+    };
+    *PG_DYN_PUSH(&ins.operands, allocator) = lir_op;
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+  } break;
 
   case IR_KIND_NONE:
   default:
