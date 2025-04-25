@@ -25,9 +25,15 @@ typedef enum {
 } MemoryLocationKind;
 
 typedef struct {
+  u64 value;
+} VirtualRegister;
+PG_SLICE(VirtualRegister) VirtualRegisterSlice;
+PG_DYN(VirtualRegister) VirtualRegisterDyn;
+
+typedef struct {
   MemoryLocationKind kind;
   union {
-    Register reg;
+    VirtualRegister reg;
     i32 base_pointer_offset;
     u64 memory_address;
   };
@@ -64,8 +70,8 @@ typedef enum {
 } LirOperandKind;
 
 typedef struct {
-  Register base;
-  Register index;
+  VirtualRegister base;
+  VirtualRegister index;
   u8 scale;
   i32 displacement;
 } LirEffectiveAddress;
@@ -73,7 +79,7 @@ typedef struct {
 typedef struct {
   LirOperandKind kind;
   union {
-    Register reg;
+    VirtualRegister reg;
     u64 immediate;
     LirEffectiveAddress effective_address;
     IrLabelId label;
@@ -104,10 +110,10 @@ typedef struct {
   u32 stack_offset;
   // Relative to base stack pointer.
   u32 stack_max_offset;
-  Register virtual_reg;
+  VirtualRegister virtual_reg;
 } LirEmitter;
 
-static const Register lir_base_stack_pointer = {1};
+static const VirtualRegister lir_base_stack_pointer = {1};
 
 [[nodiscard]] static bool lir_memory_location_eq(MemoryLocation a,
                                                  MemoryLocation b) {
@@ -315,15 +321,15 @@ static LirOperand lir_memory_location_to_operand(MemoryLocation mem_loc) {
 }
 
 [[nodiscard]]
-static Register lir_make_virtual_register(LirEmitter *emitter) {
-  Register res = emitter->virtual_reg;
+static VirtualRegister lir_make_virtual_register(LirEmitter *emitter) {
+  VirtualRegister res = emitter->virtual_reg;
   emitter->virtual_reg.value += 1;
   return res;
 }
 
 static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
-                                          MemoryLocation src, Register dst,
-                                          Origin origin,
+                                          MemoryLocation src,
+                                          VirtualRegister dst, Origin origin,
                                           PgAllocator *allocator) {
 
   LirInstruction ins = {
@@ -355,7 +361,7 @@ static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
 }
 
 static void lir_emit_copy_register_to(LirEmitter *emitter, IrVar var,
-                                      Register src, MemoryLocation dst,
+                                      VirtualRegister src, MemoryLocation dst,
                                       Origin origin, PgAllocator *allocator) {
   LirInstruction ins = {
       .kind = LIR_KIND_MOV,
@@ -434,7 +440,7 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
             emitter->var_to_memory_location, lhs_ir_val.var);
         PG_ASSERT(lhs_mem_loc);
 
-        Register reg = lir_make_virtual_register(emitter);
+        VirtualRegister reg = lir_make_virtual_register(emitter);
         lir_emit_copy_var_to_register(emitter, lhs_ir_val.var, *lhs_mem_loc,
                                       reg, ir.origin, allocator);
 
@@ -456,7 +462,7 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
             emitter->var_to_memory_location, rhs_ir_val.var);
         PG_ASSERT(rhs_mem_loc);
 
-        Register reg = lir_make_virtual_register(emitter);
+        VirtualRegister reg = lir_make_virtual_register(emitter);
         lir_emit_copy_var_to_register(emitter, rhs_ir_val.var, *rhs_mem_loc,
                                       reg, ir.origin, allocator);
 
@@ -505,7 +511,7 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
             emitter->var_to_memory_location, rhs_ir_val.var);
         PG_ASSERT(rhs_mem_loc);
 
-        Register reg = lir_make_virtual_register(emitter);
+        VirtualRegister reg = lir_make_virtual_register(emitter);
         lir_emit_copy_var_to_register(emitter, rhs_ir_val.var, *rhs_mem_loc,
                                       reg, ir.origin, allocator);
       }
@@ -526,7 +532,7 @@ static void lir_emit(LirEmitter *emitter, IrSlice irs, PgAllocator *allocator) {
   }
 }
 
-static void lir_print_register(Register reg) {
+static void lir_print_register(VirtualRegister reg) {
   if (reg.value > lir_base_stack_pointer.value) {
     printf("reg%lu", reg.value);
   } else {
