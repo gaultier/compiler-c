@@ -432,9 +432,9 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
 static void irs_recompute_var_lifetimes(IrDyn irs, IrVarLifetimeDyn lifetimes) {
   for (u64 i = 0; i < lifetimes.len; i++) {
-    IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
-    lifetime.tombstone = true;
-    lifetime.end = lifetime.start;
+    IrVarLifetime *lifetime = PG_SLICE_AT_PTR(&lifetimes, i);
+    lifetime->tombstone = true;
+    lifetime->end = lifetime->start;
   }
 
   for (u64 i = 0; i < irs.len; i++) {
