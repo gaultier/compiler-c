@@ -592,9 +592,9 @@ irs_optimize_remove_trivially_aliased_vars(IrDyn *irs,
 }
 
 // Replace: `x1 := 1; x2 := 2; x3:= x2 + x1` => `x2 := 2; x3 := 2 + 1`
-// and another optimization pass will then constant fold into `x3 := 3`.
+// and another optimization pass may then constant fold into `x3 := 3`.
 [[nodiscard]]
-static bool irs_optimize_replace_immediate_vars_by_immediate(
+static bool irs_optimize_replace_immediate_vars_by_immediate_value(
     IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
   for (u64 i = 0; i < irs->len; i++) {
@@ -692,8 +692,8 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
       irs_recompute_var_lifetimes(*irs, *var_lifetimes);
     }
 
-    changed |=
-        irs_optimize_replace_immediate_vars_by_immediate(irs, var_lifetimes);
+    changed |= irs_optimize_replace_immediate_vars_by_immediate_value(
+        irs, var_lifetimes);
     if (changed) {
       irs_recompute_var_lifetimes(*irs, *var_lifetimes);
     }
