@@ -12,7 +12,9 @@ typedef struct {
   Register return_value;
   RegisterSlice call_preserved;
   RegisterSlice calling_convention;
+  Register syscall_num;
   RegisterSlice syscall_calling_convention;
+  Register syscall_ret;
   Register stack_pointer;
   Register base_pointer;
 } Architecture;
@@ -24,16 +26,20 @@ typedef enum {
   MEMORY_LOCATION_KIND_MEMORY,
 } MemoryLocationKind;
 
+// On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
+// register arguments.
+static const u64 syscall_args_count = 6;
+
 typedef enum {
   LIR_VIRT_REG_CONSTRAINT_NONE,
   LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL2,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL3,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL6,
 } LirVirtualRegisterConstraint;
 
 typedef struct {
@@ -162,9 +168,9 @@ static const VirtualRegister lir_virt_reg_syscall5 = {
     .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
 };
 
-static const VirtualRegister lir_virt_reg_syscall6 = {
+static const VirtualRegister lir_virt_reg_syscall_num = {
     .value = 8,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL6,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
 };
 
 [[nodiscard]] static bool lir_memory_location_eq(MemoryLocation a,
@@ -259,6 +265,23 @@ static i32 lir_reserve_stack_slot_for_var(LirEmitter *emitter, IrVar var,
   return res;
 }
 
+static void lir_memory_location_empty_register(
+    VarToMemoryLocationDyn var_to_memory_location, VirtualRegister virt_reg) {
+  for (u64 i = 0; i < var_to_memory_location.len; i++) {
+    VarToMemoryLocation *var_mem_loc =
+        PG_SLICE_AT_PTR(&var_to_memory_location, i);
+
+    for (u64 j = 0; j < var_mem_loc->locations.len; j++) {
+      MemoryLocation *loc = PG_SLICE_AT_PTR(&var_mem_loc->locations, j);
+      if (MEMORY_LOCATION_KIND_REGISTER == loc->kind &&
+          virt_reg.value == loc->reg.value) {
+        PG_DYN_SWAP_REMOVE(&var_mem_loc->locations, j);
+        return;
+      }
+    }
+  }
+}
+
 [[nodiscard]]
 static MemoryLocation *lir_memory_location_find_var_on_stack(
     VarToMemoryLocationDyn var_to_memory_location, IrVar var) {
@@ -335,8 +358,8 @@ lir_make_virtual_register(LirEmitter *emitter,
     return lir_virt_reg_syscall4;
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
     return lir_virt_reg_syscall5;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL6:
-    return lir_virt_reg_syscall6;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
+    return lir_virt_reg_syscall_num;
   case LIR_VIRT_REG_CONSTRAINT_NONE:
     emitter->virtual_reg.value += 1;
     res.constraint = constraint;
@@ -431,7 +454,9 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 }
 
-static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
+static void lir_emit_ir(LirEmitter *emitter, Ir ir,
+                        VirtualRegister virt_reg_syscall_ret,
+                        PgAllocator *allocator) {
   // IMPROVEMENT: for now we store all local variables on the stack.
   if (ir.var.id.value) {
     lir_reserve_stack_slot_for_var(emitter, ir.var, allocator);
@@ -578,12 +603,13 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
     *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
     if (ir.var.id.value) {
-      // TODO: Check if all targets return the syscall result in the first
-      // syscall argument register or only amd64?
+      lir_memory_location_empty_register(emitter->var_to_memory_location,
+                                         virt_reg_syscall_ret);
+
       MemoryLocation *mem_loc_dst = lir_memory_location_find_var_on_stack(
           emitter->var_to_memory_location, ir.var);
       PG_ASSERT(mem_loc_dst);
-      lir_emit_copy_register_to(emitter, ir.var, lir_virt_reg_syscall0,
+      lir_emit_copy_register_to(emitter, ir.var, virt_reg_syscall_ret,
                                 *mem_loc_dst, ir.origin, allocator);
     }
 
@@ -602,9 +628,10 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
 }
 
 static void lir_emit_irs(LirEmitter *emitter, IrSlice irs,
+                         VirtualRegister virt_reg_syscall_ret,
                          PgAllocator *allocator) {
   for (u64 i = 0; i < irs.len; i++) {
-    lir_emit_ir(emitter, PG_SLICE_AT(irs, i), allocator);
+    lir_emit_ir(emitter, PG_SLICE_AT(irs, i), virt_reg_syscall_ret, allocator);
   }
 }
 
@@ -623,8 +650,8 @@ static void lir_print_register(VirtualRegister reg) {
     printf("reg_syscall4");
   } else if (reg.value == lir_virt_reg_syscall5.value) {
     printf("reg_syscall5");
-  } else if (reg.value == lir_virt_reg_syscall6.value) {
-    printf("reg_syscall6");
+  } else if (reg.value == lir_virt_reg_syscall_num.value) {
+    printf("reg_syscall_num");
   } else {
     printf("reg%lu", reg.value);
   }

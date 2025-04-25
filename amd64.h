@@ -93,8 +93,8 @@ static const Register amd64_calling_convention[] = {
     amd64_rdi, amd64_rsi, amd64_rdx, amd64_rcx, amd64_r8, amd64_r9,
 };
 
-static const Register amd64_syscall_calling_convention[] = {
-    amd64_rax, amd64_rdi, amd64_rsi, amd64_rdx, amd64_rcx, amd64_r8, amd64_r9,
+static const Register amd64_syscall_calling_convention[6] = {
+    amd64_rdi, amd64_rsi, amd64_rdx, amd64_rcx, amd64_r8, amd64_r9,
 };
 
 static const Architecture amd64_arch = {
@@ -114,6 +114,8 @@ static const Architecture amd64_arch = {
             .data = (Register *)amd64_syscall_calling_convention,
             .len = PG_STATIC_ARRAY_LEN(amd64_syscall_calling_convention),
         },
+    .syscall_num = amd64_rax,
+    .syscall_ret = amd64_rax,
     .stack_pointer = amd64_rsp,
     .base_pointer = amd64_rbp,
 };

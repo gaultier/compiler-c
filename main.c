@@ -136,10 +136,14 @@ int main(int argc, char *argv[]) {
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
 
   LirEmitter lir_emitter = {
-      .virtual_reg = {.value = lir_virt_reg_syscall6.value + 1},
+      .virtual_reg = {.value = lir_virt_reg_syscall_num.value + 1},
       .var_lifetimes = ir_emitter.var_lifetimes,
   };
-  lir_emit_irs(&lir_emitter, irs_slice, allocator);
+  // FIXME: Depending on the target, `virt_reg_syscall_ret` aliases to a
+  // different register.
+  VirtualRegister virt_reg_syscall_ret = lir_virt_reg_syscall_num;
+
+  lir_emit_irs(&lir_emitter, irs_slice, virt_reg_syscall_ret, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_lirs(lir_emitter);
