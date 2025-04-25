@@ -47,6 +47,18 @@ static PgError elf_write_exe(Amd64Program *program, PgAllocator *allocator) {
   // The program text is also padded to the next page size.
   // Afterwards comes the .rodata (not padded).
 
+  PgFileDescriptorResult res_file = pg_file_open(
+      program->file_name, PG_FILE_ACCESS_WRITE, 0700, true, allocator);
+  if (res_file.err) {
+    return res_file.err;
+  }
+  PgFileDescriptor file = res_file.res;
+
+  PgError err_truncate = pg_file_truncate(file, 0);
+  if (err_truncate) {
+    return err_truncate;
+  }
+
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;
 
@@ -268,5 +280,5 @@ static PgError elf_write_exe(Amd64Program *program, PgAllocator *allocator) {
 
   PgString sb_string = PG_DYN_SLICE(PgString, sb);
 
-  return pg_file_write_full(program->file_name, sb_string, 0700, allocator);
+  return pg_file_write_full_with_descriptor(file, sb_string);
 }
