@@ -604,7 +604,7 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
     }
 
     if (!(IR_KIND_LOAD == ir->kind || IR_KIND_ADD == ir->kind ||
-          IR_KIND_SYSCALL == ir->kind)) {
+          IR_KIND_SYSCALL == ir->kind || IR_KIND_JUMP_IF_FALSE == ir->kind)) {
       continue;
     }
 
@@ -850,7 +850,7 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
     PG_ASSERT(0 == ir.var.id.value);
 
     IrValue cond = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
+    PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind || IR_VALUE_KIND_U64 == cond.kind);
 
     IrValue branch_else = PG_SLICE_AT(ir.operands, 1);
     PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);

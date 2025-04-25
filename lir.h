@@ -901,11 +901,11 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
           emitter->var_to_memory_location, cond.var);
       PG_ASSERT(cond_mem_loc);
       LirOperand lhs = lir_memory_location_to_operand(*cond_mem_loc);
+      *PG_DYN_PUSH(&ins_cmp.operands, allocator) = lhs;
       LirOperand rhs = {
           .kind = LIR_OPERAND_KIND_IMMEDIATE,
           .immediate = 0,
       };
-      *PG_DYN_PUSH(&ins_cmp.operands, allocator) = lhs;
       *PG_DYN_PUSH(&ins_cmp.operands, allocator) = rhs;
 
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
