@@ -567,25 +567,26 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
       } else {
         PG_ASSERT(0);
       }
-
-      LirInstruction lir_ins = {
-          .kind = LIR_KIND_SYSCALL,
-          .origin = ir.origin,
-          .var_to_memory_location_frozen = lir_memory_location_clone(
-              emitter->var_to_memory_location, allocator),
-      };
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
-
-      if (ir.var.id.value) {
-        // TODO: Check if all targets return the syscall result in the first
-        // syscall argument register or only amd64?
-        MemoryLocation *mem_loc_dst = lir_memory_location_find_var_on_stack(
-            emitter->var_to_memory_location, ir.var);
-        PG_ASSERT(mem_loc_dst);
-        lir_emit_copy_register_to(emitter, ir.var, lir_virt_reg_syscall0,
-                                  *mem_loc_dst, ir.origin, allocator);
-      }
     }
+
+    LirInstruction lir_ins = {
+        .kind = LIR_KIND_SYSCALL,
+        .origin = ir.origin,
+        .var_to_memory_location_frozen = lir_memory_location_clone(
+            emitter->var_to_memory_location, allocator),
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
+
+    if (ir.var.id.value) {
+      // TODO: Check if all targets return the syscall result in the first
+      // syscall argument register or only amd64?
+      MemoryLocation *mem_loc_dst = lir_memory_location_find_var_on_stack(
+          emitter->var_to_memory_location, ir.var);
+      PG_ASSERT(mem_loc_dst);
+      lir_emit_copy_register_to(emitter, ir.var, lir_virt_reg_syscall0,
+                                *mem_loc_dst, ir.origin, allocator);
+    }
+
   } break;
   case IR_KIND_ADDRESS_OF: {
   } break;
