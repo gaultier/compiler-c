@@ -135,7 +135,10 @@ int main(int argc, char *argv[]) {
   }
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
 
-  LirEmitter lir_emitter = {.virtual_reg = {2}};
+  LirEmitter lir_emitter = {
+      .virtual_reg = {.value = lir_virt_reg_syscall6.value + 1},
+      .var_lifetimes = ir_emitter.var_lifetimes,
+  };
   lir_emit_irs(&lir_emitter, irs_slice, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");

@@ -969,7 +969,7 @@ static PgString amd64_encode_program_text(Amd64Program *program,
     PG_ASSERT(0 && "todo");
   }
 
-  if (lir_base_stack_pointer.value == virt_reg.value) {
+  if (lir_virt_reg_base_stack_pointer.value == virt_reg.value) {
     return amd64_rbp;
   }
 

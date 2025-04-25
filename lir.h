@@ -24,8 +24,21 @@ typedef enum {
   MEMORY_LOCATION_KIND_MEMORY,
 } MemoryLocationKind;
 
+typedef enum {
+  LIR_VIRT_REG_CONSTRAINT_NONE,
+  LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL2,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL3,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL6,
+} LirVirtualRegisterConstraint;
+
 typedef struct {
   u64 value;
+  LirVirtualRegisterConstraint constraint;
 } VirtualRegister;
 PG_SLICE(VirtualRegister) VirtualRegisterSlice;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
@@ -111,9 +124,48 @@ typedef struct {
   // Relative to base stack pointer.
   u32 stack_max_offset;
   VirtualRegister virtual_reg;
+  IrVarLifetimeDyn var_lifetimes;
 } LirEmitter;
 
-static const VirtualRegister lir_base_stack_pointer = {1};
+static const VirtualRegister lir_virt_reg_base_stack_pointer = {
+    .value = 1,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
+};
+
+static const VirtualRegister lir_virt_reg_syscall0 = {
+    .value = 2,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
+};
+
+static const VirtualRegister lir_virt_reg_syscall1 = {
+    .value = 3,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
+};
+
+static const VirtualRegister lir_virt_reg_syscall2 = {
+    .value = 4,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL2,
+};
+
+static const VirtualRegister lir_virt_reg_syscall3 = {
+    .value = 5,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL3,
+};
+
+static const VirtualRegister lir_virt_reg_syscall4 = {
+    .value = 6,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
+};
+
+static const VirtualRegister lir_virt_reg_syscall5 = {
+    .value = 7,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
+};
+
+static const VirtualRegister lir_virt_reg_syscall6 = {
+    .value = 8,
+    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL6,
+};
 
 [[nodiscard]] static bool lir_memory_location_eq(MemoryLocation a,
                                                  MemoryLocation b) {
@@ -172,64 +224,6 @@ lir_memory_location_find_var(VarToMemoryLocationDyn var_to_memory_location,
 
   return nullptr;
 }
-
-#if 0
-[[nodiscard]]
-static MemoryLocation *lir_memory_location_find_var_on_stack(
-    VarToMemoryLocationDyn var_to_memory_location, IrVar var) {
-  MemoryLocationDyn *locations =
-      lir_memory_location_find_var(var_to_memory_location, var);
-
-  if (!locations) {
-    return nullptr;
-  }
-
-  for (u64 i = 0; i < locations->len; i++) {
-    MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
-    if (MEMORY_LOCATION_KIND_STACK == loc->kind) {
-      return loc;
-    }
-  }
-  return nullptr;
-}
-
-
-[[nodiscard]]
-static MemoryLocation *amd64_memory_location_find_var_in_register_any(
-    VarToMemoryLocationDyn var_to_memory_location, IrVar var) {
-  MemoryLocationDyn *locations =
-      amd64_memory_location_find_var(var_to_memory_location, var);
-  if (!locations) {
-    return nullptr;
-  }
-
-  for (u64 i = 0; i < locations->len; i++) {
-    MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
-    if (MEMORY_LOCATION_KIND_REGISTER == loc->kind) {
-      return loc;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]]
-static VarToMemoryLocation *amd64_memory_location_find_register(
-    VarToMemoryLocationDyn var_to_memory_location, Register reg) {
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation *var_mem_loc =
-        PG_SLICE_AT_PTR(&var_to_memory_location, i);
-
-    for (u64 j = 0; j < var_mem_loc->locations.len; j++) {
-      MemoryLocation loc = PG_SLICE_AT(var_mem_loc->locations, j);
-      if (MEMORY_LOCATION_KIND_REGISTER == loc.kind &&
-          reg.value == loc.reg.value) {
-        return var_mem_loc;
-      }
-    }
-  }
-  return nullptr;
-}
-#endif
 
 static void
 lir_memory_location_add(VarToMemoryLocationDyn *var_to_memory_location,
@@ -311,7 +305,7 @@ static LirOperand lir_memory_location_to_operand(MemoryLocation mem_loc) {
     operand.reg = mem_loc.reg;
   } else if (MEMORY_LOCATION_KIND_STACK == mem_loc.kind) {
     operand.kind = LIR_OPERAND_KIND_EFFECTIVE_ADDRESS;
-    operand.effective_address.base = lir_base_stack_pointer;
+    operand.effective_address.base = lir_virt_reg_base_stack_pointer;
     operand.effective_address.displacement = (i32)mem_loc.base_pointer_offset;
   } else {
     PG_ASSERT(0);
@@ -321,10 +315,35 @@ static LirOperand lir_memory_location_to_operand(MemoryLocation mem_loc) {
 }
 
 [[nodiscard]]
-static VirtualRegister lir_make_virtual_register(LirEmitter *emitter) {
+static VirtualRegister
+lir_make_virtual_register(LirEmitter *emitter,
+                          LirVirtualRegisterConstraint constraint) {
   VirtualRegister res = emitter->virtual_reg;
-  emitter->virtual_reg.value += 1;
-  return res;
+
+  switch (constraint) {
+  case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER:
+    return lir_virt_reg_base_stack_pointer;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
+    return lir_virt_reg_syscall0;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
+    return lir_virt_reg_syscall1;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
+    return lir_virt_reg_syscall2;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
+    return lir_virt_reg_syscall3;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
+    return lir_virt_reg_syscall4;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
+    return lir_virt_reg_syscall5;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL6:
+    return lir_virt_reg_syscall6;
+  case LIR_VIRT_REG_CONSTRAINT_NONE:
+    emitter->virtual_reg.value += 1;
+    res.constraint = constraint;
+    return res;
+  default:
+    PG_ASSERT(0);
+  }
 }
 
 static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
@@ -437,7 +456,8 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
           emitter->var_to_memory_location, lhs_ir_val.var);
       PG_ASSERT(lhs_mem_loc);
 
-      VirtualRegister reg = lir_make_virtual_register(emitter);
+      VirtualRegister reg =
+          lir_make_virtual_register(emitter, LIR_VIRT_REG_CONSTRAINT_NONE);
       lir_emit_copy_var_to_register(emitter, lhs_ir_val.var, *lhs_mem_loc, reg,
                                     ir.origin, allocator);
 
@@ -459,7 +479,8 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
           emitter->var_to_memory_location, rhs_ir_val.var);
       PG_ASSERT(rhs_mem_loc);
 
-      VirtualRegister reg = lir_make_virtual_register(emitter);
+      VirtualRegister reg =
+          lir_make_virtual_register(emitter, LIR_VIRT_REG_CONSTRAINT_NONE);
       lir_emit_copy_var_to_register(emitter, rhs_ir_val.var, *rhs_mem_loc, reg,
                                     ir.origin, allocator);
 
@@ -508,7 +529,8 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
           emitter->var_to_memory_location, rhs_ir_val.var);
       PG_ASSERT(rhs_mem_loc);
 
-      VirtualRegister reg = lir_make_virtual_register(emitter);
+      VirtualRegister reg =
+          lir_make_virtual_register(emitter, LIR_VIRT_REG_CONSTRAINT_NONE);
       lir_emit_copy_var_to_register(emitter, rhs_ir_val.var, *rhs_mem_loc, reg,
                                     ir.origin, allocator);
       lir_emit_copy_register_to(emitter, ir.var, reg, *dst_mem_loc, ir.origin,
@@ -520,9 +542,15 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
     LirOperandDyn operands = {0};
     PG_DYN_ENSURE_CAP(&operands, ir.operands.len, allocator);
 
+    // TODO: All targets have this limit or only amd64?
+    PG_ASSERT(ir.operands.len <= 6);
+    PG_ASSERT(ir.operands.len > 0);
+
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
-      VirtualRegister reg = lir_make_virtual_register(emitter);
+      VirtualRegister reg = lir_make_virtual_register(
+          emitter,
+          (LirVirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 + j));
 
       if (IR_VALUE_KIND_U64 == val.kind) {
         MemoryLocation mem_loc_reg = {
@@ -545,7 +573,13 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
       *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
       if (ir.var.id.value) {
-        PG_ASSERT(0 && "todo");
+        // TODO: Check if all targets return the syscall result in the first
+        // syscall argument register or only amd64?
+        MemoryLocation *mem_loc_dst = lir_memory_location_find_var_on_stack(
+            emitter->var_to_memory_location, ir.var);
+        PG_ASSERT(mem_loc_dst);
+        lir_emit_copy_register_to(emitter, ir.var, lir_virt_reg_syscall0,
+                                  *mem_loc_dst, ir.origin, allocator);
       }
     }
   } break;
@@ -570,10 +604,24 @@ static void lir_emit_irs(LirEmitter *emitter, IrSlice irs,
 }
 
 static void lir_print_register(VirtualRegister reg) {
-  if (reg.value > lir_base_stack_pointer.value) {
-    printf("reg%lu", reg.value);
+  if (reg.value == lir_virt_reg_base_stack_pointer.value) {
+    printf("reg_bsp");
+  } else if (reg.value == lir_virt_reg_syscall0.value) {
+    printf("reg_syscall0");
+  } else if (reg.value == lir_virt_reg_syscall1.value) {
+    printf("reg_syscall1");
+  } else if (reg.value == lir_virt_reg_syscall2.value) {
+    printf("reg_syscall2");
+  } else if (reg.value == lir_virt_reg_syscall3.value) {
+    printf("reg_syscall3");
+  } else if (reg.value == lir_virt_reg_syscall4.value) {
+    printf("reg_syscall4");
+  } else if (reg.value == lir_virt_reg_syscall5.value) {
+    printf("reg_syscall5");
+  } else if (reg.value == lir_virt_reg_syscall6.value) {
+    printf("reg_syscall6");
   } else {
-    printf("rbp");
+    printf("reg%lu", reg.value);
   }
 }
 
@@ -592,7 +640,7 @@ static void lir_print_var_to_memory_location(
         break;
       case MEMORY_LOCATION_KIND_STACK: {
         printf("[");
-        lir_print_register(lir_base_stack_pointer);
+        lir_print_register(lir_virt_reg_base_stack_pointer);
         i32 offset = loc.base_pointer_offset;
         printf("%" PRIi32, offset);
         printf("]");
