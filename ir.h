@@ -591,7 +591,8 @@ irs_optimize_remove_trivially_aliased_vars(IrDyn *irs,
   return nullptr;
 }
 
-// Replace: `x1 := 1; x2 := 2; x3:= x2 + x1` => `x2 := 2; x3 := x2 + 1`.
+// Replace: `x1 := 1; x2 := 2; x3:= x2 + x1` => `x2 := 2; x3 := 2 + 1`
+// and another optimization pass will then constant fold into `x3 := 3`.
 [[nodiscard]]
 static bool irs_optimize_replace_immediate_vars_by_immediate(
     IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
@@ -640,6 +641,7 @@ static bool irs_optimize_replace_immediate_vars_by_immediate(
   return changed;
 }
 
+// Replace: `x1 := 1 + 2` => `x1 := 3`.
 [[nodiscard]]
 static bool irs_optimize_fold_constants(IrDyn *irs) {
   bool changed = false;
@@ -707,9 +709,8 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Unify constants e.g. `x1 := 1; x2 := 1` => `x1 := 1`.
   // TODO: Simplify `if(true) { <then> } else { <else> }` => `<then>`
   // TODO: Remove empty labels.
-  // TODO: Simplify syscall IR: replace vars by immediates.
 
-  printf("[D002] %lu\n", optimization_rounds);
+  printf("[D010] optimization_rounds=%lu\n", optimization_rounds);
 }
 
 static void ir_print_var(IrVar var) {
