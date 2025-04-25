@@ -1,15 +1,15 @@
 - amd64: print var_to_mem_location
 - generate dwarf debug information
-- else branch
-- ir optimization: show diff output in each step, like git diff
-- comments
+- ir: optimization: show diff output in each step, like git diff
 - control flow graph
-- register allocator: graph coloring
+- lir/codegen: register allocator: graph coloring
 - data flow analysis
-- aarch64 codegen
-- riscv codegen
+- codegen: aarch64
+- codegen: riscv
 - macho format
 - choose target(s) on CLI
+- lang: else branch
+- lang: comments
 - lang: loops
 - lang: functions
 - lang: structs
