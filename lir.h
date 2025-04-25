@@ -28,7 +28,7 @@ typedef enum {
 
 // On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
 // register arguments.
-static const u64 syscall_args_count = 6;
+static const u64 lir_syscall_args_count = 6;
 
 typedef enum {
   LIR_VIRT_REG_CONSTRAINT_NONE,
@@ -564,16 +564,18 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
 
   } break;
   case IR_KIND_SYSCALL: {
-
-    // TODO: All targets have this limit or only amd64?
-    PG_ASSERT(ir.operands.len <= 6);
+    PG_ASSERT(ir.operands.len <= 1 /* syscall num */ + lir_syscall_args_count);
     PG_ASSERT(ir.operands.len > 0);
 
     for (u64 j = 0; j < ir.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir.operands, j);
-      VirtualRegister reg = lir_make_virtual_register(
-          emitter,
-          (LirVirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 + j));
+      LirVirtualRegisterConstraint virt_reg_constraint =
+          (0 == j)
+              ? LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM
+              : (LirVirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 +
+                                               j - 1);
+      VirtualRegister reg =
+          lir_make_virtual_register(emitter, virt_reg_constraint);
 
       if (IR_VALUE_KIND_U64 == val.kind) {
         MemoryLocation mem_loc_reg = {
