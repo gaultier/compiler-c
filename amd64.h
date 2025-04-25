@@ -1143,8 +1143,22 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   } break;
 
   case LIR_KIND_CMP: {
-    PG_ASSERT(0 && "todo");
+    PG_ASSERT(2 == lir.operands.len);
 
+    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
+    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
+
+    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
+                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
+
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_CMP,
+        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .origin = lir.origin,
+    };
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
 
   case LIR_KIND_LOAD_EFFECTIVE_ADDRESS: {

@@ -296,7 +296,7 @@ static void lir_emitter_print_lirs(LirEmitter emitter) {
       printf("jmp ");
       break;
     case LIR_KIND_LABEL:
-      PG_ASSERT(0 && "todo");
+      break;
     case LIR_KIND_CMP:
       printf("cmp ");
       break;
