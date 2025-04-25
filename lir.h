@@ -539,8 +539,6 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
 
   } break;
   case IR_KIND_SYSCALL: {
-    LirOperandDyn operands = {0};
-    PG_DYN_ENSURE_CAP(&operands, ir.operands.len, allocator);
 
     // TODO: All targets have this limit or only amd64?
     PG_ASSERT(ir.operands.len <= 6);
@@ -559,9 +557,15 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir, PgAllocator *allocator) {
         };
         lir_emit_copy_immediate_to(emitter, val, mem_loc_reg, ir.origin,
                                    allocator);
+      } else if (IR_VALUE_KIND_VAR == val.kind) {
+        MemoryLocation *op_mem_loc = lir_memory_location_find_var_on_stack(
+            emitter->var_to_memory_location, val.var);
+        PG_ASSERT(op_mem_loc);
+        lir_emit_copy_var_to_register(emitter, val.var, *op_mem_loc, reg,
+                                      ir.origin, allocator);
 
-        LirOperand lir_op = lir_memory_location_to_operand(mem_loc_reg);
-        *PG_DYN_PUSH_WITHIN_CAPACITY(&operands) = lir_op;
+      } else {
+        PG_ASSERT(0);
       }
 
       LirInstruction lir_ins = {

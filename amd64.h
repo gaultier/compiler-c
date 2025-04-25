@@ -1079,24 +1079,14 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 
   } break;
   case LIR_KIND_SYSCALL: {
-    for (u64 i = 0; i < lir.operands.len; i++) {
-      LirOperand lir_op = PG_SLICE_AT(lir.operands, i);
-      PG_ASSERT(LIR_OPERAND_KIND_REGISTER == lir_op.kind);
-
-      VirtualRegister virt_reg = lir_op.reg;
-      Register reg = PG_SLICE_AT(amd64_arch.syscall_calling_convention, i);
-      (void)virt_reg;
-      (void)reg;
-      // FIXME: reg.
-
-      Amd64Instruction ins = {
-          .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-          .origin = lir.origin,
-          .var_to_memory_location_frozen = lir_memory_location_clone(
-              emitter->var_to_memory_location, allocator),
-      };
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    }
+    PG_ASSERT(0 == lir.operands.len);
+    Amd64Instruction ins = {
+        .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
+        .origin = lir.origin,
+        .var_to_memory_location_frozen = lir_memory_location_clone(
+            emitter->var_to_memory_location, allocator),
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
   } break;
 
   case LIR_KIND_JUMP_IF_EQ: {
