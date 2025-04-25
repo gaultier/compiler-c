@@ -173,6 +173,146 @@ static const VirtualRegister lir_virt_reg_syscall_num = {
     .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
 };
 
+static void lir_print_register(VirtualRegister reg) {
+  if (reg.value == lir_virt_reg_base_stack_pointer.value) {
+    printf("reg_bsp");
+  } else if (reg.value == lir_virt_reg_syscall0.value) {
+    printf("reg_syscall0");
+  } else if (reg.value == lir_virt_reg_syscall1.value) {
+    printf("reg_syscall1");
+  } else if (reg.value == lir_virt_reg_syscall2.value) {
+    printf("reg_syscall2");
+  } else if (reg.value == lir_virt_reg_syscall3.value) {
+    printf("reg_syscall3");
+  } else if (reg.value == lir_virt_reg_syscall4.value) {
+    printf("reg_syscall4");
+  } else if (reg.value == lir_virt_reg_syscall5.value) {
+    printf("reg_syscall5");
+  } else if (reg.value == lir_virt_reg_syscall_num.value) {
+    printf("reg_syscall_num");
+  } else {
+    printf("reg%lu", reg.value);
+  }
+}
+
+static void lir_print_var_to_memory_location(
+    VarToMemoryLocationDyn var_to_memory_location) {
+  for (u64 i = 0; i < var_to_memory_location.len; i++) {
+    VarToMemoryLocation var_to_mem_loc = PG_SLICE_AT(var_to_memory_location, i);
+    printf("; ");
+    ir_print_var(var_to_mem_loc.var);
+    printf(": ");
+    for (u64 j = 0; j < var_to_mem_loc.locations.len; j++) {
+      MemoryLocation loc = PG_SLICE_AT(var_to_mem_loc.locations, j);
+      switch (loc.kind) {
+      case MEMORY_LOCATION_KIND_REGISTER:
+        lir_print_register(loc.reg);
+        break;
+      case MEMORY_LOCATION_KIND_STACK: {
+        printf("[");
+        lir_print_register(lir_virt_reg_base_stack_pointer);
+        i32 offset = loc.base_pointer_offset;
+        printf("%" PRIi32, offset);
+        printf("]");
+      } break;
+      case MEMORY_LOCATION_KIND_MEMORY:
+        printf("%#lx", loc.memory_address);
+        break;
+      case MEMORY_LOCATION_KIND_NONE:
+      default:
+        PG_ASSERT(0);
+      }
+
+      printf(" ");
+    }
+    printf("\n");
+  }
+}
+
+static void lir_print_operand(LirOperand operand) {
+  switch (operand.kind) {
+  case LIR_OPERAND_KIND_NONE:
+    PG_ASSERT(0);
+  case LIR_OPERAND_KIND_REGISTER:
+    lir_print_register(operand.reg);
+    break;
+  case LIR_OPERAND_KIND_IMMEDIATE:
+    printf("%" PRIu64, operand.immediate);
+    break;
+  case LIR_OPERAND_KIND_EFFECTIVE_ADDRESS:
+    printf("[");
+    lir_print_register(operand.effective_address.base);
+    if (operand.effective_address.index.value) {
+      printf(" + ");
+      lir_print_register(operand.effective_address.index);
+      printf(" * %" PRIu8 " ", operand.effective_address.scale);
+    }
+    printf("%s%" PRIi32 "]",
+           operand.effective_address.displacement >= 0 ? "+" : "",
+           operand.effective_address.displacement);
+    break;
+  case LIR_OPERAND_KIND_LABEL:
+    printf(".%" PRIu32, operand.label.value);
+    break;
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void lir_emitter_print_lirs(LirEmitter emitter) {
+  for (u64 i = 0; i < emitter.instructions.len; i++) {
+    LirInstruction lir = PG_SLICE_AT(emitter.instructions, i);
+    printf("[%" PRIu64 "]\n", i);
+
+    lir_print_var_to_memory_location(lir.var_to_memory_location_frozen);
+
+    origin_print(lir.origin);
+    printf(": ");
+
+    switch (lir.kind) {
+    case LIR_KIND_ADD:
+      printf("add ");
+      break;
+    case LIR_KIND_SUB:
+      printf("sub ");
+      break;
+    case LIR_KIND_MOV:
+      printf("mov ");
+      break;
+    case LIR_KIND_SYSCALL:
+      printf("syscall ");
+      break;
+    case LIR_KIND_LOAD_EFFECTIVE_ADDRESS:
+      printf("lea ");
+      break;
+    case LIR_KIND_JUMP_IF_EQ:
+      printf("je ");
+      break;
+    case LIR_KIND_JUMP:
+      printf("jmp ");
+      break;
+    case LIR_KIND_LABEL:
+      PG_ASSERT(0 && "todo");
+    case LIR_KIND_CMP:
+      printf("cmp ");
+      break;
+    case LIR_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+
+    for (u64 j = 0; j < lir.operands.len; j++) {
+      LirOperand op = PG_SLICE_AT(lir.operands, j);
+      lir_print_operand(op);
+
+      if (j + 1 < lir.operands.len) {
+        printf(", ");
+      }
+    }
+    printf("\n");
+  }
+}
+
 [[nodiscard]] static bool lir_memory_location_eq(MemoryLocation a,
                                                  MemoryLocation b) {
   if (a.kind != b.kind) {
@@ -299,6 +439,40 @@ static MemoryLocation *lir_memory_location_find_var_on_stack(
     }
   }
   return nullptr;
+}
+
+static void
+lir_memory_location_expire_vars_in_register_at_lifetime_end(LirEmitter *emitter,
+                                                            IrId ir_id) {
+  for (u64 i = 0; i < emitter->var_to_memory_location.len; i++) {
+    VarToMemoryLocation var_mem_loc =
+        PG_SLICE_AT(emitter->var_to_memory_location, i);
+
+    IrVarLifetime *lifetime = ir_find_var_lifetime_by_var_id(
+        emitter->var_lifetimes, var_mem_loc.var.id);
+    PG_ASSERT(lifetime);
+    PG_ASSERT(lifetime->start.value <= lifetime->end.value);
+
+    bool expired = lifetime->end.value < ir_id.value;
+
+    if (!expired) {
+      continue;
+    }
+
+    for (u64 j = 0; j < var_mem_loc.locations.len; j++) {
+      MemoryLocation loc = PG_SLICE_AT(var_mem_loc.locations, j);
+      if (MEMORY_LOCATION_KIND_REGISTER != loc.kind) {
+        continue;
+      }
+
+      lir_memory_location_empty_register(emitter->var_to_memory_location,
+                                         loc.reg);
+      printf("[D001] [%u] expired: ", ir_id.value);
+      lir_print_register(loc.reg);
+      printf(" %u\n", var_mem_loc.var.id.value);
+      printf("\n");
+    }
+  }
 }
 
 static void lir_memory_location_record_var_copy(
@@ -457,7 +631,9 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
 static void lir_emit_ir(LirEmitter *emitter, Ir ir,
                         VirtualRegister virt_reg_syscall_ret,
                         PgAllocator *allocator) {
-  // IMPROVEMENT: for now we store all local variables on the stack.
+  lir_memory_location_expire_vars_in_register_at_lifetime_end(emitter, ir.id);
+
+  // TODO(IMPROVEMENT): for now we store all local variables on the stack.
   if (ir.var.id.value) {
     lir_reserve_stack_slot_for_var(emitter, ir.var, allocator);
   }
@@ -634,145 +810,5 @@ static void lir_emit_irs(LirEmitter *emitter, IrSlice irs,
                          PgAllocator *allocator) {
   for (u64 i = 0; i < irs.len; i++) {
     lir_emit_ir(emitter, PG_SLICE_AT(irs, i), virt_reg_syscall_ret, allocator);
-  }
-}
-
-static void lir_print_register(VirtualRegister reg) {
-  if (reg.value == lir_virt_reg_base_stack_pointer.value) {
-    printf("reg_bsp");
-  } else if (reg.value == lir_virt_reg_syscall0.value) {
-    printf("reg_syscall0");
-  } else if (reg.value == lir_virt_reg_syscall1.value) {
-    printf("reg_syscall1");
-  } else if (reg.value == lir_virt_reg_syscall2.value) {
-    printf("reg_syscall2");
-  } else if (reg.value == lir_virt_reg_syscall3.value) {
-    printf("reg_syscall3");
-  } else if (reg.value == lir_virt_reg_syscall4.value) {
-    printf("reg_syscall4");
-  } else if (reg.value == lir_virt_reg_syscall5.value) {
-    printf("reg_syscall5");
-  } else if (reg.value == lir_virt_reg_syscall_num.value) {
-    printf("reg_syscall_num");
-  } else {
-    printf("reg%lu", reg.value);
-  }
-}
-
-static void lir_print_var_to_memory_location(
-    VarToMemoryLocationDyn var_to_memory_location) {
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation var_to_mem_loc = PG_SLICE_AT(var_to_memory_location, i);
-    printf("; ");
-    ir_print_var(var_to_mem_loc.var);
-    printf(": ");
-    for (u64 j = 0; j < var_to_mem_loc.locations.len; j++) {
-      MemoryLocation loc = PG_SLICE_AT(var_to_mem_loc.locations, j);
-      switch (loc.kind) {
-      case MEMORY_LOCATION_KIND_REGISTER:
-        lir_print_register(loc.reg);
-        break;
-      case MEMORY_LOCATION_KIND_STACK: {
-        printf("[");
-        lir_print_register(lir_virt_reg_base_stack_pointer);
-        i32 offset = loc.base_pointer_offset;
-        printf("%" PRIi32, offset);
-        printf("]");
-      } break;
-      case MEMORY_LOCATION_KIND_MEMORY:
-        printf("%#lx", loc.memory_address);
-        break;
-      case MEMORY_LOCATION_KIND_NONE:
-      default:
-        PG_ASSERT(0);
-      }
-
-      printf(" ");
-    }
-    printf("\n");
-  }
-}
-
-static void lir_print_operand(LirOperand operand) {
-  switch (operand.kind) {
-  case LIR_OPERAND_KIND_NONE:
-    PG_ASSERT(0);
-  case LIR_OPERAND_KIND_REGISTER:
-    lir_print_register(operand.reg);
-    break;
-  case LIR_OPERAND_KIND_IMMEDIATE:
-    printf("%" PRIu64, operand.immediate);
-    break;
-  case LIR_OPERAND_KIND_EFFECTIVE_ADDRESS:
-    printf("[");
-    lir_print_register(operand.effective_address.base);
-    if (operand.effective_address.index.value) {
-      printf(" + ");
-      lir_print_register(operand.effective_address.index);
-      printf(" * %" PRIu8 " ", operand.effective_address.scale);
-    }
-    printf("%s%" PRIi32 "]",
-           operand.effective_address.displacement >= 0 ? "+" : "",
-           operand.effective_address.displacement);
-    break;
-  case LIR_OPERAND_KIND_LABEL:
-    printf(".%" PRIu32, operand.label.value);
-    break;
-  default:
-    PG_ASSERT(0);
-  }
-}
-
-static void lir_emitter_print_lirs(LirEmitter emitter) {
-  for (u64 i = 0; i < emitter.instructions.len; i++) {
-    LirInstruction lir = PG_SLICE_AT(emitter.instructions, i);
-    printf("[%" PRIu64 "]\n", i);
-
-    lir_print_var_to_memory_location(lir.var_to_memory_location_frozen);
-
-    origin_print(lir.origin);
-    printf(": ");
-
-    switch (lir.kind) {
-    case LIR_KIND_ADD:
-      printf("add ");
-      break;
-    case LIR_KIND_SUB:
-      printf("sub ");
-      break;
-    case LIR_KIND_MOV:
-      printf("mov ");
-      break;
-    case LIR_KIND_SYSCALL:
-      printf("syscall ");
-      break;
-    case LIR_KIND_LOAD_EFFECTIVE_ADDRESS:
-      printf("lea ");
-      break;
-    case LIR_KIND_JUMP_IF_EQ:
-      printf("je ");
-      break;
-    case LIR_KIND_JUMP:
-      printf("jmp ");
-      break;
-    case LIR_KIND_LABEL:
-      PG_ASSERT(0 && "todo");
-    case LIR_KIND_CMP:
-      printf("cmp ");
-      break;
-    case LIR_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-
-    for (u64 j = 0; j < lir.operands.len; j++) {
-      LirOperand op = PG_SLICE_AT(lir.operands, j);
-      lir_print_operand(op);
-
-      if (j + 1 < lir.operands.len) {
-        printf(", ");
-      }
-    }
-    printf("\n");
   }
 }
