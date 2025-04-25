@@ -80,6 +80,11 @@ int main(int argc, char *argv[]) {
   ir_emitter_print_var_lifetimes(ir_emitter);
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
 
+  LirEmitter lir_emitter = {.virtual_reg = {2}};
+  lir_emit(&lir_emitter, irs_slice, allocator);
+  printf("\n------------ LIR ------------\n");
+  lir_emitter_print_lirs(lir_emitter);
+
   Amd64RegisterAllocator reg_alloc = {0};
   Amd64InstructionDyn instructions = {0};
   amd64_emit_prolog(&instructions, allocator);

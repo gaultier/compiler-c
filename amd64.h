@@ -1065,7 +1065,7 @@ static void amd64_memory_location_record_var_copy(
 
   for (u64 i = 0; i < locations->len; i++) {
     MemoryLocation *loc = PG_SLICE_AT_PTR(locations, i);
-    if (asm_memory_location_eq(*loc, loc_new)) {
+    if (lir_memory_location_eq(*loc, loc_new)) {
       *loc = loc_new;
       return;
     }
