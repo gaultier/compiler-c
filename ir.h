@@ -676,6 +676,40 @@ static bool irs_optimize_fold_constants(IrDyn *irs) {
   return changed;
 }
 
+[[nodiscard]]
+static bool irs_optimize_remove_trivial_falsy_or_truthy_branches(IrDyn *irs) {
+  bool changed = false;
+  for (u64 i = 0; i < irs->len; i++) {
+    Ir *ir = PG_SLICE_AT_PTR(irs, i);
+    if (ir->tombstone) {
+      continue;
+    }
+
+    if (!(IR_KIND_JUMP_IF_FALSE == ir->kind)) {
+      continue;
+    }
+
+    PG_ASSERT(2 == ir->operands.len);
+
+    IrValue cond = PG_SLICE_AT(ir->operands, 0);
+    if (IR_VALUE_KIND_U64 != cond.kind) {
+      continue;
+    }
+
+    if (cond.n64) { // We will never jump => remove this IR.
+      // TODO: Mark IRs coming from <else> branch as tombstoned.
+      ir->tombstone = true;
+      changed = true;
+    } else { // We will always jump => replace this IR by an unconditional jump.
+      // TODO: Mark IRs coming from <then> branch as tombstoned.
+      ir->kind = IR_KIND_JUMP;
+
+      PG_DYN_SWAP_REMOVE(&ir->operands, 0);
+    }
+  }
+  return changed;
+}
+
 static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
 
@@ -699,6 +733,11 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
     }
 
     changed |= irs_optimize_fold_constants(irs);
+    if (changed) {
+      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+    }
+
+    changed |= irs_optimize_remove_trivial_falsy_or_truthy_branches(irs);
     if (changed) {
       irs_recompute_var_lifetimes(*irs, *var_lifetimes);
     }
