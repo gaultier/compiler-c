@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
     lir_emitter_print_lirs(lir_emitter);
   }
 
-  Amd64RegisterAllocator reg_alloc = {0};
+  Amd64Emitter reg_alloc = {0};
   Amd64InstructionDyn instructions = {0};
   amd64_emit_prolog(&instructions, allocator);
   amd64_irs_to_asm(irs_slice, &instructions, &reg_alloc,
