@@ -81,8 +81,10 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, tokens);
-  printf("\n------------ Lex tokens ------------\n");
-  lex_tokens_print(tokens_slice);
+  if (cli_opts.verbose) {
+    printf("\n------------ Lex tokens ------------\n");
+    lex_tokens_print(tokens_slice);
+  }
 
   AstNode *root = lex_to_ast(tokens_slice, &errors, allocator);
   if (errors.len) {
@@ -95,8 +97,10 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  printf("\n------------ AST ------------\n");
-  ast_print(*root, 0);
+  if (cli_opts.verbose) {
+    printf("\n------------ AST ------------\n");
+    ast_print(*root, 0);
+  }
 
   IrEmitter ir_emitter = {
       .ir_id = {1},
@@ -114,19 +118,29 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  printf("\n------------ IR ------------\n");
-  ir_emitter_print_irs(ir_emitter);
-  irs_optimize(&ir_emitter.irs, &ir_emitter.var_lifetimes);
-  printf("\n------------ IR simplified ------------\n");
-  ir_emitter_print_irs(ir_emitter);
-  printf("\n------------ IR var lifetimes ------------\n");
-  ir_emitter_print_var_lifetimes(ir_emitter);
+  if (cli_opts.verbose) {
+    printf("\n------------ IR ------------\n");
+    ir_emitter_print_irs(ir_emitter);
+  }
+  if (cli_opts.optimize) {
+    irs_optimize(&ir_emitter.irs, &ir_emitter.var_lifetimes);
+    if (cli_opts.verbose) {
+      printf("\n------------ IR simplified ------------\n");
+      ir_emitter_print_irs(ir_emitter);
+    }
+  }
+  if (cli_opts.verbose) {
+    printf("\n------------ IR var lifetimes ------------\n");
+    ir_emitter_print_var_lifetimes(ir_emitter);
+  }
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
 
   LirEmitter lir_emitter = {.virtual_reg = {2}};
   lir_emit(&lir_emitter, irs_slice, allocator);
-  printf("\n------------ LIR ------------\n");
-  lir_emitter_print_lirs(lir_emitter);
+  if (cli_opts.verbose) {
+    printf("\n------------ LIR ------------\n");
+    lir_emitter_print_lirs(lir_emitter);
+  }
 
   Amd64RegisterAllocator reg_alloc = {0};
   Amd64InstructionDyn instructions = {0};
@@ -135,8 +149,10 @@ int main(int argc, char *argv[]) {
                    ir_emitter.var_lifetimes, allocator);
   amd64_emit_epilog(&instructions, allocator);
 
-  printf("\n------------ ASM ------------\n");
-  amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
+  if (cli_opts.verbose) {
+    printf("\n------------ ASM ------------\n");
+    amd64_print_instructions(PG_DYN_SLICE(Amd64InstructionSlice, instructions));
+  }
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
