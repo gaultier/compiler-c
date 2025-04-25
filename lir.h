@@ -700,10 +700,7 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
     };
     PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
 
-    MemoryLocation *lhs_mem_loc = lir_memory_location_find_var_on_stack(
-        emitter->var_to_memory_location, lhs_ir_val.var);
-    PG_ASSERT(lhs_mem_loc);
-    LirOperand lhs_op = lir_memory_location_to_operand(*lhs_mem_loc);
+    LirOperand lhs_op = lir_memory_location_to_operand(*res_mem_loc);
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs_op;
 
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs_op;

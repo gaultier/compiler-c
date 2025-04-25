@@ -5,6 +5,6 @@ bar := 2
 baz := foo + bar
 
 syscall_exit := 60
-syscall(syscall_exit, 0)
+syscall(syscall_exit, baz)
 
 x := 99
