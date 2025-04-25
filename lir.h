@@ -576,6 +576,37 @@ static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
                                       dst_mem_loc, allocator);
 }
 
+static void lir_emit_lea_to_register(LirEmitter *emitter, IrVar var,
+                                     MemoryLocation src, VirtualRegister dst,
+                                     Origin origin, PgAllocator *allocator) {
+
+  LirInstruction ins = {
+      .kind = LIR_KIND_LOAD_EFFECTIVE_ADDRESS,
+      .origin = origin,
+      .var_to_memory_location_frozen =
+          lir_memory_location_clone(emitter->var_to_memory_location, allocator),
+  };
+  PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
+
+  LirOperand lhs = {
+      .kind = LIR_OPERAND_KIND_REGISTER,
+      .reg = dst,
+  };
+
+  LirOperand rhs = lir_memory_location_to_operand(src);
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs;
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs;
+
+  *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+
+  MemoryLocation mem_loc_dst = {
+      .kind = MEMORY_LOCATION_KIND_REGISTER,
+      .reg = dst,
+  };
+  lir_memory_location_record_var_copy(&emitter->var_to_memory_location, var,
+                                      mem_loc_dst, allocator);
+}
+
 static void lir_emit_copy_register_to(LirEmitter *emitter, IrVar var,
                                       VirtualRegister src, MemoryLocation dst,
                                       Origin origin, PgAllocator *allocator) {
@@ -712,24 +743,24 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
     PG_ASSERT(1 == ir.operands.len);
     PG_ASSERT(ir.var.id.value);
 
-    IrValue rhs_ir_val = PG_SLICE_AT(ir.operands, 0);
-    PG_ASSERT(IR_VALUE_KIND_VAR == rhs_ir_val.kind ||
-              IR_VALUE_KIND_U64 == rhs_ir_val.kind);
+    IrValue src_ir_val = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_VAR == src_ir_val.kind ||
+              IR_VALUE_KIND_U64 == src_ir_val.kind);
 
     MemoryLocation *dst_mem_loc = lir_memory_location_find_var_on_stack(
         emitter->var_to_memory_location, ir.var);
 
-    if (IR_VALUE_KIND_U64 == rhs_ir_val.kind) {
-      lir_emit_copy_immediate_to(emitter, rhs_ir_val, *dst_mem_loc, ir.origin,
+    if (IR_VALUE_KIND_U64 == src_ir_val.kind) {
+      lir_emit_copy_immediate_to(emitter, src_ir_val, *dst_mem_loc, ir.origin,
                                  allocator);
-    } else if (IR_VALUE_KIND_VAR == rhs_ir_val.kind) {
+    } else if (IR_VALUE_KIND_VAR == src_ir_val.kind) {
       MemoryLocation *rhs_mem_loc = lir_memory_location_find_var_on_stack(
-          emitter->var_to_memory_location, rhs_ir_val.var);
+          emitter->var_to_memory_location, src_ir_val.var);
       PG_ASSERT(rhs_mem_loc);
 
       VirtualRegister reg =
           lir_make_virtual_register(emitter, LIR_VIRT_REG_CONSTRAINT_NONE);
-      lir_emit_copy_var_to_register(emitter, rhs_ir_val.var, *rhs_mem_loc, reg,
+      lir_emit_copy_var_to_register(emitter, src_ir_val.var, *rhs_mem_loc, reg,
                                     ir.origin, allocator);
       lir_emit_copy_register_to(emitter, ir.var, reg, *dst_mem_loc, ir.origin,
                                 allocator);
@@ -790,6 +821,25 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
 
   } break;
   case IR_KIND_ADDRESS_OF: {
+    PG_ASSERT(1 == ir.operands.len);
+    PG_ASSERT(ir.var.id.value);
+
+    IrValue src_ir_val = PG_SLICE_AT(ir.operands, 0);
+    PG_ASSERT(IR_VALUE_KIND_VAR == src_ir_val.kind);
+    MemoryLocation *src_mem_loc = lir_memory_location_find_var_on_stack(
+        emitter->var_to_memory_location, src_ir_val.var);
+    PG_ASSERT(src_mem_loc);
+
+    VirtualRegister reg =
+        lir_make_virtual_register(emitter, LIR_VIRT_REG_CONSTRAINT_NONE);
+    lir_emit_lea_to_register(emitter, ir.var, *src_mem_loc, reg, ir.origin,
+                             allocator);
+
+    MemoryLocation *dst_mem_loc = lir_memory_location_find_var_on_stack(
+        emitter->var_to_memory_location, ir.var);
+    PG_ASSERT(dst_mem_loc);
+    lir_emit_copy_register_to(emitter, ir.var, reg, *dst_mem_loc, ir.origin,
+                              allocator);
   } break;
   case IR_KIND_JUMP_IF_FALSE:
   case IR_KIND_JUMP:
