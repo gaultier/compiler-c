@@ -122,6 +122,13 @@ typedef struct {
 PG_SLICE(LirInstruction) LirInstructionSlice;
 PG_DYN(LirInstruction) LirInstructionDyn;
 
+// Form an interference graph of variable.
+// Edge between two nodes: they cannot share the same register.
+typedef struct {
+  IrVar a, b;
+} LirVarInterferenceEdge;
+PG_DYN(LirVarInterferenceEdge) LirVarInterferenceEdgeDyn;
+
 typedef struct {
   LirInstructionDyn instructions;
   VarToMemoryLocationDyn var_to_memory_location;
@@ -333,6 +340,76 @@ static void lir_emitter_print_lirs(LirEmitter emitter) {
   case MEMORY_LOCATION_KIND_NONE:
   default:
     PG_ASSERT(0);
+  }
+}
+
+static void
+lir_build_var_interference_graph(IrSlice irs, IrVarLifetimeDyn lifetimes,
+                                 LirVarInterferenceEdgeDyn *interference_edges,
+                                 PgAllocator *allocator) {
+  for (u64 i = 0; i < irs.len; i++) {
+    Ir ir = PG_SLICE_AT(irs, i);
+    if (ir.tombstone) {
+      continue;
+    }
+    // No var.
+    if (!ir.var.id.value) {
+      continue;
+    }
+
+    IrVarLifetime *lifetime =
+        ir_find_var_lifetime_by_var_id(lifetimes, ir.var.id);
+    PG_ASSERT(lifetime);
+    if (lifetime->tombstone) {
+      continue;
+    }
+    PG_ASSERT(lifetime->start.value <= lifetime->end.value);
+
+    for (u64 j = 0; j < lifetimes.len; j++) {
+      IrVarLifetime it = PG_SLICE_AT(lifetimes, j);
+      PG_ASSERT(it.start.value <= it.end.value);
+
+      if (it.tombstone) {
+        continue;
+      }
+
+      // Skip self.
+      if (ir.var.id.value == it.var.id.value) {
+        continue;
+      }
+
+      // `it` strictly before `lifetime`.
+      if (it.end.value < lifetime->start.value) {
+        continue;
+      }
+
+      // `it` strictly after `lifetime`.
+      if (lifetime->end.value < it.start.value) {
+        continue;
+      }
+
+      // Interferes: add an edge between the two nodes.
+      LirVarInterferenceEdge edge = {
+          .a = ir.var,
+          .b = it.var,
+      };
+      *PG_DYN_PUSH(interference_edges, allocator) = edge;
+    }
+  }
+}
+
+static void
+lir_print_interference_edges(LirVarInterferenceEdgeDyn interference_edges) {
+  for (u64 i = 0; i < interference_edges.len; i++) {
+    LirVarInterferenceEdge edge = PG_SLICE_AT(interference_edges, i);
+    PG_ASSERT(edge.a.id.value);
+    PG_ASSERT(edge.b.id.value);
+    PG_ASSERT(edge.a.id.value != edge.b.id.value);
+
+    ir_print_var(edge.a);
+    printf(" -> ");
+    ir_print_var(edge.b);
+    printf("\n");
   }
 }
 

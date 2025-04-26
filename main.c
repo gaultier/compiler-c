@@ -135,6 +135,15 @@ int main(int argc, char *argv[]) {
   }
   IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
 
+  LirVarInterferenceEdgeDyn interference_edges = {0};
+  lir_build_var_interference_graph(irs_slice, ir_emitter.var_lifetimes,
+                                   &interference_edges, allocator);
+
+  if (cli_opts.verbose) {
+    printf("\n------------ Interference edges ------------\n");
+    lir_print_interference_edges(interference_edges);
+  }
+
   LirEmitter lir_emitter = {
       .virtual_reg = {.value = lir_virt_reg_syscall_num.value + 1},
       .var_lifetimes = ir_emitter.var_lifetimes,
