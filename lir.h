@@ -182,23 +182,23 @@ static const VirtualRegister lir_virt_reg_syscall_num = {
 
 static void lir_print_register(VirtualRegister reg) {
   if (reg.value == lir_virt_reg_base_stack_pointer.value) {
-    printf("reg_bsp");
+    printf("v_bsp");
   } else if (reg.value == lir_virt_reg_syscall0.value) {
-    printf("reg_syscall0");
+    printf("v_syscall0");
   } else if (reg.value == lir_virt_reg_syscall1.value) {
-    printf("reg_syscall1");
+    printf("v_syscall1");
   } else if (reg.value == lir_virt_reg_syscall2.value) {
-    printf("reg_syscall2");
+    printf("v_syscall2");
   } else if (reg.value == lir_virt_reg_syscall3.value) {
-    printf("reg_syscall3");
+    printf("v_syscall3");
   } else if (reg.value == lir_virt_reg_syscall4.value) {
-    printf("reg_syscall4");
+    printf("v_syscall4");
   } else if (reg.value == lir_virt_reg_syscall5.value) {
-    printf("reg_syscall5");
+    printf("v_syscall5");
   } else if (reg.value == lir_virt_reg_syscall_num.value) {
-    printf("reg_syscall_num");
+    printf("v_syscall_num");
   } else {
-    printf("reg%lu", reg.value);
+    printf("v%lu", reg.value);
   }
 }
 
