@@ -757,7 +757,7 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 }
 
-static void lir_emit_ir(LirEmitter *emitter, Ir ir,
+static void lir_emit_ir(LirEmitter *emitter, IrInstruction ir,
                         VirtualRegister virt_reg_syscall_ret, bool verbose,
                         PgAllocator *allocator) {
   lir_memory_location_expire_vars_in_register_at_lifetime_end(emitter, ir.id,
@@ -1046,7 +1046,7 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
   }
 }
 
-static void lir_emit_irs(LirEmitter *emitter, IrSlice irs,
+static void lir_emit_irs(LirEmitter *emitter, IrInstructionSlice irs,
                          VirtualRegister virt_reg_syscall_ret, bool verbose,
                          PgAllocator *allocator) {
   for (u64 i = 0; i < irs.len; i++) {

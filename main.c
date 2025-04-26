@@ -133,7 +133,10 @@ int main(int argc, char *argv[]) {
     printf("\n------------ IR var lifetimes ------------\n");
     ir_emitter_print_var_lifetimes(ir_emitter);
   }
-  IrSlice irs_slice = PG_DYN_SLICE(IrSlice, ir_emitter.irs);
+  IrInstructionSlice irs_slice =
+      PG_DYN_SLICE(IrInstructionSlice, ir_emitter.irs);
+
+  // TODO: Have a pass to remove tombstone IRs & lifetimes?
 
   LirVarInterferenceEdgeDyn interference_edges = {0};
   lir_build_var_interference_graph(ir_emitter.var_lifetimes,
