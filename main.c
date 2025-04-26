@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
   PG_DYN_ENSURE_CAP(&interference_edges,
                     ir_emitter.var_lifetimes.len * ir_emitter.var_lifetimes.len,
                     allocator);
-  lir_build_var_interference_graph(ir_emitter.var_lifetimes,
+  lir_build_var_interference_edges(ir_emitter.var_lifetimes,
                                    &interference_edges);
 
   if (cli_opts.verbose) {

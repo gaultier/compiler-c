@@ -343,7 +343,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
   }
 }
 
-static void lir_build_var_interference_graph(
+static void lir_build_var_interference_edges(
     IrVarLifetimeDyn lifetimes, LirVarInterferenceEdgeDyn *interference_edges) {
   for (u64 i = 0; i < lifetimes.len; i++) {
     IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
