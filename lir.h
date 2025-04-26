@@ -530,9 +530,8 @@ lir_memory_location_find_register(VarToMemoryLocationDyn var_to_memory_location,
   return nullptr;
 }
 
-static void
-lir_memory_location_expire_vars_in_register_at_lifetime_end(LirEmitter *emitter,
-                                                            IrId ir_id) {
+static void lir_memory_location_expire_vars_in_register_at_lifetime_end(
+    LirEmitter *emitter, IrId ir_id, bool verbose) {
   for (u64 i = 0; i < emitter->var_to_memory_location.len; i++) {
     VarToMemoryLocation var_mem_loc =
         PG_SLICE_AT(emitter->var_to_memory_location, i);
@@ -556,10 +555,12 @@ lir_memory_location_expire_vars_in_register_at_lifetime_end(LirEmitter *emitter,
 
       lir_memory_location_empty_register(emitter->var_to_memory_location,
                                          loc.reg);
-      printf("[D001] [%u] expired: ", ir_id.value);
-      lir_print_register(loc.reg);
-      printf(" %u\n", var_mem_loc.var.id.value);
-      printf("\n");
+      if (verbose) {
+        printf("[D001] [%u] expired: ", ir_id.value);
+        lir_print_register(loc.reg);
+        printf(" %u\n", var_mem_loc.var.id.value);
+        printf("\n");
+      }
     }
   }
 }
@@ -757,9 +758,10 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
 }
 
 static void lir_emit_ir(LirEmitter *emitter, Ir ir,
-                        VirtualRegister virt_reg_syscall_ret,
+                        VirtualRegister virt_reg_syscall_ret, bool verbose,
                         PgAllocator *allocator) {
-  lir_memory_location_expire_vars_in_register_at_lifetime_end(emitter, ir.id);
+  lir_memory_location_expire_vars_in_register_at_lifetime_end(emitter, ir.id,
+                                                              verbose);
 
   if (ir.tombstone) {
     return;
@@ -1045,9 +1047,10 @@ static void lir_emit_ir(LirEmitter *emitter, Ir ir,
 }
 
 static void lir_emit_irs(LirEmitter *emitter, IrSlice irs,
-                         VirtualRegister virt_reg_syscall_ret,
+                         VirtualRegister virt_reg_syscall_ret, bool verbose,
                          PgAllocator *allocator) {
   for (u64 i = 0; i < irs.len; i++) {
-    lir_emit_ir(emitter, PG_SLICE_AT(irs, i), virt_reg_syscall_ret, allocator);
+    lir_emit_ir(emitter, PG_SLICE_AT(irs, i), virt_reg_syscall_ret, verbose,
+                allocator);
   }
 }

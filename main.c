@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
     ir_emitter_print_irs(ir_emitter);
   }
   if (cli_opts.optimize) {
-    irs_optimize(&ir_emitter.irs, &ir_emitter.var_lifetimes);
+    irs_optimize(&ir_emitter.irs, &ir_emitter.var_lifetimes, cli_opts.verbose);
     if (cli_opts.verbose) {
       printf("\n------------ IR simplified ------------\n");
       ir_emitter_print_irs(ir_emitter);
@@ -152,7 +152,8 @@ int main(int argc, char *argv[]) {
   // different register.
   VirtualRegister virt_reg_syscall_ret = lir_virt_reg_syscall_num;
 
-  lir_emit_irs(&lir_emitter, irs_slice, virt_reg_syscall_ret, allocator);
+  lir_emit_irs(&lir_emitter, irs_slice, virt_reg_syscall_ret, cli_opts.verbose,
+               allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_lirs(lir_emitter);

@@ -710,7 +710,8 @@ static bool irs_optimize_remove_trivial_falsy_or_truthy_branches(IrDyn *irs) {
   return changed;
 }
 
-static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
+static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes,
+                         bool verbose) {
   bool changed = false;
 
   u64 optimization_rounds = 0;
@@ -750,7 +751,9 @@ static void irs_optimize(IrDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
   // TODO: Simplify `if(false) { <then> } else { <else> }` => `<else>`
   // TODO: Remove empty labels.
 
-  printf("[D010] optimization_rounds=%lu\n", optimization_rounds);
+  if (verbose) {
+    printf("[D010] optimization_rounds=%lu\n", optimization_rounds);
+  }
 }
 
 static void ir_print_var(IrVar var) {
