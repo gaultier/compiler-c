@@ -68,17 +68,17 @@ PG_SLICE(LabelAddress) LabelAddressSlice;
 PG_DYN(LabelAddress) LabelAddressDyn;
 
 typedef enum {
-  LIR_KIND_NONE,
-  LIR_KIND_ADD,
-  LIR_KIND_SUB,
-  LIR_KIND_MOV,
-  LIR_KIND_SYSCALL,
-  LIR_KIND_LOAD_EFFECTIVE_ADDRESS,
-  LIR_KIND_JUMP_IF_EQ,
-  LIR_KIND_JUMP,
-  LIR_KIND_LABEL,
-  LIR_KIND_CMP,
-} LirKind;
+  LIR_INSTRUCTION_KIND_NONE,
+  LIR_INSTRUCTION_KIND_ADD,
+  LIR_INSTRUCTION_KIND_SUB,
+  LIR_INSTRUCTION_KIND_MOV,
+  LIR_INSTRUCTION_KIND_SYSCALL,
+  LIR_INSTRUCTION_KIND_LOAD_EFFECTIVE_ADDRESS,
+  LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
+  LIR_INSTRUCTION_KIND_JUMP,
+  LIR_INSTRUCTION_KIND_LABEL,
+  LIR_INSTRUCTION_KIND_CMP,
+} LirInstructionKind;
 
 typedef enum {
   LIR_OPERAND_KIND_NONE,
@@ -114,7 +114,7 @@ typedef struct {
 
 PG_DYN(VarToMemoryLocation) VarToMemoryLocationDyn;
 typedef struct {
-  LirKind kind;
+  LirInstructionKind kind;
   LirOperandDyn operands;
   Origin origin;
   VarToMemoryLocationDyn var_to_memory_location_frozen;
@@ -281,33 +281,33 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
     printf(": ");
 
     switch (ins.kind) {
-    case LIR_KIND_ADD:
+    case LIR_INSTRUCTION_KIND_ADD:
       printf("add ");
       break;
-    case LIR_KIND_SUB:
+    case LIR_INSTRUCTION_KIND_SUB:
       printf("sub ");
       break;
-    case LIR_KIND_MOV:
+    case LIR_INSTRUCTION_KIND_MOV:
       printf("mov ");
       break;
-    case LIR_KIND_SYSCALL:
+    case LIR_INSTRUCTION_KIND_SYSCALL:
       printf("syscall ");
       break;
-    case LIR_KIND_LOAD_EFFECTIVE_ADDRESS:
+    case LIR_INSTRUCTION_KIND_LOAD_EFFECTIVE_ADDRESS:
       printf("lea ");
       break;
-    case LIR_KIND_JUMP_IF_EQ:
+    case LIR_INSTRUCTION_KIND_JUMP_IF_EQ:
       printf("je ");
       break;
-    case LIR_KIND_JUMP:
+    case LIR_INSTRUCTION_KIND_JUMP:
       printf("jmp ");
       break;
-    case LIR_KIND_LABEL:
+    case LIR_INSTRUCTION_KIND_LABEL:
       break;
-    case LIR_KIND_CMP:
+    case LIR_INSTRUCTION_KIND_CMP:
       printf("cmp ");
       break;
-    case LIR_KIND_NONE:
+    case LIR_INSTRUCTION_KIND_NONE:
     default:
       PG_ASSERT(0);
     }
@@ -647,7 +647,7 @@ static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
   }
 
   LirInstruction ins = {
-      .kind = LIR_KIND_MOV,
+      .kind = LIR_INSTRUCTION_KIND_MOV,
       .origin = origin,
       .var_to_memory_location_frozen =
           lir_memory_location_clone(emitter->var_to_memory_location, allocator),
@@ -679,7 +679,7 @@ static void lir_emit_lea_to_register(LirEmitter *emitter, IrVar var,
                                      Origin origin, PgAllocator *allocator) {
 
   LirInstruction ins = {
-      .kind = LIR_KIND_LOAD_EFFECTIVE_ADDRESS,
+      .kind = LIR_INSTRUCTION_KIND_LOAD_EFFECTIVE_ADDRESS,
       .origin = origin,
       .var_to_memory_location_frozen =
           lir_memory_location_clone(emitter->var_to_memory_location, allocator),
@@ -710,7 +710,7 @@ lir_emit_copy_register_to_var_mem_loc(LirEmitter *emitter, IrVar var_dst,
                                       VirtualRegister src, MemoryLocation dst,
                                       Origin origin, PgAllocator *allocator) {
   LirInstruction ins = {
-      .kind = LIR_KIND_MOV,
+      .kind = LIR_INSTRUCTION_KIND_MOV,
       .origin = origin,
       .var_to_memory_location_frozen =
           lir_memory_location_clone(emitter->var_to_memory_location, allocator),
@@ -738,7 +738,7 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
   PG_ASSERT(IR_VALUE_KIND_U64 == val.kind);
 
   LirInstruction ins = {
-      .kind = LIR_KIND_MOV,
+      .kind = LIR_INSTRUCTION_KIND_MOV,
       .origin = origin,
       .var_to_memory_location_frozen =
           lir_memory_location_clone(emitter->var_to_memory_location, allocator),
@@ -773,7 +773,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   }
 
   switch (ir_ins.kind) {
-  case IR_KIND_ADD: {
+  case IR_INSTRUCTION_KIND_ADD: {
     PG_ASSERT(2 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.var.id.value);
 
@@ -829,7 +829,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     }
 
     LirInstruction ins = {
-        .kind = LIR_KIND_ADD,
+        .kind = LIR_INSTRUCTION_KIND_ADD,
         .origin = ir_ins.origin,
         .var_to_memory_location_frozen = lir_memory_location_clone(
             emitter->var_to_memory_location, allocator),
@@ -844,7 +844,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 
   } break;
-  case IR_KIND_LOAD: {
+  case IR_INSTRUCTION_KIND_LOAD: {
     PG_ASSERT(1 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.var.id.value);
 
@@ -872,7 +872,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     }
 
   } break;
-  case IR_KIND_SYSCALL: {
+  case IR_INSTRUCTION_KIND_SYSCALL: {
     PG_ASSERT(ir_ins.operands.len <=
               1 /* syscall num */ + lir_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
@@ -907,7 +907,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     }
 
     LirInstruction lir_ins = {
-        .kind = LIR_KIND_SYSCALL,
+        .kind = LIR_INSTRUCTION_KIND_SYSCALL,
         .origin = ir_ins.origin,
         .var_to_memory_location_frozen = lir_memory_location_clone(
             emitter->var_to_memory_location, allocator),
@@ -927,7 +927,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     }
 
   } break;
-  case IR_KIND_ADDRESS_OF: {
+  case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.var.id.value);
 
@@ -948,7 +948,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     lir_emit_copy_register_to_var_mem_loc(
         emitter, ir_ins.var, reg, *dst_mem_loc, ir_ins.origin, allocator);
   } break;
-  case IR_KIND_JUMP_IF_FALSE: {
+  case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir_ins.operands.len);
     PG_ASSERT(0 == ir_ins.var.id.value);
 
@@ -960,7 +960,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     {
       LirInstruction ins_cmp = {
-          .kind = LIR_KIND_CMP,
+          .kind = LIR_INSTRUCTION_KIND_CMP,
           .origin = ir_ins.origin,
           .var_to_memory_location_frozen = lir_memory_location_clone(
               emitter->var_to_memory_location, allocator),
@@ -981,7 +981,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     }
     {
       LirInstruction ins_je = {
-          .kind = LIR_KIND_JUMP_IF_EQ,
+          .kind = LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
           .origin = ir_ins.origin,
           .var_to_memory_location_frozen = lir_memory_location_clone(
               emitter->var_to_memory_location, allocator),
@@ -996,7 +996,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_je;
     }
   } break;
-  case IR_KIND_JUMP: {
+  case IR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == ir_ins.operands.len);
     PG_ASSERT(0 == ir_ins.var.id.value);
 
@@ -1004,7 +1004,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
 
     LirInstruction ins = {
-        .kind = LIR_KIND_JUMP,
+        .kind = LIR_INSTRUCTION_KIND_JUMP,
         .origin = ir_ins.origin,
         .var_to_memory_location_frozen = lir_memory_location_clone(
             emitter->var_to_memory_location, allocator),
@@ -1018,7 +1018,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
   } break;
-  case IR_KIND_LABEL: {
+  case IR_INSTRUCTION_KIND_LABEL: {
     PG_ASSERT(1 == ir_ins.operands.len);
     PG_ASSERT(0 == ir_ins.var.id.value);
 
@@ -1026,7 +1026,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
 
     LirInstruction ins = {
-        .kind = LIR_KIND_LABEL,
+        .kind = LIR_INSTRUCTION_KIND_LABEL,
         .origin = ir_ins.origin,
         .var_to_memory_location_frozen = lir_memory_location_clone(
             emitter->var_to_memory_location, allocator),
@@ -1041,7 +1041,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
   } break;
 
-  case IR_KIND_NONE:
+  case IR_INSTRUCTION_KIND_NONE:
   default:
     PG_ASSERT(0);
   }

@@ -1100,7 +1100,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   //  amd64_expire_vars_if_lifetime_end_reached(emitter, var_lifetimes, ir.id);
 
   switch (lir.kind) {
-  case LIR_KIND_ADD: {
+  case LIR_INSTRUCTION_KIND_ADD: {
     PG_ASSERT(2 == lir.operands.len);
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
@@ -1118,7 +1118,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
   } break;
-  case LIR_KIND_SUB: {
+  case LIR_INSTRUCTION_KIND_SUB: {
     PG_ASSERT(2 == lir.operands.len);
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
@@ -1136,7 +1136,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
   } break;
-  case LIR_KIND_MOV: {
+  case LIR_INSTRUCTION_KIND_MOV: {
     PG_ASSERT(2 == lir.operands.len);
 
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
@@ -1155,7 +1155,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
   } break;
-  case LIR_KIND_SYSCALL: {
+  case LIR_INSTRUCTION_KIND_SYSCALL: {
     PG_ASSERT(0 == lir.operands.len);
     Amd64Instruction ins = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
@@ -1166,7 +1166,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
   } break;
 
-  case LIR_KIND_JUMP_IF_EQ: {
+  case LIR_INSTRUCTION_KIND_JUMP_IF_EQ: {
     PG_ASSERT(1 == lir.operands.len);
 
     LirOperand label = PG_SLICE_AT(lir.operands, 0);
@@ -1181,7 +1181,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 
   } break;
 
-  case LIR_KIND_LABEL: {
+  case LIR_INSTRUCTION_KIND_LABEL: {
     PG_ASSERT(1 == lir.operands.len);
 
     LirOperand label = PG_SLICE_AT(lir.operands, 0);
@@ -1195,7 +1195,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
 
-  case LIR_KIND_JUMP: {
+  case LIR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == lir.operands.len);
 
     LirOperand label = PG_SLICE_AT(lir.operands, 0);
@@ -1210,7 +1210,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
 
-  case LIR_KIND_CMP: {
+  case LIR_INSTRUCTION_KIND_CMP: {
     PG_ASSERT(2 == lir.operands.len);
 
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
@@ -1229,7 +1229,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
 
-  case LIR_KIND_LOAD_EFFECTIVE_ADDRESS: {
+  case LIR_INSTRUCTION_KIND_LOAD_EFFECTIVE_ADDRESS: {
     PG_ASSERT(2 == lir.operands.len);
 
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
@@ -1249,7 +1249,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 
   } break;
 
-  case LIR_KIND_NONE:
+  case LIR_INSTRUCTION_KIND_NONE:
   default:
     PG_ASSERT(0);
   }
