@@ -350,7 +350,7 @@ static void lir_build_var_interference_edges(
     PG_ASSERT(!lifetime.tombstone);
     PG_ASSERT(lifetime.start.value <= lifetime.end.value);
 
-    for (u64 j = 0; j < lifetimes.len; j++) {
+    for (u64 j = i + 1; j < lifetimes.len; j++) {
       IrVarLifetime it = PG_SLICE_AT(lifetimes, j);
       PG_ASSERT(it.start.value <= it.end.value);
       PG_ASSERT(!it.tombstone);

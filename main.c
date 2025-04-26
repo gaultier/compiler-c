@@ -140,11 +140,14 @@ int main(int argc, char *argv[]) {
       PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
   LirVarInterferenceEdgeDyn interference_edges = {0};
-  PG_DYN_ENSURE_CAP(&interference_edges,
-                    ir_emitter.var_lifetimes.len * ir_emitter.var_lifetimes.len,
-                    allocator);
-  lir_build_var_interference_edges(ir_emitter.var_lifetimes,
-                                   &interference_edges);
+  if (ir_emitter.var_lifetimes.len > 0) {
+    PG_DYN_ENSURE_CAP(&interference_edges,
+                      ir_emitter.var_lifetimes.len *
+                          (ir_emitter.var_lifetimes.len - 1) / 2,
+                      allocator);
+    lir_build_var_interference_edges(ir_emitter.var_lifetimes,
+                                     &interference_edges);
+  }
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference edges ------------\n");
