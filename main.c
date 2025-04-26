@@ -120,13 +120,14 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ IR ------------\n");
-    ir_emitter_print_irs(ir_emitter);
+    ir_emitter_print_instructions(ir_emitter);
   }
   if (cli_opts.optimize) {
-    irs_optimize(&ir_emitter.irs, &ir_emitter.var_lifetimes, cli_opts.verbose);
+    irs_optimize(&ir_emitter.instructions, &ir_emitter.var_lifetimes,
+                 cli_opts.verbose);
     if (cli_opts.verbose) {
       printf("\n------------ IR simplified ------------\n");
-      ir_emitter_print_irs(ir_emitter);
+      ir_emitter_print_instructions(ir_emitter);
     }
   }
   if (cli_opts.verbose) {
@@ -134,7 +135,7 @@ int main(int argc, char *argv[]) {
     ir_emitter_print_var_lifetimes(ir_emitter);
   }
   IrInstructionSlice irs_slice =
-      PG_DYN_SLICE(IrInstructionSlice, ir_emitter.irs);
+      PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
   // TODO: Have a pass to remove tombstone IRs & lifetimes?
 

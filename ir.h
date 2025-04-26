@@ -73,7 +73,7 @@ PG_SLICE(IrVarLifetime) IrVarLifetimeSlice;
 PG_DYN(IrVarLifetime) IrVarLifetimeDyn;
 
 typedef struct {
-  IrInstructionDyn irs;
+  IrInstructionDyn instructions;
   IrId ir_id;
   IrLabelId label_id;
   IrVarId var_id;
@@ -163,7 +163,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .n64 = node.n64,
     };
 
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir;
 
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
         .var = ir.var,
@@ -197,7 +197,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     *PG_DYN_PUSH(&ir.operands, allocator) = lhs;
     *PG_DYN_PUSH(&ir.operands, allocator) = rhs;
 
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir;
 
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
         .var = ir.var,
@@ -239,7 +239,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       }
     }
 
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir;
 
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
         .var = ir.var,
@@ -280,7 +280,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       PG_ASSERT(rhs_lifetime);
     }
 
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir;
 
     IrVarLifetime lifetime = {
         .var = ir.var,
@@ -338,7 +338,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       return (IrValue){0};
     }
 
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir;
 
     *PG_DYN_PUSH(&emitter->var_lifetimes, allocator) = (IrVarLifetime){
         .var = ir.var,
@@ -362,14 +362,14 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .id = ir_emitter_next_ir_id(emitter),
     };
     *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir_cond_jump;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_cond_jump;
 
     if (IR_VALUE_KIND_VAR == cond.kind) {
       ir_var_extend_lifetime_on_var_use(emitter->var_lifetimes, cond.var,
                                         ir_cond_jump.id);
     }
 
-    u64 ir_cond_jump_idx = emitter->irs.len - 1;
+    u64 ir_cond_jump_idx = emitter->instructions.len - 1;
 
     IrLabelId branch_if_cont_label = ir_emitter_next_label_id(emitter);
     IrLabelId branch_else_label = ir_emitter_next_label_id(emitter);
@@ -386,7 +386,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
           .kind = IR_VALUE_KIND_LABEL,
           .label = branch_if_cont_label,
       };
-      *PG_DYN_PUSH(&emitter->irs, allocator) = ir_jump;
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_jump;
     }
 
     // 'else' branch.
@@ -399,7 +399,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
           .kind = IR_VALUE_KIND_LABEL,
           .label = branch_else_label,
       };
-      *PG_DYN_PUSH(&emitter->irs, allocator) = ir_label_else;
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label_else;
       if (3 == node.operands.len) {
         ast_to_ir(PG_SLICE_AT(node.operands, 2), emitter, errors, false,
                   allocator);
@@ -413,10 +413,10 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .kind = IR_VALUE_KIND_LABEL,
         .label = branch_if_cont_label,
     };
-    *PG_DYN_PUSH(&emitter->irs, allocator) = ir_label_if_cont;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label_if_cont;
 
     IrInstruction *ir_cond_jump_backpatch =
-        PG_SLICE_AT_PTR(&emitter->irs, ir_cond_jump_idx);
+        PG_SLICE_AT_PTR(&emitter->instructions, ir_cond_jump_idx);
     *PG_DYN_PUSH(&ir_cond_jump_backpatch->operands, allocator) = (IrValue){
         .kind = IR_VALUE_KIND_LABEL,
         .label = branch_else_label,
@@ -430,7 +430,7 @@ static IrValue ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
   }
 }
 
-static void irs_recompute_var_lifetimes(IrInstructionDyn irs,
+static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
                                         IrVarLifetimeDyn lifetimes) {
   for (u64 i = 0; i < lifetimes.len; i++) {
     IrVarLifetime *lifetime = PG_SLICE_AT_PTR(&lifetimes, i);
@@ -438,8 +438,8 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn irs,
     lifetime->end = lifetime->start;
   }
 
-  for (u64 i = 0; i < irs.len; i++) {
-    IrInstruction ir = PG_SLICE_AT(irs, i);
+  for (u64 i = 0; i < instructions.len; i++) {
+    IrInstruction ir = PG_SLICE_AT(instructions, i);
     if (ir.tombstone) {
       continue;
     }
@@ -474,12 +474,12 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn irs,
 }
 
 [[nodiscard]]
-static bool irs_optimize_remove_unused_vars(IrInstructionDyn *irs,
+static bool irs_optimize_remove_unused_vars(IrInstructionDyn *instructions,
                                             IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
 
-  for (u64 i = 0; i < irs->len; i++) {
-    IrInstruction *ir = PG_SLICE_AT_PTR(irs, i);
+  for (u64 i = 0; i < instructions->len; i++) {
+    IrInstruction *ir = PG_SLICE_AT_PTR(instructions, i);
     if (ir->tombstone) {
       continue;
     }
@@ -523,12 +523,12 @@ static bool irs_optimize_remove_unused_vars(IrInstructionDyn *irs,
 // and update subsequent IRs referencing the old var to use the new var.
 [[nodiscard]]
 static bool
-irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *irs,
+irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *instructions,
                                            IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
 
-  for (u64 i = 0; i < irs->len; i++) {
-    IrInstruction *ir = PG_SLICE_AT_PTR(irs, i);
+  for (u64 i = 0; i < instructions->len; i++) {
+    IrInstruction *ir = PG_SLICE_AT_PTR(instructions, i);
     if (ir->tombstone) {
       continue;
     }
@@ -557,8 +557,8 @@ irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *irs,
     IrVar rhs_var = rhs.var;
     IrVar var_to_rm = ir->var;
 
-    for (u64 j = i + 1; j < irs->len; j++) {
-      IrInstruction ir_to_fix = PG_SLICE_AT(*irs, j);
+    for (u64 j = i + 1; j < instructions->len; j++) {
+      IrInstruction ir_to_fix = PG_SLICE_AT(*instructions, j);
       if (ir_to_fix.tombstone) {
         continue;
       }
@@ -582,10 +582,10 @@ irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *irs,
   return changed;
 }
 
-[[nodiscard]] static IrInstruction *irs_find_ir_by_id(IrInstructionDyn irs,
-                                                      IrId ir_id) {
-  for (u64 i = 0; i < irs.len; i++) {
-    IrInstruction *ir = PG_SLICE_AT_PTR(&irs, i);
+[[nodiscard]] static IrInstruction *
+irs_find_ir_by_id(IrInstructionDyn instructions, IrId ir_id) {
+  for (u64 i = 0; i < instructions.len; i++) {
+    IrInstruction *ir = PG_SLICE_AT_PTR(&instructions, i);
     if (ir->id.value == ir_id.value) {
       return ir;
     }
@@ -597,10 +597,10 @@ irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *irs,
 // and another optimization pass may then constant fold into `x3 := 3`.
 [[nodiscard]]
 static bool irs_optimize_replace_immediate_vars_by_immediate_value(
-    IrInstructionDyn *irs, IrVarLifetimeDyn *var_lifetimes) {
+    IrInstructionDyn *instructions, IrVarLifetimeDyn *var_lifetimes) {
   bool changed = false;
-  for (u64 i = 0; i < irs->len; i++) {
-    IrInstruction *ir = PG_SLICE_AT_PTR(irs, i);
+  for (u64 i = 0; i < instructions->len; i++) {
+    IrInstruction *ir = PG_SLICE_AT_PTR(instructions, i);
     if (ir->tombstone) {
       continue;
     }
@@ -624,7 +624,8 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
       PG_ASSERT(lifetime);
 
       IrId var_def_ir_id = lifetime->start;
-      IrInstruction *var_def_ir = irs_find_ir_by_id(*irs, var_def_ir_id);
+      IrInstruction *var_def_ir =
+          irs_find_ir_by_id(*instructions, var_def_ir_id);
       PG_ASSERT(var_def_ir);
       if (IR_KIND_LOAD != var_def_ir->kind) {
         continue;
@@ -645,10 +646,10 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
 
 // Replace: `x1 := 1 + 2` => `x1 := 3`.
 [[nodiscard]]
-static bool irs_optimize_fold_constants(IrInstructionDyn *irs) {
+static bool irs_optimize_fold_constants(IrInstructionDyn *instructions) {
   bool changed = false;
-  for (u64 i = 0; i < irs->len; i++) {
-    IrInstruction *ir = PG_SLICE_AT_PTR(irs, i);
+  for (u64 i = 0; i < instructions->len; i++) {
+    IrInstruction *ir = PG_SLICE_AT_PTR(instructions, i);
     if (ir->tombstone) {
       continue;
     }
@@ -679,11 +680,11 @@ static bool irs_optimize_fold_constants(IrInstructionDyn *irs) {
 }
 
 [[nodiscard]]
-static bool
-irs_optimize_remove_trivial_falsy_or_truthy_branches(IrInstructionDyn *irs) {
+static bool irs_optimize_remove_trivial_falsy_or_truthy_branches(
+    IrInstructionDyn *instructions) {
   bool changed = false;
-  for (u64 i = 0; i < irs->len; i++) {
-    IrInstruction *ir = PG_SLICE_AT_PTR(irs, i);
+  for (u64 i = 0; i < instructions->len; i++) {
+    IrInstruction *ir = PG_SLICE_AT_PTR(instructions, i);
     if (ir->tombstone) {
       continue;
     }
@@ -713,37 +714,39 @@ irs_optimize_remove_trivial_falsy_or_truthy_branches(IrInstructionDyn *irs) {
   return changed;
 }
 
-static void irs_optimize(IrInstructionDyn *irs, IrVarLifetimeDyn *var_lifetimes,
-                         bool verbose) {
+static void irs_optimize(IrInstructionDyn *instructions,
+                         IrVarLifetimeDyn *var_lifetimes, bool verbose) {
   bool changed = false;
 
   u64 optimization_rounds = 0;
   do {
     changed = false;
-    changed |= irs_optimize_remove_unused_vars(irs, var_lifetimes);
+    changed |= irs_optimize_remove_unused_vars(instructions, var_lifetimes);
     if (changed) {
-      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+      irs_recompute_var_lifetimes(*instructions, *var_lifetimes);
     }
 
-    changed |= irs_optimize_remove_trivially_aliased_vars(irs, var_lifetimes);
+    changed |=
+        irs_optimize_remove_trivially_aliased_vars(instructions, var_lifetimes);
     if (changed) {
-      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+      irs_recompute_var_lifetimes(*instructions, *var_lifetimes);
     }
 
     changed |= irs_optimize_replace_immediate_vars_by_immediate_value(
-        irs, var_lifetimes);
+        instructions, var_lifetimes);
     if (changed) {
-      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+      irs_recompute_var_lifetimes(*instructions, *var_lifetimes);
     }
 
-    changed |= irs_optimize_fold_constants(irs);
+    changed |= irs_optimize_fold_constants(instructions);
     if (changed) {
-      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+      irs_recompute_var_lifetimes(*instructions, *var_lifetimes);
     }
 
-    changed |= irs_optimize_remove_trivial_falsy_or_truthy_branches(irs);
+    changed |=
+        irs_optimize_remove_trivial_falsy_or_truthy_branches(instructions);
     if (changed) {
-      irs_recompute_var_lifetimes(*irs, *var_lifetimes);
+      irs_recompute_var_lifetimes(*instructions, *var_lifetimes);
     }
 
     optimization_rounds += 1;
@@ -810,7 +813,7 @@ static void ir_emitter_print_var_lifetime(u64 i, IrVarLifetime var_lifetime) {
 }
 
 static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
-  IrInstruction ir = PG_SLICE_AT(emitter.irs, i);
+  IrInstruction ir = PG_SLICE_AT(emitter.instructions, i);
 
   if (ir.tombstone) {
     printf("\x1B[9m"); // Strikethrough.
@@ -932,8 +935,8 @@ static void ir_emitter_print_ir(IrEmitter emitter, u32 i) {
   }
 }
 
-static void ir_emitter_print_irs(IrEmitter emitter) {
-  for (u64 i = 0; i < emitter.irs.len; i++) {
+static void ir_emitter_print_instructions(IrEmitter emitter) {
+  for (u64 i = 0; i < emitter.instructions.len; i++) {
     ir_emitter_print_ir(emitter, (u32)i);
   }
 }
