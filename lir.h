@@ -127,6 +127,7 @@ PG_DYN(LirInstruction) LirInstructionDyn;
 typedef struct {
   IrVar a, b;
 } LirVarInterferenceEdge;
+PG_SLICE(LirVarInterferenceEdge) LirVarInterferenceEdgeSlice;
 PG_DYN(LirVarInterferenceEdge) LirVarInterferenceEdgeDyn;
 
 typedef struct {
@@ -378,6 +379,21 @@ static void lir_build_var_interference_edges(
       *PG_DYN_PUSH_WITHIN_CAPACITY(interference_edges) = edge;
     }
   }
+}
+
+[[nodiscard]] [[maybe_unused]]
+static u64 lir_interference_edges_compute_node_neighbor_count(
+    LirVarInterferenceEdgeSlice edges, IrVar var) {
+  u64 res = 0;
+  for (u64 i = 0; i < edges.len; i++) {
+    LirVarInterferenceEdge edge = PG_SLICE_AT(edges, i);
+    if (!(edge.a.id.value == var.id.value || edge.b.id.value)) {
+      continue;
+    }
+
+    res += 1;
+  }
+  return res;
 }
 
 static void

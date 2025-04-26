@@ -45,6 +45,8 @@ static const Register amd64_r15 = {14};
 static const Register amd64_rsp = {15};
 static const Register amd64_rbp = {16};
 
+static const u64 amd64_grps_count = 14;
+
 static const PgString amd64_register_to_string[16 + 1] = {
     [0] = PG_S("UNREACHABLE"), [1] = PG_S("rax"),  [2] = PG_S("rbx"),
     [3] = PG_S("rcx"),         [4] = PG_S("rdx"),  [5] = PG_S("rdi"),
@@ -1253,6 +1255,19 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   default:
     PG_ASSERT(0);
   }
+}
+
+// Assign a color (i.e. unique physical register) to each node in the graph
+// so that no two adjacent nodes have the same color.
+// Meaning that if two variables interfere, they are assigned a different
+// physical register.
+// TODO: Output.
+[[maybe_unused]] // FIXME
+static void
+amd64_color_interference_graph(LirVarInterferenceEdgeSlice edges,
+                               RegisterSlice grps) {
+  (void)edges;
+  (void)grps;
 }
 
 static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
