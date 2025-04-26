@@ -270,7 +270,7 @@ static void lir_print_operand(LirOperand operand) {
   }
 }
 
-static void lir_emitter_print_lirs(LirEmitter emitter) {
+static void lir_emitter_print_instructions(LirEmitter emitter) {
   for (u64 i = 0; i < emitter.instructions.len; i++) {
     LirInstruction lir = PG_SLICE_AT(emitter.instructions, i);
     printf("[%" PRIu64 "]\n", i);
@@ -757,9 +757,9 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 }
 
-static void lir_emit_ir(LirEmitter *emitter, IrInstruction ir,
-                        VirtualRegister virt_reg_syscall_ret, bool verbose,
-                        PgAllocator *allocator) {
+static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir,
+                                 VirtualRegister virt_reg_syscall_ret,
+                                 bool verbose, PgAllocator *allocator) {
   lir_memory_location_expire_vars_in_register_at_lifetime_end(emitter, ir.id,
                                                               verbose);
 
@@ -1046,11 +1046,12 @@ static void lir_emit_ir(LirEmitter *emitter, IrInstruction ir,
   }
 }
 
-static void lir_emit_irs(LirEmitter *emitter, IrInstructionSlice irs,
-                         VirtualRegister virt_reg_syscall_ret, bool verbose,
-                         PgAllocator *allocator) {
-  for (u64 i = 0; i < irs.len; i++) {
-    lir_emit_ir(emitter, PG_SLICE_AT(irs, i), virt_reg_syscall_ret, verbose,
-                allocator);
+static void lir_emit_instructions(LirEmitter *emitter,
+                                  IrInstructionSlice instructions,
+                                  VirtualRegister virt_reg_syscall_ret,
+                                  bool verbose, PgAllocator *allocator) {
+  for (u64 i = 0; i < instructions.len; i++) {
+    lir_emit_instruction(emitter, PG_SLICE_AT(instructions, i),
+                         virt_reg_syscall_ret, verbose, allocator);
   }
 }

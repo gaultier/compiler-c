@@ -156,11 +156,11 @@ int main(int argc, char *argv[]) {
   // different register.
   VirtualRegister virt_reg_syscall_ret = lir_virt_reg_syscall_num;
 
-  lir_emit_irs(&lir_emitter, irs_slice, virt_reg_syscall_ret, cli_opts.verbose,
-               allocator);
+  lir_emit_instructions(&lir_emitter, irs_slice, virt_reg_syscall_ret,
+                        cli_opts.verbose, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
-    lir_emitter_print_lirs(lir_emitter);
+    lir_emitter_print_instructions(lir_emitter);
   }
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
