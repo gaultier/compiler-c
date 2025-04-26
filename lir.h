@@ -344,26 +344,15 @@ static void lir_emitter_print_lirs(LirEmitter emitter) {
 }
 
 static void
-lir_build_var_interference_graph(IrSlice irs, IrVarLifetimeDyn lifetimes,
+lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
                                  LirVarInterferenceEdgeDyn *interference_edges,
                                  PgAllocator *allocator) {
-  for (u64 i = 0; i < irs.len; i++) {
-    Ir ir = PG_SLICE_AT(irs, i);
-    if (ir.tombstone) {
+  for (u64 i = 0; i < lifetimes.len; i++) {
+    IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
+    if (lifetime.tombstone) {
       continue;
     }
-    // No var.
-    if (!ir.var.id.value) {
-      continue;
-    }
-
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(lifetimes, ir.var.id);
-    PG_ASSERT(lifetime);
-    if (lifetime->tombstone) {
-      continue;
-    }
-    PG_ASSERT(lifetime->start.value <= lifetime->end.value);
+    PG_ASSERT(lifetime.start.value <= lifetime.end.value);
 
     for (u64 j = 0; j < lifetimes.len; j++) {
       IrVarLifetime it = PG_SLICE_AT(lifetimes, j);
@@ -374,23 +363,23 @@ lir_build_var_interference_graph(IrSlice irs, IrVarLifetimeDyn lifetimes,
       }
 
       // Skip self.
-      if (ir.var.id.value == it.var.id.value) {
+      if (lifetime.var.id.value == it.var.id.value) {
         continue;
       }
 
       // `it` strictly before `lifetime`.
-      if (it.end.value < lifetime->start.value) {
+      if (it.end.value < lifetime.start.value) {
         continue;
       }
 
       // `it` strictly after `lifetime`.
-      if (lifetime->end.value < it.start.value) {
+      if (lifetime.end.value < it.start.value) {
         continue;
       }
 
       // Interferes: add an edge between the two nodes.
       LirVarInterferenceEdge edge = {
-          .a = ir.var,
+          .a = lifetime.var,
           .b = it.var,
       };
       *PG_DYN_PUSH(interference_edges, allocator) = edge;
