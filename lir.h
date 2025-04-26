@@ -349,18 +349,13 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
                                  PgAllocator *allocator) {
   for (u64 i = 0; i < lifetimes.len; i++) {
     IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
-    if (lifetime.tombstone) {
-      continue;
-    }
+    PG_ASSERT(!lifetime.tombstone);
     PG_ASSERT(lifetime.start.value <= lifetime.end.value);
 
     for (u64 j = 0; j < lifetimes.len; j++) {
       IrVarLifetime it = PG_SLICE_AT(lifetimes, j);
       PG_ASSERT(it.start.value <= it.end.value);
-
-      if (it.tombstone) {
-        continue;
-      }
+      PG_ASSERT(!it.tombstone);
 
       // Skip self.
       if (lifetime.var.id.value == it.var.id.value) {
@@ -763,9 +758,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   lir_memory_location_expire_vars_in_register_at_lifetime_end(
       emitter, ir_ins.id, verbose);
 
-  if (ir_ins.tombstone) {
-    return;
-  }
+  PG_ASSERT(!ir_ins.tombstone);
 
   // TODO(IMPROVEMENT): for now we store all local variables on the stack.
   if (ir_ins.var.id.value) {

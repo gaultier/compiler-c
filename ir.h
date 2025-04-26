@@ -953,3 +953,23 @@ static void ir_emitter_print_var_lifetimes(IrEmitter emitter) {
     ir_emitter_print_var_lifetime(i, var_lifetime);
   }
 }
+
+static void ir_emitter_trim_tombstone_items(IrEmitter *emitter) {
+  for (u64 i = 0; i < emitter->instructions.len;) {
+    IrInstruction ins = PG_SLICE_AT(emitter->instructions, i);
+    if (ins.tombstone) {
+      PG_DYN_REMOVE_AT(&emitter->instructions, i);
+      continue;
+    }
+    i++;
+  }
+
+  for (u64 i = 0; i < emitter->var_lifetimes.len;) {
+    IrVarLifetime lifetime = PG_SLICE_AT(emitter->var_lifetimes, i);
+    if (lifetime.tombstone) {
+      PG_DYN_REMOVE_AT(&emitter->var_lifetimes, i);
+      continue;
+    }
+    i++;
+  }
+}
