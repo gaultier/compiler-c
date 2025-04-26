@@ -343,10 +343,8 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
   }
 }
 
-static void
-lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
-                                 LirVarInterferenceEdgeDyn *interference_edges,
-                                 PgAllocator *allocator) {
+static void lir_build_var_interference_graph(
+    IrVarLifetimeDyn lifetimes, LirVarInterferenceEdgeDyn *interference_edges) {
   for (u64 i = 0; i < lifetimes.len; i++) {
     IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
     PG_ASSERT(!lifetime.tombstone);
@@ -377,7 +375,7 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
           .a = lifetime.var,
           .b = it.var,
       };
-      *PG_DYN_PUSH(interference_edges, allocator) = edge;
+      *PG_DYN_PUSH_WITHIN_CAPACITY(interference_edges) = edge;
     }
   }
 }
