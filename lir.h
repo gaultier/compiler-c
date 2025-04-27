@@ -9,6 +9,11 @@ PG_SLICE(Register) RegisterSlice;
 PG_DYN(Register) RegisterDyn;
 
 typedef struct {
+  u32 set;
+  u32 len;
+} GprSet;
+
+typedef struct {
   Register return_value;
   RegisterSlice call_preserved;
   RegisterSlice calling_convention;
@@ -191,6 +196,22 @@ static const VirtualRegister lir_virt_reg_syscall_num = {
     .value = 8,
     .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
 };
+
+static void lir_gpr_set_add(GprSet *set, u32 val) {
+  PG_ASSERT(val < set->len);
+  set->set |= 1 << val;
+}
+
+static void lir_gpr_set_remove(GprSet *set, u32 val) {
+  PG_ASSERT(val < set->len);
+  set->set &= ~(1 << val);
+}
+
+[[nodiscard]]
+static Register lir_gpr_get_first(GprSet *set) {
+  // TODO
+  return (Register){0};
+}
 
 static void lir_print_register(VirtualRegister reg) {
   if (reg.value == lir_virt_reg_base_stack_pointer.value) {

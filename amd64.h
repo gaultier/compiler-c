@@ -1257,6 +1257,13 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   }
 }
 
+[[maybe_unused]] [[nodiscard]] Register
+amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors,
+                            GprSet *regs) {
+  // TODO
+  return (Register){0};
+}
+
 // Assign a color (i.e. unique physical register) to each node in the graph
 // so that no two adjacent nodes have the same color.
 // Meaning that if two variables interfere, they are assigned a different
