@@ -435,6 +435,16 @@ static void lir_print_interference_graph(LirVarInterferenceNodeDyn nodes) {
   }
 }
 
+[[nodiscard]] static int lir_interference_node_cmp(const void *va,
+                                                   const void *vb) {
+  const LirVarInterferenceNode *a = va;
+  PG_ASSERT(a);
+  const LirVarInterferenceNode *b = vb;
+  PG_ASSERT(b);
+
+  return a->neighbors.len < b->neighbors.len ? -1 : 1;
+}
+
 [[nodiscard]]
 static LirVarInterferenceNodeDyn
 lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes, bool verbose,
@@ -490,6 +500,9 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes, bool verbose,
     printf("\n------------ Interference edges ------------\n");
     lir_print_interference_edges(edges);
   }
+
+  qsort(nodes.data, nodes.len, sizeof(LirVarInterferenceNode),
+        lir_interference_node_cmp);
 
   return nodes;
 }
