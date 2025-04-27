@@ -1264,9 +1264,37 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 // TODO: Output.
 [[maybe_unused]] // FIXME
 static void
-amd64_color_interference_graph(LirVarInterferenceEdgeSlice edges,
-                               RegisterSlice grps) {
-  (void)edges;
+amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
+                               RegisterSlice grps, PgAllocator *allocator) {
+  LirVarInterferenceNodePtrDyn stack = {0};
+  PG_DYN_ENSURE_CAP(&stack, nodes.len, allocator);
+
+  for (u64 i = 0; i < nodes.len;) {
+    LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
+    PG_ASSERT(node);
+    if (node->neighbors.len >= amd64_grps_count) {
+      i++;
+      continue;
+    }
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node;
+    PG_DYN_SWAP_REMOVE(&nodes, i);
+  }
+
+  if (nodes.len > 0) {
+    // Need to spill virtual registers remaining in the graph.
+    PG_ASSERT(0 && "todo");
+  }
+
+  for (u64 _i = 0; _i < stack.len; _i++) {
+    // Pop the first node from the stack.
+    LirVarInterferenceNode *node = PG_SLICE_AT(stack, 0);
+    PG_ASSERT(node);
+    PG_DYN_SWAP_REMOVE(&stack, 0);
+
+    PG_ASSERT(node->neighbors.len < amd64_grps_count);
+    Register reg = amd64_color_assign_register(node->neighbors);
+    PG_ASSERT(reg.value);
+  }
   (void)grps;
 }
 

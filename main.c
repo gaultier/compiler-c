@@ -139,15 +139,17 @@ int main(int argc, char *argv[]) {
   IrInstructionSlice irs_slice =
       PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
-  LirVarInterferenceNodeDyn interference_graph = {0};
+  LirVarInterferenceNodePtrDyn interference_graph_nodes = {0};
   if (ir_emitter.var_lifetimes.len > 0) {
-    interference_graph = lir_build_var_interference_graph(
+    interference_graph_nodes = lir_build_var_interference_graph(
         ir_emitter.var_lifetimes, cli_opts.verbose, allocator);
   }
+  LirVarInterferenceNodePtrSlice interference_graph_nodes_slice =
+      PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, interference_graph_nodes);
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
-    lir_print_interference_graph(interference_graph);
+    lir_print_interference_graph(interference_graph_nodes_slice);
   }
 
   LirEmitter lir_emitter = {
