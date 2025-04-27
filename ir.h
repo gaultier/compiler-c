@@ -25,6 +25,8 @@ typedef struct {
   IrVarId id;
   PgString identifier;
 } IrVar;
+PG_SLICE(IrVar) IrVarSlice;
+PG_DYN(IrVar) IrVarDyn;
 
 typedef enum {
   IR_VALUE_KIND_NONE,
