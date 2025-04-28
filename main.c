@@ -151,6 +151,7 @@ int main(int argc, char *argv[]) {
     printf("\n------------ Interference graph ------------\n");
     lir_print_interference_graph(interference_graph_nodes_slice);
   }
+  lir_sanity_check_interference_graph(interference_graph_nodes_slice, false);
 
   LirEmitter lir_emitter = {
       .virtual_reg = {.value = lir_virt_reg_syscall_num.value + 1},
@@ -172,7 +173,8 @@ int main(int argc, char *argv[]) {
   Amd64Emitter amd64_emitter = {0};
   amd64_emit_prolog(&amd64_emitter.instructions, allocator);
   amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice,
-                         interference_graph_nodes_slice, allocator);
+                         interference_graph_nodes_slice, cli_opts.verbose,
+                         allocator);
   amd64_emit_epilog(&amd64_emitter.instructions, allocator);
 
   if (cli_opts.verbose) {

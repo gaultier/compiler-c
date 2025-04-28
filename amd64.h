@@ -1283,16 +1283,20 @@ amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors,
 // Meaning that if two variables interfere, they are assigned a different
 // physical register.
 // TODO: Register constraint.
-[[maybe_unused]] // FIXME
-static void
+[[nodiscard]]
+static LirVarInterferenceNodePtrSlice
 amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
                                PgAllocator *allocator) {
+
   GprSet regs = {
       .len = amd64_gprs_count,
       .set = (1 << amd64_gprs_count) - 1,
   };
   LirVarInterferenceNodePtrDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, nodes.len, allocator);
+
+  LirVarInterferenceNodePtrDyn res = {0};
+  PG_DYN_ENSURE_CAP(&res, nodes.len, allocator);
 
   for (u64 i = 0; i < nodes.len;) {
     LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
@@ -1320,13 +1324,18 @@ amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
     Register reg = amd64_color_assign_register(
         PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, node->neighbors), &regs);
     PG_ASSERT(reg.value);
+    node->reg = reg;
+
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&res) = node;
   }
+
+  return PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, res);
 }
 
 static void
 amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
                        LirVarInterferenceNodePtrSlice interference_nodes,
-                       PgAllocator *allocator) {
+                       bool verbose, PgAllocator *allocator) {
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
       .lhs =
@@ -1344,7 +1353,14 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_sub;
   u64 stack_sub_instruction_idx = emitter->instructions.len - 1;
 
-  amd64_color_interference_graph(interference_nodes, allocator);
+  LirVarInterferenceNodePtrSlice colored =
+      amd64_color_interference_graph(interference_nodes, allocator);
+  if (verbose) {
+    printf("\n------------ Colored interference graph ------------\n");
+    lir_print_interference_graph(colored);
+  }
+  lir_sanity_check_interference_graph(colored, true);
+
   for (u64 i = 0; i < lirs.len; i++) {
     amd64_lir_to_asm(emitter, PG_SLICE_AT(lirs, i), allocator);
   }
