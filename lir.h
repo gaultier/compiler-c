@@ -51,6 +51,7 @@ typedef enum {
 typedef struct {
   u32 value;
   LirVirtualRegisterConstraint constraint;
+  bool addressable;
 } VirtualRegister;
 PG_SLICE(VirtualRegister) VirtualRegisterSlice;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
