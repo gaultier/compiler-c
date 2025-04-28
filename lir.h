@@ -224,7 +224,7 @@ static Register lir_gpr_pop_first_unset(GprSet *set) {
 
   u32 first_set_bit = (u32)__builtin_ffs((int)~set->set);
 
-  if (first_set_bit > (1 << set->len)) {
+  if (first_set_bit > set->len) {
     return (Register){0};
   }
 
