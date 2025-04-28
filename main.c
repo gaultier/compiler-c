@@ -171,7 +171,8 @@ int main(int argc, char *argv[]) {
 
   Amd64Emitter amd64_emitter = {0};
   amd64_emit_prolog(&amd64_emitter.instructions, allocator);
-  amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice, allocator);
+  amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice,
+                         interference_graph_nodes_slice, allocator);
   amd64_emit_epilog(&amd64_emitter.instructions, allocator);
 
   if (cli_opts.verbose) {
