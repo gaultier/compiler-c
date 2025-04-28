@@ -1257,7 +1257,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   }
 }
 
-[[maybe_unused]] [[nodiscard]] Register
+[[maybe_unused]] [[nodiscard]] static Register
 amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors,
                             GprSet *regs) {
   // TODO

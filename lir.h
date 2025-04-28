@@ -198,19 +198,27 @@ static const VirtualRegister lir_virt_reg_syscall_num = {
 };
 
 static void lir_gpr_set_add(GprSet *set, u32 val) {
+  PG_ASSERT(set->len > 0);
   PG_ASSERT(val < set->len);
   set->set |= 1 << val;
 }
 
 static void lir_gpr_set_remove(GprSet *set, u32 val) {
+  PG_ASSERT(set->len > 0);
   PG_ASSERT(val < set->len);
   set->set &= ~(1 << val);
 }
 
 [[nodiscard]]
 static Register lir_gpr_get_first(GprSet *set) {
-  // TODO
-  return (Register){0};
+  PG_ASSERT(set->len > 0);
+
+  u32 mask = (1 << set->len) - 1;
+  u32 masked_value = set->set & mask;
+
+  u32 first_set_bit = (u32)__builtin_ffs((int)masked_value);
+
+  return (Register){.value = first_set_bit};
 }
 
 static void lir_print_register(VirtualRegister reg) {
