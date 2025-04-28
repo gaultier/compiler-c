@@ -1229,8 +1229,6 @@ static Register amd64_get_free_register(GprSet regs) {
 
 [[nodiscard]] static Register
 amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors) {
-  PG_ASSERT(neighbors.len > 0);
-
   GprSet neighbor_colors = {
       .len = amd64_gprs_count,
       .set = 0,
@@ -1262,19 +1260,21 @@ static void amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
   LirVarInterferenceNodePtrDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, nodes.len, allocator);
 
-  LirVarInterferenceNodePtrSlice nodes_tmp = nodes;
-  for (u64 i = 0; i < nodes_tmp.len;) {
-    LirVarInterferenceNode *node = PG_SLICE_AT(nodes_tmp, i);
+  LirVarInterferenceNodePtrDyn cpy = {0};
+  PG_DYN_CLONE(&cpy, nodes, allocator);
+
+  for (u64 i = 0; i < cpy.len;) {
+    LirVarInterferenceNode *node = PG_SLICE_AT(cpy, i);
     PG_ASSERT(node);
     if (node->neighbors.len >= amd64_gprs_count) {
       i++;
       continue;
     }
     *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node;
-    PG_DYN_SWAP_REMOVE(&nodes_tmp, i);
+    PG_DYN_SWAP_REMOVE(&cpy, i);
   }
 
-  if (nodes_tmp.len > 0) {
+  if (cpy.len > 0) {
     // Need to spill virtual registers remaining in the graph.
     PG_ASSERT(0 && "todo");
   }
