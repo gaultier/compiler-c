@@ -145,6 +145,7 @@ PG_DYN(LirVarInterferenceNode *) LirVarInterferenceNodePtrDyn;
 struct LirVarInterferenceNode {
   IrVar var;
   Register reg; // Assigned with graph coloring in the target specific layer.
+  VirtualRegister virt_reg;
   LirVarInterferenceNodePtrDyn neighbors;
 };
 
@@ -714,7 +715,7 @@ static MemoryLocation *lir_memory_location_find_var_in_virt_reg(
 
 [[nodiscard]]
 static VarToMemoryLocation *
-lir_memory_location_find_register(VarToMemoryLocationDyn var_to_memory_location,
+lir_memory_location_find_virt_reg(VarToMemoryLocationDyn var_to_memory_location,
                                   VirtualRegister virt_reg) {
   for (u64 i = 0; i < var_to_memory_location.len; i++) {
     VarToMemoryLocation *var_mem_loc =
@@ -774,7 +775,7 @@ static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
                                           PgAllocator *allocator) {
   {
     VarToMemoryLocation *var_mem_loc_reg =
-        lir_memory_location_find_register(emitter->var_to_memory_location, dst);
+        lir_memory_location_find_virt_reg(emitter->var_to_memory_location, dst);
     // No-op?
     if (var_mem_loc_reg && var_mem_loc_reg->var.id.value == var.id.value) {
       return;

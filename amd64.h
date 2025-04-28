@@ -1026,8 +1026,9 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_REGISTER: {
-    LirVarInterferenceNode **node =
-        lir_interference_nodes_find_by_var(emitter->interference_nodes, );
+    VarToMemoryLocation *var_mem_loc = lir_memory_location_find_virt_reg(
+        emitter->var_to_memory_location, lir_op.reg);
+    PG_ASSERT(var_mem_loc);
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER, .reg = {0}, // FIXME
     };

@@ -68,7 +68,6 @@ typedef struct {
   // Inclusive, inclusive.
   IrId start, end;
   IrVar ref; // In case of `IR_INSTRUCTION_KIND_ADDRESS_OF`.
-
   bool tombstone;
 } IrVarLifetime;
 PG_SLICE(IrVarLifetime) IrVarLifetimeSlice;
