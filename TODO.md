@@ -1,8 +1,6 @@
-- amd64: print var_to_mem_location
 - generate dwarf debug information
 - ir: optimization: show diff output in each step, like git diff
 - control flow graph
-- lir/codegen: register allocator: graph coloring
 - data flow analysis
 - codegen: aarch64
 - codegen: riscv
@@ -17,3 +15,5 @@
 - lang: types
 - typechecker, pass type information to codegen for sizes
 - lang: strings
+- migrate to TAC (three-address-code) for IR & LIR (no allocations, shorter code)
+- spill registers
