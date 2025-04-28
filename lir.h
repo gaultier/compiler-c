@@ -454,8 +454,8 @@ static void lir_interference_graph_add_edge(LirVarInterferenceNodeDyn *nodes,
 
   PG_ASSERT(-1UL != idx_b.value);
   LirVarInterferenceNode *node_b = PG_SLICE_AT_PTR(nodes, idx_b.value);
-  LirVarInterferenceNode *node_a = PG_SLICE_AT_PTR(nodes, idx_a.value);
   node_b->var = var_b;
+  LirVarInterferenceNode *node_a = PG_SLICE_AT_PTR(nodes, idx_a.value);
 
   {
 
@@ -521,7 +521,6 @@ lir_sanity_check_interference_graph(LirVarInterferenceNodeSlice nodes,
                                     bool colored) {
   for (u64 i = 0; i < nodes.len; i++) {
     LirVarInterferenceNode node = PG_SLICE_AT(nodes, i);
-    PG_ASSERT(node.var.id.value);
     if (colored) {
       // Technically, `virt_reg` is assigned in the LIR phase, before coloring.
       PG_ASSERT(node.virt_reg.value);
@@ -641,9 +640,11 @@ lir_memory_location_add(VarToMemoryLocationDyn *var_to_memory_location,
 #endif
 
 [[nodiscard]]
-static VirtualRegister lir_make_virtual_register(
-    LirEmitter *emitter, LirVirtualRegisterConstraint constraint,
-    u64 worst_case_neighbors_count, PgAllocator *allocator) {
+static VirtualRegister
+lir_make_virtual_register(LirEmitter *emitter,
+                          LirVirtualRegisterConstraint constraint,
+                          u64 worst_case_neighbors_count, bool create_new_node,
+                          PgAllocator *allocator) {
 
   VirtualRegister res = {
       .value = 1 + (u32)emitter->virtual_registers.len,
@@ -651,10 +652,13 @@ static VirtualRegister lir_make_virtual_register(
   };
   *PG_DYN_PUSH(&emitter->virtual_registers, allocator) = res;
 
-  LirVarInterferenceNodeIndex node_idx = lir_interference_graph_add_node(
-      &emitter->interference_nodes, worst_case_neighbors_count, allocator);
-  PG_ASSERT(-1UL != node_idx.value);
-  PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value)->virt_reg = res;
+  if (create_new_node) {
+    LirVarInterferenceNodeIndex node_idx = lir_interference_graph_add_node(
+        &emitter->interference_nodes, worst_case_neighbors_count, allocator);
+    PG_ASSERT(-1UL != node_idx.value);
+    PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value)->virt_reg =
+        res;
+  }
 
   return res;
 }
@@ -673,7 +677,7 @@ lir_reserve_virt_reg_for_var(LirEmitter *emitter, IrVar var,
   PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == node->virt_reg.constraint);
 
   node->virt_reg = lir_make_virtual_register(
-      emitter, constraint, emitter->lifetimes_count, allocator);
+      emitter, constraint, emitter->lifetimes_count, false, allocator);
 
   return node->virt_reg;
 }
@@ -1033,8 +1037,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
               ? LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM
               : (LirVirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 +
                                                j - 1);
-      VirtualRegister reg =
-          lir_make_virtual_register(emitter, virt_reg_constraint, 0, allocator);
+      VirtualRegister reg = lir_make_virtual_register(
+          emitter, virt_reg_constraint, 0, true, allocator);
 
       if (IR_VALUE_KIND_U64 == val.kind) {
         lir_emit_copy_immediate_to_virt_reg(emitter, val, reg, ir_ins.origin,
