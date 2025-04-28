@@ -239,15 +239,14 @@ static GprSet lir_gpr_set_minus(GprSet a, GprSet b) {
   PG_ASSERT(a.len == b.len);
   PG_ASSERT(a.len > 0);
 
-  GprSet res = a;
-
-  u32 max = 1 << a.len;
-  for (u32 i = 0; i < max; i <<= 1) {
-    if (lir_gpr_is_set(b, i) && lir_gpr_is_set(a, i)) {
-      lir_gpr_set_remove(&a, i);
-    }
-  }
-
+  // 0 0 => 0
+  // 0 1 => 0
+  // 1 0 => 1
+  // 1 1 => 0
+  GprSet res = {
+      .len = a.len,
+      .set = (a.set & (~b.set)),
+  };
   return res;
 }
 

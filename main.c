@@ -220,4 +220,29 @@ int main(int argc, char *argv[]) {
             (i32)program.file_name.len, program.file_name.data, err_write);
     return 1;
   }
+
+  GprSet gpr_set = {
+      .len = 3,
+      .set = (1 << 3) - 1,
+  };
+  PG_ASSERT(true == lir_gpr_is_set(gpr_set, 0));
+  PG_ASSERT(true == lir_gpr_is_set(gpr_set, 1));
+  PG_ASSERT(true == lir_gpr_is_set(gpr_set, 2));
+
+  lir_gpr_set_remove(&gpr_set, 0);
+  PG_ASSERT(false == lir_gpr_is_set(gpr_set, 0));
+
+  lir_gpr_set_remove(&gpr_set, 2);
+  PG_ASSERT(false == lir_gpr_is_set(gpr_set, 2));
+
+  PG_ASSERT(2 == lir_gpr_pop_first(&gpr_set).value);
+
+  lir_gpr_set_add(&gpr_set, 0);
+  lir_gpr_set_add(&gpr_set, 2);
+  PG_ASSERT(0b101 == gpr_set.set);
+
+  GprSet neighbors = {.len = 3, .set = 0b011};
+
+  GprSet minus_res = lir_gpr_set_minus(gpr_set, neighbors);
+  PG_ASSERT(0b100 == minus_res.set);
 }
