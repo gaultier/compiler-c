@@ -187,7 +187,9 @@ typedef struct {
 } Amd64Program;
 
 typedef struct {
+#if 0
   VarToMemoryLocationDyn var_to_memory_location;
+#endif
   u32 rbp_offset;
   u32 rbp_max_offset;
   Amd64InstructionDyn instructions;

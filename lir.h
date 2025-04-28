@@ -24,12 +24,14 @@ typedef struct {
   Register base_pointer;
 } Architecture;
 
+#if 0
 typedef enum {
   MEMORY_LOCATION_KIND_NONE,
   MEMORY_LOCATION_KIND_REGISTER,
   MEMORY_LOCATION_KIND_STACK,
   MEMORY_LOCATION_KIND_MEMORY,
 } MemoryLocationKind;
+#endif
 
 // On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
 // register arguments.
@@ -56,6 +58,7 @@ typedef struct {
 PG_SLICE(VirtualRegister) VirtualRegisterSlice;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
 
+#if 0
 typedef struct {
   MemoryLocationKind kind;
   union {
@@ -66,6 +69,7 @@ typedef struct {
 } MemoryLocation;
 PG_SLICE(MemoryLocation) MemoryLocationSlice;
 PG_DYN(MemoryLocation) MemoryLocationDyn;
+#endif
 
 typedef struct {
   IrLabelId label;
@@ -112,11 +116,13 @@ typedef struct {
 PG_SLICE(LirOperand) LirOperandSlice;
 PG_DYN(LirOperand) LirOperandDyn;
 
+#if 0
 typedef struct {
   MemoryLocationDyn locations;
   IrVar var;
 } VarToMemoryLocation;
 PG_DYN(VarToMemoryLocation) VarToMemoryLocationDyn;
+#endif
 
 typedef struct {
   LirInstructionKind kind;
