@@ -189,8 +189,8 @@ typedef struct {
 typedef struct {
 #if 0
   VarToMemoryLocationDyn var_to_memory_location;
-#endif
   u32 rbp_offset;
+#endif
   u32 rbp_max_offset;
   Amd64InstructionDyn instructions;
   LirVarInterferenceNodeSlice interference_nodes;
