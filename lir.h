@@ -99,13 +99,6 @@ typedef enum {
 } LirOperandKind;
 
 typedef struct {
-  VirtualRegister base;
-  VirtualRegister index;
-  u8 scale;
-  i32 displacement;
-} LirEffectiveAddress;
-
-typedef struct {
   LirOperandKind kind;
   union {
     VirtualRegister virt_reg;
