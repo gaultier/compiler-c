@@ -8,6 +8,6 @@ write_val := 478560413032
 write_val_len := 5
 
 syscall_exit := 60
-syscall(syscall_exit, baz)
+z := syscall(syscall_exit, baz)
 
 x := 99

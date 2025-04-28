@@ -191,7 +191,7 @@ typedef struct {
   u32 rbp_offset;
   u32 rbp_max_offset;
   Amd64InstructionDyn instructions;
-  LirVarInterferenceNodePtrSlice interference_nodes;
+  LirVarInterferenceNodeSlice interference_nodes;
 } Amd64Emitter;
 
 static void amd64_print_register(Register reg) {
@@ -1027,14 +1027,18 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
     PG_ASSERT(lir_op.virt_reg.value);
 
-    LirVarInterferenceNode *node = lir_interference_graph_find_by_virt_reg(
-        emitter->interference_nodes, lir_op.virt_reg);
-    PG_ASSERT(node);
-    PG_ASSERT(node->reg.value);
+    LirVarInterferenceNodeIndex node_idx =
+        lir_interference_graph_find_by_virt_reg(emitter->interference_nodes,
+                                                lir_op.virt_reg);
+    PG_ASSERT(-1UL != node_idx.value);
+
+    LirVarInterferenceNode node =
+        PG_SLICE_AT(emitter->interference_nodes, node_idx.value);
+    PG_ASSERT(node.reg.value);
 
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = node->reg,
+        .reg = node.reg,
     };
   }
   case LIR_OPERAND_KIND_IMMEDIATE:
@@ -1202,17 +1206,20 @@ static Register amd64_get_free_register(GprSet regs) {
 }
 
 [[nodiscard]] static Register
-amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors) {
+amd64_color_assign_register(LirVarInterferenceNodeIndexSlice neighbors,
+                            LirVarInterferenceNodeSlice nodes) {
   GprSet neighbor_colors = {
       .len = amd64_gprs_count,
       .set = 0,
   };
 
   for (u64 i = 0; i < neighbors.len; i++) {
-    LirVarInterferenceNode *neighbor = PG_SLICE_AT(neighbors, i);
-    PG_ASSERT(neighbor);
-    if (neighbor->reg.value) {
-      lir_gpr_set_add(&neighbor_colors, neighbor->reg.value - 1);
+    LirVarInterferenceNodeIndex neighbor_idx = PG_SLICE_AT(neighbors, i);
+    PG_ASSERT(-1UL != neighbor_idx.value);
+
+    LirVarInterferenceNode neighbor = PG_SLICE_AT(nodes, neighbor_idx.value);
+    if (neighbor.reg.value) {
+      lir_gpr_set_add(&neighbor_colors, neighbor.reg.value - 1);
     }
   }
   Register res = amd64_get_free_register(neighbor_colors);
@@ -1228,23 +1235,22 @@ amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors) {
 // physical register.
 // TODO: Register constraint.
 
-static void amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
+static void amd64_color_interference_graph(LirVarInterferenceNodeSlice nodes,
                                            PgAllocator *allocator) {
 
-  LirVarInterferenceNodePtrDyn stack = {0};
+  LirVarInterferenceNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, nodes.len, allocator);
 
-  LirVarInterferenceNodePtrDyn cpy = {0};
+  LirVarInterferenceNodeDyn cpy = {0};
   PG_DYN_CLONE(&cpy, nodes, allocator);
 
   for (u64 i = 0; i < cpy.len;) {
-    LirVarInterferenceNode *node = PG_SLICE_AT(cpy, i);
-    PG_ASSERT(node);
-    if (node->neighbors.len >= amd64_gprs_count) {
+    LirVarInterferenceNode node = PG_SLICE_AT(cpy, i);
+    if (node.neighbors.len >= amd64_gprs_count) {
       i++;
       continue;
     }
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node;
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (LirVarInterferenceNodeIndex){i};
     PG_DYN_SWAP_REMOVE(&cpy, i);
   }
 
@@ -1260,13 +1266,13 @@ static void amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
     }
 
     // Pop the first node from the stack.
-    LirVarInterferenceNode *node = PG_SLICE_AT(stack, 0);
-    PG_ASSERT(node);
+    LirVarInterferenceNodeIndex node_idx = PG_SLICE_AT(stack, 0);
     PG_DYN_SWAP_REMOVE(&stack, 0);
 
+    LirVarInterferenceNode *node = PG_SLICE_AT_PTR(&nodes, node_idx.value);
     PG_ASSERT(node->neighbors.len < amd64_gprs_count);
     Register reg = amd64_color_assign_register(
-        PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, node->neighbors));
+        PG_DYN_SLICE(LirVarInterferenceNodeIndexSlice, node->neighbors), nodes);
     PG_ASSERT(reg.value);
     node->reg = reg;
   }

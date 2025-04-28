@@ -169,13 +169,13 @@ int main(int argc, char *argv[]) {
   IrInstructionSlice irs_slice =
       PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
-  LirVarInterferenceNodePtrDyn interference_graph_nodes = {0};
+  LirVarInterferenceNodeDyn interference_graph_nodes = {0};
   if (ir_emitter.var_lifetimes.len > 0) {
     interference_graph_nodes =
         lir_build_var_interference_graph(ir_emitter.var_lifetimes, allocator);
   }
-  LirVarInterferenceNodePtrSlice interference_graph_nodes_slice =
-      PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, interference_graph_nodes);
+  LirVarInterferenceNodeSlice interference_graph_nodes_slice =
+      PG_DYN_SLICE(LirVarInterferenceNodeSlice, interference_graph_nodes);
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
@@ -184,8 +184,8 @@ int main(int argc, char *argv[]) {
   lir_sanity_check_interference_graph(interference_graph_nodes_slice, false);
 
   LirEmitter lir_emitter = {
-      .virtual_reg = {.value = 1},
-      .interference_graph = interference_graph_nodes_slice,
+      .lifetimes_count = ir_emitter.var_lifetimes.len,
+      .interference_nodes = interference_graph_nodes,
   };
   lir_emit_instructions(&lir_emitter, irs_slice, allocator);
   if (cli_opts.verbose) {
@@ -194,6 +194,8 @@ int main(int argc, char *argv[]) {
   }
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
+  interference_graph_nodes_slice =
+      PG_DYN_SLICE(LirVarInterferenceNodeSlice, lir_emitter.interference_nodes);
 
   Amd64Emitter amd64_emitter = {
       .interference_nodes = interference_graph_nodes_slice,

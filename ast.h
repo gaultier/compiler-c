@@ -121,6 +121,8 @@ static AstNode *ast_parse_statement(LexTokenSlice tokens, ErrorDyn *errors,
 static AstNode *ast_parse_declaration(LexTokenSlice tokens, ErrorDyn *errors,
                                       u64 *tokens_consumed,
                                       PgAllocator *allocator);
+static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
+                                  u64 *tokens_consumed, PgAllocator *allocator);
 
 static AstNode *ast_parse_var_decl(LexTokenSlice tokens, ErrorDyn *errors,
                                    u64 *tokens_consumed,
@@ -294,6 +296,11 @@ static AstNode *ast_parse_term(LexTokenSlice tokens, ErrorDyn *errors,
 static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
                                u64 *tokens_consumed, PgAllocator *allocator) {
   AstNode *res = nullptr;
+
+  if ((res = ast_parse_syscall(tokens, errors, tokens_consumed, allocator))) {
+    return res;
+  }
+
   if ((res = ast_parse_term(tokens, errors, tokens_consumed, allocator))) {
     return res;
   }
@@ -483,10 +490,6 @@ static AstNode *ast_parse_statement(LexTokenSlice tokens, ErrorDyn *errors,
                                     u64 *tokens_consumed,
                                     PgAllocator *allocator) {
   AstNode *res = nullptr;
-
-  if ((res = ast_parse_syscall(tokens, errors, tokens_consumed, allocator))) {
-    return res;
-  }
 
   if ((res = ast_parse_statement_if(tokens, errors, tokens_consumed,
                                     allocator))) {
