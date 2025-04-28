@@ -1270,17 +1270,21 @@ amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors) {
 
   GprSet neighbor_colors = {
       .len = amd64_gprs_count,
-      .set = (1 << amd64_gprs_count) - 1,
+      .set = 0,
   };
 
   for (u64 i = 0; i < neighbors.len; i++) {
     LirVarInterferenceNode *neighbor = PG_SLICE_AT(neighbors, i);
     PG_ASSERT(neighbor);
     if (neighbor->reg.value) {
-      lir_gpr_set_remove(&neighbor_colors, neighbor->reg.value);
+      lir_gpr_set_add(&neighbor_colors, neighbor->reg.value - 1);
     }
   }
-  return amd64_get_free_register(neighbor_colors);
+  Register res = amd64_get_free_register(neighbor_colors);
+
+  PG_ASSERT(res.value > 0 || (neighbors.len < amd64_gprs_count));
+
+  return res;
 }
 
 // Assign a color (i.e. unique physical register) to each node in the graph

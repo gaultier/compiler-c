@@ -518,6 +518,7 @@ lir_sanity_check_interference_graph(LirVarInterferenceNodePtrSlice nodes,
     for (u64 j = 0; j < node->neighbors.len; j++) {
       LirVarInterferenceNode *neighbor = PG_SLICE_AT(node->neighbors, j);
       PG_ASSERT(neighbor);
+      PG_ASSERT(neighbor != node);
       PG_ASSERT(neighbor->var.id.value);
       PG_ASSERT(neighbor->neighbors.len > 0);
       PG_ASSERT(node->var.id.value != neighbor->var.id.value);
