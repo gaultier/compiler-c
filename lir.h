@@ -479,8 +479,9 @@ static void lir_print_interference_graph(LirVarInterferenceNodePtrSlice nodes) {
     PG_ASSERT(node->var.id.value);
 
     ir_print_var(node->var);
-    printf(" virt_reg=%u reg=%u (%lu): ", node->virt_reg.value, node->reg.value,
-           node->neighbors.len);
+    printf(" virt_reg=%u(%s) reg=%u (%lu): ", node->virt_reg.value,
+           lir_register_constraint_to_cstr(node->virt_reg.constraint),
+           node->reg.value, node->neighbors.len);
 
     for (u64 j = 0; j < node->neighbors.len; j++) {
       LirVarInterferenceNode *neighbor = PG_SLICE_AT(node->neighbors, j);
@@ -537,7 +538,6 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
   PG_DYN_ENSURE_CAP(&nodes, lifetimes.len, allocator);
 
   for (u64 i = 0; i < lifetimes.len; i++) {
-    printf("[D100] [%lu] %lu %lu\n", i, nodes.len, nodes.cap);
     IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
     PG_ASSERT(!lifetime.tombstone);
     PG_ASSERT(lifetime.start.value <= lifetime.end.value);
@@ -992,8 +992,6 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
               1 /* syscall num */ + lir_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
 
-#if 0
-    VirtualRegister virt_reg0 = {0};
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir_ins.operands, j);
       LirVirtualRegisterConstraint virt_reg_constraint =
@@ -1003,24 +1001,18 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
                                                j - 1);
       VirtualRegister reg =
           lir_make_virtual_register(emitter, virt_reg_constraint);
-      if (0 == j) {
-        virt_reg0 = reg;
-      }
 
       if (IR_VALUE_KIND_U64 == val.kind) {
-        MemoryLocation mem_loc_reg = {
-            .kind = MEMORY_LOCATION_KIND_REGISTER,
-            .reg = reg,
-        };
-        lir_emit_copy_immediate_to(emitter, val, mem_loc_reg, ir_ins.origin,
-                                   allocator);
+        lir_emit_copy_immediate_to_virt_reg(emitter, val, reg, ir_ins.origin,
+                                            allocator);
       } else if (IR_VALUE_KIND_VAR == val.kind) {
-        MemoryLocation *op_mem_loc = lir_memory_location_find_var_on_stack(
-            emitter->var_to_memory_location, val.var);
-        PG_ASSERT(op_mem_loc);
-        lir_emit_copy_var_to_register(emitter, val.var, *op_mem_loc, reg,
-                                      ir_ins.origin, allocator);
+        VirtualRegister src_virt_reg =
+            lir_interference_nodes_find_virt_reg_by_var(
+                emitter->interference_graph, val.var);
+        PG_ASSERT(src_virt_reg.value);
 
+        lir_emit_copy_virt_reg_to_virt_reg(emitter, src_virt_reg, reg,
+                                           ir_ins.origin, allocator);
       } else {
         PG_ASSERT(0);
       }
@@ -1029,23 +1021,19 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     LirInstruction lir_ins = {
         .kind = LIR_INSTRUCTION_KIND_SYSCALL,
         .origin = ir_ins.origin,
-        .var_to_memory_location_frozen = lir_memory_location_clone(
-            emitter->var_to_memory_location, allocator),
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
-    lir_memory_location_empty_register(emitter->var_to_memory_location,
-                                       virt_reg0);
-
     if (ir_ins.var.id.value) {
-      MemoryLocation *mem_loc_dst = lir_memory_location_find_var_on_stack(
-          emitter->var_to_memory_location, ir_ins.var);
-      PG_ASSERT(mem_loc_dst);
-      lir_emit_copy_register_to_var_mem_loc(emitter, ir_ins.var, virt_reg0,
-                                            *mem_loc_dst, ir_ins.origin,
-                                            allocator);
+      VirtualRegister res_virt_reg = lir_reserve_virt_reg_for_var(
+          emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET);
+      PG_ASSERT(res_virt_reg.value != 0);
+      LirVarInterferenceNode **node = lir_interference_nodes_find_by_var(
+          emitter->interference_graph, ir_ins.var);
+      PG_ASSERT(node);
+      PG_ASSERT(*node);
+      (*node)->virt_reg = res_virt_reg;
     }
-#endif
   } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir_ins.operands.len);
