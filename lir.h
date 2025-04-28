@@ -158,6 +158,7 @@ typedef struct {
   u32 stack_max_offset;
   VirtualRegister virtual_reg;
   IrVarLifetimeDyn var_lifetimes;
+  LirVarInterferenceNodePtrSlice interference_graph;
 } LirEmitter;
 
 static void lir_gpr_set_add(GprSet *set, u32 val) {
@@ -484,7 +485,8 @@ static void lir_print_interference_graph(LirVarInterferenceNodePtrSlice nodes) {
     PG_ASSERT(node->var.id.value);
 
     ir_print_var(node->var);
-    printf(" reg=%u (%lu): ", node->reg.value, node->neighbors.len);
+    printf(" virt_reg=%u reg=%u (%lu): ", node->virt_reg.value, node->reg.value,
+           node->neighbors.len);
 
     for (u64 j = 0; j < node->neighbors.len; j++) {
       LirVarInterferenceNode *neighbor = PG_SLICE_AT(node->neighbors, j);
@@ -506,6 +508,12 @@ lir_sanity_check_interference_graph(LirVarInterferenceNodePtrSlice nodes,
     LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
     PG_ASSERT(node);
     PG_ASSERT(node->var.id.value);
+    if (colored) {
+      // Technically, `virt_reg` is assigned in the LIR phase, before coloring.
+      PG_ASSERT(node->virt_reg.value);
+
+      PG_ASSERT(node->reg.value);
+    }
 
     for (u64 j = 0; j < node->neighbors.len; j++) {
       LirVarInterferenceNode *neighbor = PG_SLICE_AT(node->neighbors, j);
@@ -670,6 +678,12 @@ lir_reserve_virt_reg_for_var(LirEmitter *emitter, IrVar var,
       .kind = MEMORY_LOCATION_KIND_REGISTER,
       .reg = lir_make_virtual_register(emitter, constraint),
   };
+  LirVarInterferenceNode **node =
+      lir_interference_nodes_find_by_var(emitter->interference_graph, var);
+  PG_ASSERT(node);
+  PG_ASSERT(*node);
+  (*node)->virt_reg = mem_loc.reg;
+
   return lir_memory_location_add(&emitter->var_to_memory_location, var, mem_loc,
                                  allocator);
 }

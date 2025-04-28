@@ -184,8 +184,9 @@ int main(int argc, char *argv[]) {
   lir_sanity_check_interference_graph(interference_graph_nodes_slice, false);
 
   LirEmitter lir_emitter = {
-      .virtual_reg = {.value = 2},
+      .virtual_reg = {.value = 1},
       .var_lifetimes = ir_emitter.var_lifetimes,
+      .interference_graph = interference_graph_nodes_slice,
   };
   lir_emit_instructions(&lir_emitter, irs_slice, allocator);
   if (cli_opts.verbose) {
