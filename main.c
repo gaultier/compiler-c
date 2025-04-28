@@ -184,15 +184,10 @@ int main(int argc, char *argv[]) {
   lir_sanity_check_interference_graph(interference_graph_nodes_slice, false);
 
   LirEmitter lir_emitter = {
-      .virtual_reg = {.value = lir_virt_reg_syscall_num.value + 1},
+      .virtual_reg = {.value = 2},
       .var_lifetimes = ir_emitter.var_lifetimes,
   };
-  // FIXME: Depending on the target, `virt_reg_syscall_ret` aliases to a
-  // different register.
-  VirtualRegister virt_reg_syscall_ret = lir_virt_reg_syscall_num;
-
-  lir_emit_instructions(&lir_emitter, irs_slice, virt_reg_syscall_ret,
-                        cli_opts.verbose, allocator);
+  lir_emit_instructions(&lir_emitter, irs_slice, cli_opts.verbose, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_instructions(lir_emitter);

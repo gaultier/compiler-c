@@ -1018,57 +1018,15 @@ static PgString amd64_encode_program_text(Amd64Program *program,
   return PG_DYN_SLICE(PgString, sb);
 }
 
-[[nodiscard]] static Register amd64_get_free_gpr(Amd64Emitter *emitter) {
-  (void)emitter;
-  return amd64_rax; // TODO
-}
-
-[[nodiscard]] static Register amd64_convert_virtual_register_to_register(
-    Amd64Emitter *emitter, VirtualRegister virt_reg, LirOperand lir_op) {
-  if (lir_virt_reg_base_stack_pointer.value == virt_reg.value) {
-    return amd64_rbp;
-  }
-  if (lir_virt_reg_syscall_num.value == virt_reg.value) {
-    return amd64_arch.syscall_num;
-  }
-  if (lir_virt_reg_syscall0.value == virt_reg.value) {
-    return PG_SLICE_AT(amd64_arch.syscall_calling_convention, 0);
-  }
-  if (lir_virt_reg_syscall1.value == virt_reg.value) {
-    return PG_SLICE_AT(amd64_arch.syscall_calling_convention, 1);
-  }
-  if (lir_virt_reg_syscall2.value == virt_reg.value) {
-    return PG_SLICE_AT(amd64_arch.syscall_calling_convention, 2);
-  }
-  if (lir_virt_reg_syscall3.value == virt_reg.value) {
-    return PG_SLICE_AT(amd64_arch.syscall_calling_convention, 3);
-  }
-  if (lir_virt_reg_syscall4.value == virt_reg.value) {
-    return PG_SLICE_AT(amd64_arch.syscall_calling_convention, 4);
-  }
-  if (lir_virt_reg_syscall5.value == virt_reg.value) {
-    return PG_SLICE_AT(amd64_arch.syscall_calling_convention, 5);
-  }
-
-  if (0 == virt_reg.value) {
-    PG_ASSERT(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lir_op.kind);
-    // Can happen in case of no index register.
-    return (Register){0};
-  }
-
-  Register reg = amd64_get_free_gpr(emitter);
-  return reg;
-}
-
 [[nodiscard]] static Amd64Operand
 amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
                                            LirOperand lir_op) {
+  (void)emitter;
+
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_REGISTER: {
     return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = amd64_convert_virtual_register_to_register(emitter, lir_op.reg,
-                                                          lir_op),
+        .kind = AMD64_OPERAND_KIND_REGISTER, .reg = {0}, // FIXME
     };
   }
   case LIR_OPERAND_KIND_IMMEDIATE:
@@ -1081,10 +1039,8 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
         .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
         .effective_address.scale = lir_op.effective_address.scale,
         .effective_address.displacement = lir_op.effective_address.displacement,
-        .effective_address.base = amd64_convert_virtual_register_to_register(
-            emitter, lir_op.effective_address.base, lir_op),
-        .effective_address.index = amd64_convert_virtual_register_to_register(
-            emitter, lir_op.effective_address.index, lir_op),
+        .effective_address.base = {0},  // FIXME
+        .effective_address.index = {0}, // FIXME
     };
   case LIR_OPERAND_KIND_LABEL:
     return (Amd64Operand){

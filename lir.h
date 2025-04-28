@@ -45,6 +45,7 @@ typedef enum {
   LIR_VIRT_REG_CONSTRAINT_SYSCALL3,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
 } LirVirtualRegisterConstraint;
 
 typedef struct {
@@ -163,41 +164,6 @@ static const VirtualRegister lir_virt_reg_base_stack_pointer = {
     .constraint = LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
 };
 
-static const VirtualRegister lir_virt_reg_syscall0 = {
-    .value = 2,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
-};
-
-static const VirtualRegister lir_virt_reg_syscall1 = {
-    .value = 3,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
-};
-
-static const VirtualRegister lir_virt_reg_syscall2 = {
-    .value = 4,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL2,
-};
-
-static const VirtualRegister lir_virt_reg_syscall3 = {
-    .value = 5,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL3,
-};
-
-static const VirtualRegister lir_virt_reg_syscall4 = {
-    .value = 6,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
-};
-
-static const VirtualRegister lir_virt_reg_syscall5 = {
-    .value = 7,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
-};
-
-static const VirtualRegister lir_virt_reg_syscall_num = {
-    .value = 8,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
-};
-
 static void lir_gpr_set_add(GprSet *set, u32 val) {
   PG_ASSERT(set->len > 0);
   PG_ASSERT(val < set->len);
@@ -251,25 +217,42 @@ static GprSet lir_gpr_set_minus(GprSet a, GprSet b) {
   return res;
 }
 
+[[nodiscard]]
+static char *
+lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
+  switch (constraint) {
+  case LIR_VIRT_REG_CONSTRAINT_NONE:
+    return "NONE";
+  case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER:
+    return "BASE_POINTER";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
+    return "SYSCALL_NUM";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
+    return "SYSCALL0";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
+    return "SYSCALL1";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
+    return "SYSCALL2";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
+    return "SYSCALL3";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
+    return "SYSCALL4";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
+    return "SYSCALL5";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
+    return "SYSCALL_RET";
+
+  default:
+    PG_ASSERT(0);
+  }
+}
+
 static void lir_print_register(VirtualRegister reg) {
   if (reg.value == lir_virt_reg_base_stack_pointer.value) {
     printf("v_bsp");
-  } else if (reg.value == lir_virt_reg_syscall0.value) {
-    printf("v_syscall0");
-  } else if (reg.value == lir_virt_reg_syscall1.value) {
-    printf("v_syscall1");
-  } else if (reg.value == lir_virt_reg_syscall2.value) {
-    printf("v_syscall2");
-  } else if (reg.value == lir_virt_reg_syscall3.value) {
-    printf("v_syscall3");
-  } else if (reg.value == lir_virt_reg_syscall4.value) {
-    printf("v_syscall4");
-  } else if (reg.value == lir_virt_reg_syscall5.value) {
-    printf("v_syscall5");
-  } else if (reg.value == lir_virt_reg_syscall_num.value) {
-    printf("v_syscall_num");
   } else {
-    printf("v%lu", reg.value);
+    printf("v%lu(%s)", reg.value,
+           lir_register_constraint_to_cstr(reg.constraint));
   }
 }
 
@@ -794,30 +777,13 @@ lir_make_virtual_register(LirEmitter *emitter,
                           LirVirtualRegisterConstraint constraint) {
   VirtualRegister res = emitter->virtual_reg;
 
-  switch (constraint) {
-  case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER:
+  if (LIR_VIRT_REG_CONSTRAINT_BASE_POINTER == constraint) {
     return lir_virt_reg_base_stack_pointer;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
-    return lir_virt_reg_syscall0;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
-    return lir_virt_reg_syscall1;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
-    return lir_virt_reg_syscall2;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
-    return lir_virt_reg_syscall3;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
-    return lir_virt_reg_syscall4;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
-    return lir_virt_reg_syscall5;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
-    return lir_virt_reg_syscall_num;
-  case LIR_VIRT_REG_CONSTRAINT_NONE:
-    emitter->virtual_reg.value += 1;
-    res.constraint = constraint;
-    return res;
-  default:
-    PG_ASSERT(0);
   }
+
+  emitter->virtual_reg.value += 1;
+  res.constraint = constraint;
+  return res;
 }
 
 static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
@@ -945,7 +911,6 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
 }
 
 static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
-                                 VirtualRegister virt_reg_syscall_ret,
                                  bool verbose, PgAllocator *allocator) {
   lir_memory_location_expire_vars_in_register_at_lifetime_end(
       emitter, ir_ins.id, verbose);
@@ -1062,6 +1027,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
               1 /* syscall num */ + lir_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
 
+    VirtualRegister virt_reg0 = {0};
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir_ins.operands, j);
       LirVirtualRegisterConstraint virt_reg_constraint =
@@ -1071,6 +1037,9 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
                                                j - 1);
       VirtualRegister reg =
           lir_make_virtual_register(emitter, virt_reg_constraint);
+      if (0 == j) {
+        virt_reg0 = reg;
+      }
 
       if (IR_VALUE_KIND_U64 == val.kind) {
         MemoryLocation mem_loc_reg = {
@@ -1099,16 +1068,16 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
-    if (ir_ins.var.id.value) {
-      lir_memory_location_empty_register(emitter->var_to_memory_location,
-                                         virt_reg_syscall_ret);
+    lir_memory_location_empty_register(emitter->var_to_memory_location,
+                                       virt_reg0);
 
+    if (ir_ins.var.id.value) {
       MemoryLocation *mem_loc_dst = lir_memory_location_find_var_on_stack(
           emitter->var_to_memory_location, ir_ins.var);
       PG_ASSERT(mem_loc_dst);
-      lir_emit_copy_register_to_var_mem_loc(emitter, ir_ins.var,
-                                            virt_reg_syscall_ret, *mem_loc_dst,
-                                            ir_ins.origin, allocator);
+      lir_emit_copy_register_to_var_mem_loc(emitter, ir_ins.var, virt_reg0,
+                                            *mem_loc_dst, ir_ins.origin,
+                                            allocator);
     }
 
   } break;
@@ -1233,11 +1202,10 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 }
 
 static void lir_emit_instructions(LirEmitter *emitter,
-                                  IrInstructionSlice instructions,
-                                  VirtualRegister virt_reg_syscall_ret,
-                                  bool verbose, PgAllocator *allocator) {
+                                  IrInstructionSlice instructions, bool verbose,
+                                  PgAllocator *allocator) {
   for (u64 i = 0; i < instructions.len; i++) {
-    lir_emit_instruction(emitter, PG_SLICE_AT(instructions, i),
-                         virt_reg_syscall_ret, verbose, allocator);
+    lir_emit_instruction(emitter, PG_SLICE_AT(instructions, i), verbose,
+                         allocator);
   }
 }
