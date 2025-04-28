@@ -187,7 +187,7 @@ int main(int argc, char *argv[]) {
       .virtual_reg = {.value = 2},
       .var_lifetimes = ir_emitter.var_lifetimes,
   };
-  lir_emit_instructions(&lir_emitter, irs_slice, cli_opts.verbose, allocator);
+  lir_emit_instructions(&lir_emitter, irs_slice, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_instructions(lir_emitter);

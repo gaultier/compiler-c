@@ -731,41 +731,6 @@ lir_memory_location_find_register(VarToMemoryLocationDyn var_to_memory_location,
   return nullptr;
 }
 
-static void lir_memory_location_expire_vars_in_register_at_lifetime_end(
-    LirEmitter *emitter, IrId ir_id, bool verbose) {
-  for (u64 i = 0; i < emitter->var_to_memory_location.len; i++) {
-    VarToMemoryLocation var_mem_loc =
-        PG_SLICE_AT(emitter->var_to_memory_location, i);
-
-    IrVarLifetime *lifetime = ir_find_var_lifetime_by_var_id(
-        emitter->var_lifetimes, var_mem_loc.var.id);
-    PG_ASSERT(lifetime);
-    PG_ASSERT(lifetime->start.value <= lifetime->end.value);
-
-    bool expired = lifetime->end.value < ir_id.value;
-
-    if (!expired) {
-      continue;
-    }
-
-    for (u64 j = 0; j < var_mem_loc.locations.len; j++) {
-      MemoryLocation loc = PG_SLICE_AT(var_mem_loc.locations, j);
-      if (MEMORY_LOCATION_KIND_REGISTER != loc.kind) {
-        continue;
-      }
-
-      lir_memory_location_empty_register(emitter->var_to_memory_location,
-                                         loc.reg);
-      if (verbose) {
-        printf("[D001] [%u] expired: ", ir_id.value);
-        lir_print_register(loc.reg);
-        printf(" %u\n", var_mem_loc.var.id.value);
-        printf("\n");
-      }
-    }
-  }
-}
-
 static void lir_memory_location_record_var_copy(
     VarToMemoryLocationDyn *var_to_memory_location, IrVar var,
     MemoryLocation loc_new, PgAllocator *allocator) {
@@ -928,10 +893,7 @@ static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
 }
 
 static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
-                                 bool verbose, PgAllocator *allocator) {
-  lir_memory_location_expire_vars_in_register_at_lifetime_end(
-      emitter, ir_ins.id, verbose);
-
+                                 PgAllocator *allocator) {
   PG_ASSERT(!ir_ins.tombstone);
 
   switch (ir_ins.kind) {
@@ -1093,13 +1055,17 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     IrValue src_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_VAR == src_ir_val.kind);
-    MemoryLocation *src_mem_loc = lir_memory_location_find_var_on_stack(
-        emitter->var_to_memory_location, src_ir_val.var);
-    PG_ASSERT(src_mem_loc);
+
+    MemoryLocation *res_mem_loc = lir_reserve_virt_reg_for_var(
+        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
+    PG_ASSERT(res_mem_loc);
+    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == res_mem_loc->kind);
+    VirtualRegister res_virt_reg = res_mem_loc->reg;
+    PG_ASSERT(res_virt_reg.value != 0);
 
     VirtualRegister reg =
         lir_make_virtual_register(emitter, LIR_VIRT_REG_CONSTRAINT_NONE);
-    lir_emit_lea_to_register(emitter, ir_ins.var, *src_mem_loc, reg,
+    lir_emit_lea_to_register(emitter, ir_ins.var, *res_mem_loc, reg,
                              ir_ins.origin, allocator);
 
     MemoryLocation *dst_mem_loc = lir_memory_location_find_var_on_stack(
@@ -1208,10 +1174,9 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 }
 
 static void lir_emit_instructions(LirEmitter *emitter,
-                                  IrInstructionSlice instructions, bool verbose,
+                                  IrInstructionSlice instructions,
                                   PgAllocator *allocator) {
   for (u64 i = 0; i < instructions.len; i++) {
-    lir_emit_instruction(emitter, PG_SLICE_AT(instructions, i), verbose,
-                         allocator);
+    lir_emit_instruction(emitter, PG_SLICE_AT(instructions, i), allocator);
   }
 }
