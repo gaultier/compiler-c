@@ -1199,15 +1199,51 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 }
 
 // TODO: constraints.
-static Register amd64_get_free_register(GprSet regs) {
-  Register res = lir_gpr_pop_first_unset(&regs);
-  PG_ASSERT(res.value && "todo: spill");
-  return res;
+static Register
+amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
+  switch (constraint) {
+  case LIR_VIRT_REG_CONSTRAINT_NONE: {
+    Register res = lir_gpr_pop_first_unset(&regs);
+    PG_ASSERT(res.value && "todo: spill");
+    return res;
+  }
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5: {
+    Register res = PG_SLICE_AT(amd64_arch.syscall_calling_convention,
+                               constraint - LIR_VIRT_REG_CONSTRAINT_SYSCALL0);
+    if (!lir_gpr_is_set(regs, res.value)) {
+      return res;
+    }
+    PG_ASSERT(0 && "todo: spill");
+  } break;
+
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM: {
+    PG_ASSERT(amd64_arch.syscall_num.value == amd64_arch.syscall_ret.value);
+
+    Register res = amd64_arch.syscall_num;
+    if (!lir_gpr_is_set(regs, res.value)) {
+      return res;
+    }
+    PG_ASSERT(0 && "todo: spill");
+  } break;
+
+  case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER: {
+    return amd64_arch.base_pointer;
+  }
+  default:
+    PG_ASSERT(0);
+  }
 }
 
 [[nodiscard]] static Register
 amd64_color_assign_register(LirVarInterferenceNodeIndexSlice neighbors,
-                            LirVarInterferenceNodeSlice nodes) {
+                            LirVarInterferenceNodeSlice nodes,
+                            LirVirtualRegisterConstraint constraint) {
   GprSet neighbor_colors = {
       .len = amd64_gprs_count,
       .set = 0,
@@ -1222,7 +1258,7 @@ amd64_color_assign_register(LirVarInterferenceNodeIndexSlice neighbors,
       lir_gpr_set_add(&neighbor_colors, neighbor.reg.value - 1);
     }
   }
-  Register res = amd64_get_free_register(neighbor_colors);
+  Register res = amd64_get_free_register(neighbor_colors, constraint);
 
   PG_ASSERT(res.value > 0 || (neighbors.len < amd64_gprs_count));
 
@@ -1272,7 +1308,8 @@ static void amd64_color_interference_graph(LirVarInterferenceNodeSlice nodes,
     LirVarInterferenceNode *node = PG_SLICE_AT_PTR(&nodes, node_idx.value);
     PG_ASSERT(node->neighbors.len < amd64_gprs_count);
     Register reg = amd64_color_assign_register(
-        PG_DYN_SLICE(LirVarInterferenceNodeIndexSlice, node->neighbors), nodes);
+        PG_DYN_SLICE(LirVarInterferenceNodeIndexSlice, node->neighbors), nodes,
+        node->virt_reg.constraint);
     PG_ASSERT(reg.value);
     node->reg = reg;
   }
