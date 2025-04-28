@@ -394,7 +394,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
 }
 
 [[nodiscard]] static LirVarInterferenceNode **
-lir_interference_nodes_find_by_var(LirVarInterferenceNodePtrDyn nodes,
+lir_interference_nodes_find_by_var(LirVarInterferenceNodePtrSlice nodes,
                                    IrVar var) {
   for (u64 i = 0; i < nodes.len; i++) {
     LirVarInterferenceNode **node = PG_SLICE_AT_PTR(&nodes, i);
@@ -411,10 +411,10 @@ static void lir_interference_graph_add_edge(LirVarInterferenceNodePtrDyn *nodes,
                                             PgAllocator *allocator) {
   PG_ASSERT(vars_count > 0);
 
-  LirVarInterferenceNode **node_a =
-      lir_interference_nodes_find_by_var(*nodes, var_a);
-  LirVarInterferenceNode **node_b =
-      lir_interference_nodes_find_by_var(*nodes, var_b);
+  LirVarInterferenceNode **node_a = lir_interference_nodes_find_by_var(
+      PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, *nodes), var_a);
+  LirVarInterferenceNode **node_b = lir_interference_nodes_find_by_var(
+      PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, *nodes), var_b);
 
   if (!node_a) {
     LirVarInterferenceNode *node_new =

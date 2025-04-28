@@ -195,10 +195,11 @@ int main(int argc, char *argv[]) {
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
 
-  Amd64Emitter amd64_emitter = {0};
+  Amd64Emitter amd64_emitter = {
+      .interference_nodes = interference_graph_nodes_slice,
+  };
   amd64_emit_prolog(&amd64_emitter.instructions, allocator);
-  amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice,
-                         interference_graph_nodes_slice, cli_opts.verbose,
+  amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice, cli_opts.verbose,
                          allocator);
   amd64_emit_epilog(&amd64_emitter.instructions, allocator);
 

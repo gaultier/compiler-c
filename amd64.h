@@ -192,6 +192,7 @@ typedef struct {
   u32 rbp_offset;
   u32 rbp_max_offset;
   Amd64InstructionDyn instructions;
+  LirVarInterferenceNodePtrSlice interference_nodes;
 } Amd64Emitter;
 
 static void amd64_print_register(Register reg) {
@@ -1025,6 +1026,8 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_REGISTER: {
+    LirVarInterferenceNode **node =
+        lir_interference_nodes_find_by_var(emitter->interference_nodes, );
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER, .reg = {0}, // FIXME
     };
@@ -1055,8 +1058,6 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
 static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
                              PgAllocator *allocator) {
-  //  amd64_expire_vars_if_lifetime_end_reached(emitter, var_lifetimes, ir.id);
-
   switch (lir.kind) {
   case LIR_INSTRUCTION_KIND_ADD: {
     PG_ASSERT(2 == lir.operands.len);
@@ -1293,10 +1294,9 @@ amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
   return PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, res);
 }
 
-static void
-amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
-                       LirVarInterferenceNodePtrSlice interference_nodes,
-                       bool verbose, PgAllocator *allocator) {
+static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
+                                   LirInstructionSlice lirs, bool verbose,
+                                   PgAllocator *allocator) {
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
       .lhs =
@@ -1315,7 +1315,7 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
   u64 stack_sub_instruction_idx = emitter->instructions.len - 1;
 
   LirVarInterferenceNodePtrSlice colored =
-      amd64_color_interference_graph(interference_nodes, allocator);
+      amd64_color_interference_graph(emitter->interference_nodes, allocator);
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_graph(colored);
