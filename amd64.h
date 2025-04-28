@@ -1241,20 +1241,20 @@ static void amd64_color_interference_graph(LirVarInterferenceNodeSlice nodes,
   LirVarInterferenceNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, nodes.len, allocator);
 
-  LirVarInterferenceNodeDyn cpy = {0};
-  PG_DYN_CLONE(&cpy, nodes, allocator);
+  LirVarInterferenceNodeIndexDyn node_indices_spill = {0};
+  PG_DYN_ENSURE_CAP(&node_indices_spill, nodes.len, allocator);
 
-  for (u64 i = 0; i < cpy.len;) {
-    LirVarInterferenceNode node = PG_SLICE_AT(cpy, i);
+  for (u64 i = 0; i < nodes.len; i++) {
+    LirVarInterferenceNode node = PG_SLICE_AT(nodes, i);
     if (node.neighbors.len >= amd64_gprs_count) {
-      i++;
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&node_indices_spill) =
+          (LirVarInterferenceNodeIndex){i};
       continue;
     }
     *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (LirVarInterferenceNodeIndex){i};
-    PG_DYN_SWAP_REMOVE(&cpy, i);
   }
 
-  if (cpy.len > 0) {
+  if (node_indices_spill.len > 0) {
     // Need to spill virtual registers remaining in the graph.
     PG_ASSERT(0 && "todo");
   }
