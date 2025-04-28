@@ -1017,7 +1017,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
       PG_ASSERT(rhs_mem_loc);
 
       lir_emit_copy_register_to_var_mem_loc(emitter, ir_ins.var, res_virt_reg,
-                                            *res_mem_loc, ir_ins.origin,
+                                            *rhs_mem_loc, ir_ins.origin,
                                             allocator);
     }
 
