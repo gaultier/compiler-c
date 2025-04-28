@@ -3,7 +3,7 @@
 #include "submodules/cstd/lib.c"
 
 typedef struct {
-  u64 value;
+  u32 value;
 } Register;
 PG_SLICE(Register) RegisterSlice;
 PG_DYN(Register) RegisterDyn;
@@ -143,6 +143,7 @@ PG_DYN(LirVarInterferenceNode *) LirVarInterferenceNodePtrDyn;
 
 struct LirVarInterferenceNode {
   IrVar var;
+  Register reg; // Assigned with graph coloring in the target specific layer.
   LirVarInterferenceNodePtrDyn neighbors;
 };
 
@@ -210,7 +211,15 @@ static void lir_gpr_set_remove(GprSet *set, u32 val) {
 }
 
 [[nodiscard]]
-static Register lir_gpr_get_first(GprSet *set) {
+static bool lir_gpr_is_set(GprSet set, u32 i) {
+  PG_ASSERT(set.len > 0);
+  PG_ASSERT(i < set.len);
+
+  return (set.set & (1 << i)) != 0;
+}
+
+[[nodiscard]]
+static Register lir_gpr_pop_first(GprSet *set) {
   PG_ASSERT(set->len > 0);
 
   u32 mask = (1 << set->len) - 1;
@@ -218,7 +227,28 @@ static Register lir_gpr_get_first(GprSet *set) {
 
   u32 first_set_bit = (u32)__builtin_ffs((int)masked_value);
 
+  if (0 != first_set_bit) {
+    lir_gpr_set_remove(set, first_set_bit - 1);
+  }
+
   return (Register){.value = first_set_bit};
+}
+
+[[nodiscard]]
+static GprSet lir_gpr_set_minus(GprSet a, GprSet b) {
+  PG_ASSERT(a.len == b.len);
+  PG_ASSERT(a.len > 0);
+
+  GprSet res = a;
+
+  u32 max = 1 << a.len;
+  for (u32 i = 0; i < max; i <<= 1) {
+    if (lir_gpr_is_set(b, i) && lir_gpr_is_set(a, i)) {
+      lir_gpr_set_remove(&a, i);
+    }
+  }
+
+  return res;
 }
 
 static void lir_print_register(VirtualRegister reg) {

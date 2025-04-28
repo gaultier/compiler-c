@@ -45,7 +45,7 @@ static const Register amd64_r15 = {14};
 static const Register amd64_rsp = {15};
 static const Register amd64_rbp = {16};
 
-static const u64 amd64_grps_count = 14;
+static const u64 amd64_gprs_count = 14;
 
 static const PgString amd64_register_to_string[16 + 1] = {
     [0] = PG_S("UNREACHABLE"), [1] = PG_S("rax"),  [2] = PG_S("rbx"),
@@ -1260,8 +1260,22 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 [[maybe_unused]] [[nodiscard]] static Register
 amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors,
                             GprSet *regs) {
-  // TODO
-  return (Register){0};
+  GprSet neighbor_colors = {.len = amd64_gprs_count};
+  for (u64 i = 0; i < neighbors.len; i++) {
+    LirVarInterferenceNode *neighbor = PG_SLICE_AT(neighbors, i);
+    PG_ASSERT(neighbor);
+    if (neighbor->reg.value) {
+      lir_gpr_set_add(&neighbor_colors, neighbor->reg.value);
+    }
+  }
+  GprSet available_regs = lir_gpr_set_minus(*regs, neighbor_colors);
+
+  Register res = lir_gpr_pop_first(&available_regs);
+  PG_ASSERT(res.value && "todo: spill");
+
+  lir_gpr_set_remove(regs, res.value);
+
+  return res;
 }
 
 // Assign a color (i.e. unique physical register) to each node in the graph
@@ -1272,14 +1286,18 @@ amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors,
 [[maybe_unused]] // FIXME
 static void
 amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
-                               RegisterSlice grps, PgAllocator *allocator) {
+                               PgAllocator *allocator) {
+  GprSet regs = {
+      .len = amd64_gprs_count,
+      .set = (1 << amd64_gprs_count) - 1,
+  };
   LirVarInterferenceNodePtrDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, nodes.len, allocator);
 
   for (u64 i = 0; i < nodes.len;) {
     LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
     PG_ASSERT(node);
-    if (node->neighbors.len >= amd64_grps_count) {
+    if (node->neighbors.len >= amd64_gprs_count) {
       i++;
       continue;
     }
@@ -1298,11 +1316,11 @@ amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
     PG_ASSERT(node);
     PG_DYN_SWAP_REMOVE(&stack, 0);
 
-    PG_ASSERT(node->neighbors.len < amd64_grps_count);
-    Register reg = amd64_color_assign_register(node->neighbors);
+    PG_ASSERT(node->neighbors.len < amd64_gprs_count);
+    Register reg = amd64_color_assign_register(
+        PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, node->neighbors), &regs);
     PG_ASSERT(reg.value);
   }
-  (void)grps;
 }
 
 static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
