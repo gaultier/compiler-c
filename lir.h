@@ -49,7 +49,7 @@ typedef enum {
 } LirVirtualRegisterConstraint;
 
 typedef struct {
-  u64 value;
+  u32 value;
   LirVirtualRegisterConstraint constraint;
 } VirtualRegister;
 PG_SLICE(VirtualRegister) VirtualRegisterSlice;
@@ -159,11 +159,6 @@ typedef struct {
   IrVarLifetimeDyn var_lifetimes;
 } LirEmitter;
 
-static const VirtualRegister lir_virt_reg_base_stack_pointer = {
-    .value = 1,
-    .constraint = LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
-};
-
 static void lir_gpr_set_add(GprSet *set, u32 val) {
   PG_ASSERT(set->len > 0);
   PG_ASSERT(val < set->len);
@@ -248,10 +243,10 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
 }
 
 static void lir_print_register(VirtualRegister reg) {
-  if (reg.value == lir_virt_reg_base_stack_pointer.value) {
+  if (LIR_VIRT_REG_CONSTRAINT_BASE_POINTER == reg.constraint) {
     printf("v_bsp");
   } else {
-    printf("v%lu(%s)", reg.value,
+    printf("v%u(%s)", reg.value,
            lir_register_constraint_to_cstr(reg.constraint));
   }
 }
@@ -263,7 +258,8 @@ static void lir_print_memory_location(MemoryLocation loc) {
     break;
   case MEMORY_LOCATION_KIND_STACK: {
     printf("[");
-    lir_print_register(lir_virt_reg_base_stack_pointer);
+    lir_print_register(
+        (VirtualRegister){.constraint = LIR_VIRT_REG_CONSTRAINT_BASE_POINTER});
     i32 offset = loc.base_pointer_offset;
     printf("%" PRIi32, offset);
     printf("]");
@@ -762,7 +758,8 @@ static LirOperand lir_memory_location_to_operand(MemoryLocation mem_loc) {
     operand.reg = mem_loc.reg;
   } else if (MEMORY_LOCATION_KIND_STACK == mem_loc.kind) {
     operand.kind = LIR_OPERAND_KIND_EFFECTIVE_ADDRESS;
-    operand.effective_address.base = lir_virt_reg_base_stack_pointer;
+    operand.effective_address.base =
+        (VirtualRegister){.constraint = LIR_VIRT_REG_CONSTRAINT_BASE_POINTER};
     operand.effective_address.displacement = (i32)mem_loc.base_pointer_offset;
   } else {
     PG_ASSERT(0);
@@ -775,11 +772,12 @@ static LirOperand lir_memory_location_to_operand(MemoryLocation mem_loc) {
 static VirtualRegister
 lir_make_virtual_register(LirEmitter *emitter,
                           LirVirtualRegisterConstraint constraint) {
-  VirtualRegister res = emitter->virtual_reg;
-
   if (LIR_VIRT_REG_CONSTRAINT_BASE_POINTER == constraint) {
-    return lir_virt_reg_base_stack_pointer;
+    return (VirtualRegister){.constraint =
+                                 LIR_VIRT_REG_CONSTRAINT_BASE_POINTER};
   }
+
+  VirtualRegister res = emitter->virtual_reg;
 
   emitter->virtual_reg.value += 1;
   res.constraint = constraint;
