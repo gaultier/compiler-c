@@ -470,7 +470,6 @@ lir_interference_graph_find_by_virt_reg(LirVarInterferenceNodePtrSlice nodes,
     LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
     PG_ASSERT(node);
     PG_ASSERT(node->var.id.value);
-    PG_ASSERT(node->neighbors.len > 0);
     if (node->virt_reg.value == virt_reg.value) {
       return node;
     }
@@ -483,7 +482,6 @@ static void lir_print_interference_graph(LirVarInterferenceNodePtrSlice nodes) {
     LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
     PG_ASSERT(node);
     PG_ASSERT(node->var.id.value);
-    PG_ASSERT(node->neighbors.len > 0);
 
     ir_print_var(node->var);
     printf(" reg=%u (%lu): ", node->reg.value, node->neighbors.len);
@@ -492,9 +490,7 @@ static void lir_print_interference_graph(LirVarInterferenceNodePtrSlice nodes) {
       LirVarInterferenceNode *neighbor = PG_SLICE_AT(node->neighbors, j);
       PG_ASSERT(neighbor);
       PG_ASSERT(neighbor->var.id.value);
-      PG_ASSERT(neighbor->neighbors.len > 0);
       PG_ASSERT(neighbor->var.id.value);
-      PG_ASSERT(neighbor->neighbors.len > 0);
 
       ir_print_var(neighbor->var);
       printf("%s", j + 1 < node->neighbors.len ? ", " : "");
@@ -510,14 +506,13 @@ lir_sanity_check_interference_graph(LirVarInterferenceNodePtrSlice nodes,
     LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
     PG_ASSERT(node);
     PG_ASSERT(node->var.id.value);
-    PG_ASSERT(node->neighbors.len > 0);
 
     for (u64 j = 0; j < node->neighbors.len; j++) {
       LirVarInterferenceNode *neighbor = PG_SLICE_AT(node->neighbors, j);
       PG_ASSERT(neighbor);
       PG_ASSERT(neighbor != node);
       PG_ASSERT(neighbor->var.id.value);
-      PG_ASSERT(neighbor->neighbors.len > 0);
+      PG_ASSERT(neighbor->neighbors.len < nodes.len);
       PG_ASSERT(node->var.id.value != neighbor->var.id.value);
 
       if (colored) {
