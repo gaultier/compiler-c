@@ -1257,10 +1257,17 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   }
 }
 
-[[maybe_unused]] [[nodiscard]] static Register
-amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors,
-                            GprSet *regs) {
+// TODO: constraints.
+static Register amd64_get_free_register(GprSet regs) {
+  Register res = lir_gpr_pop_first(&regs);
+  PG_ASSERT(res.value && "todo: spill");
+  return res;
+}
+
+[[nodiscard]] static Register
+amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors) {
   GprSet neighbor_colors = {.len = amd64_gprs_count};
+
   for (u64 i = 0; i < neighbors.len; i++) {
     LirVarInterferenceNode *neighbor = PG_SLICE_AT(neighbors, i);
     PG_ASSERT(neighbor);
@@ -1268,14 +1275,7 @@ amd64_color_assign_register(LirVarInterferenceNodePtrSlice neighbors,
       lir_gpr_set_add(&neighbor_colors, neighbor->reg.value);
     }
   }
-  GprSet available_regs = lir_gpr_set_minus(*regs, neighbor_colors);
-
-  Register res = lir_gpr_pop_first(&available_regs);
-  PG_ASSERT(res.value && "todo: spill");
-
-  lir_gpr_set_remove(regs, res.value);
-
-  return res;
+  return amd64_get_free_register(neighbor_colors);
 }
 
 // Assign a color (i.e. unique physical register) to each node in the graph
@@ -1288,10 +1288,6 @@ static LirVarInterferenceNodePtrSlice
 amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
                                PgAllocator *allocator) {
 
-  GprSet regs = {
-      .len = amd64_gprs_count,
-      .set = (1 << amd64_gprs_count) - 1,
-  };
   LirVarInterferenceNodePtrDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, nodes.len, allocator);
 
@@ -1322,7 +1318,7 @@ amd64_color_interference_graph(LirVarInterferenceNodePtrSlice nodes,
 
     PG_ASSERT(node->neighbors.len < amd64_gprs_count);
     Register reg = amd64_color_assign_register(
-        PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, node->neighbors), &regs);
+        PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, node->neighbors));
     PG_ASSERT(reg.value);
     node->reg = reg;
 
