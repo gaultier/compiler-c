@@ -219,16 +219,17 @@ static bool lir_gpr_is_set(GprSet set, u32 i) {
 }
 
 [[nodiscard]]
-static Register lir_gpr_pop_first(GprSet *set) {
+static Register lir_gpr_pop_first_unset(GprSet *set) {
   PG_ASSERT(set->len > 0);
 
-  u32 mask = (1 << set->len) - 1;
-  u32 masked_value = set->set & mask;
+  u32 first_set_bit = (u32)__builtin_ffs((int)~set->set);
 
-  u32 first_set_bit = (u32)__builtin_ffs((int)masked_value);
+  if (first_set_bit > (1 << set->len)) {
+    return (Register){0};
+  }
 
   if (0 != first_set_bit) {
-    lir_gpr_set_remove(set, first_set_bit - 1);
+    lir_gpr_set_add(set, first_set_bit - 1);
   }
 
   return (Register){.value = first_set_bit};
