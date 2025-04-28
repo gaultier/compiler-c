@@ -171,8 +171,8 @@ int main(int argc, char *argv[]) {
 
   LirVarInterferenceNodePtrDyn interference_graph_nodes = {0};
   if (ir_emitter.var_lifetimes.len > 0) {
-    interference_graph_nodes = lir_build_var_interference_graph(
-        ir_emitter.var_lifetimes, cli_opts.verbose, allocator);
+    interference_graph_nodes =
+        lir_build_var_interference_graph(ir_emitter.var_lifetimes, allocator);
   }
   LirVarInterferenceNodePtrSlice interference_graph_nodes_slice =
       PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, interference_graph_nodes);

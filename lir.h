@@ -407,26 +407,16 @@ lir_interference_nodes_find_by_var(LirVarInterferenceNodePtrSlice nodes,
 }
 
 static void lir_interference_graph_add_edge(LirVarInterferenceNodePtrDyn *nodes,
-                                            IrVar var_a, IrVar var_b,
-                                            u64 vars_count,
+                                            LirVarInterferenceNode *node_a,
+                                            IrVar var_b, u64 vars_count,
                                             PgAllocator *allocator) {
+  PG_ASSERT(node_a);
+  PG_ASSERT(node_a->var.id.value);
+  PG_ASSERT(var_b.id.value);
   PG_ASSERT(vars_count > 0);
 
-  LirVarInterferenceNode **node_a = lir_interference_nodes_find_by_var(
-      PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, *nodes), var_a);
   LirVarInterferenceNode **node_b = lir_interference_nodes_find_by_var(
       PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, *nodes), var_b);
-
-  if (!node_a) {
-    LirVarInterferenceNode *node_new =
-        pg_alloc(allocator, sizeof(LirVarInterferenceNode),
-                 _Alignof(LirVarInterferenceNode), 1);
-    node_new->var = var_a;
-    PG_DYN_ENSURE_CAP(&node_new->neighbors, vars_count - 1, allocator);
-    *PG_DYN_PUSH_WITHIN_CAPACITY(nodes) = node_new;
-
-    node_a = PG_SLICE_LAST_PTR(nodes);
-  }
 
   if (!node_b) {
     LirVarInterferenceNode *node_new =
@@ -440,10 +430,36 @@ static void lir_interference_graph_add_edge(LirVarInterferenceNodePtrDyn *nodes,
     node_b = PG_SLICE_LAST_PTR(nodes);
   }
 
-  PG_ASSERT(node_a && node_b);
+  PG_ASSERT(node_b);
 
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&(*node_a)->neighbors) = *node_b;
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&(*node_b)->neighbors) = *node_a;
+  {
+    bool found = false;
+    for (u64 i = 0; i < node_a->neighbors.len; i++) {
+      LirVarInterferenceNode *it = PG_SLICE_AT(node_a->neighbors, i);
+      PG_ASSERT(it);
+      if (it->var.id.value == var_b.id.value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&node_a->neighbors) = *node_b;
+    }
+  }
+  {
+    bool found = false;
+    for (u64 i = 0; i < (*node_b)->neighbors.len; i++) {
+      LirVarInterferenceNode *it = PG_SLICE_AT((*node_b)->neighbors, i);
+      PG_ASSERT(it);
+      if (it->var.id.value == node_a->var.id.value) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&(*node_b)->neighbors) = node_a;
+    }
+  }
 }
 
 [[nodiscard]]
@@ -460,21 +476,6 @@ lir_interference_graph_find_by_virt_reg(LirVarInterferenceNodePtrSlice nodes,
     }
   }
   return nullptr;
-}
-
-static void
-lir_print_interference_edges(LirVarInterferenceEdgeDyn interference_edges) {
-  for (u64 i = 0; i < interference_edges.len; i++) {
-    LirVarInterferenceEdge edge = PG_SLICE_AT(interference_edges, i);
-    PG_ASSERT(edge.a.id.value);
-    PG_ASSERT(edge.b.id.value);
-    PG_ASSERT(edge.a.id.value != edge.b.id.value);
-
-    ir_print_var(edge.a);
-    printf(" -> ");
-    ir_print_var(edge.b);
-    printf("\n");
-  }
 }
 
 static void lir_print_interference_graph(LirVarInterferenceNodePtrSlice nodes) {
@@ -528,24 +529,38 @@ lir_sanity_check_interference_graph(LirVarInterferenceNodePtrSlice nodes,
 
 [[nodiscard]]
 static LirVarInterferenceNodePtrDyn
-lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes, bool verbose,
+lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
                                  PgAllocator *allocator) {
-  LirVarInterferenceEdgeDyn edges = {0};
   LirVarInterferenceNodePtrDyn nodes = {0};
 
   if (0 == lifetimes.len) {
     return nodes;
   }
 
-  PG_DYN_ENSURE_CAP(&edges, lifetimes.len * (lifetimes.len - 1) / 2, allocator);
   PG_DYN_ENSURE_CAP(&nodes, lifetimes.len, allocator);
 
   for (u64 i = 0; i < lifetimes.len; i++) {
+    printf("[D100] [%lu] %lu %lu\n", i, nodes.len, nodes.cap);
     IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
     PG_ASSERT(!lifetime.tombstone);
     PG_ASSERT(lifetime.start.value <= lifetime.end.value);
+    PG_ASSERT(lifetime.var.id.value);
 
-    for (u64 j = i + 1; j < lifetimes.len; j++) {
+    LirVarInterferenceNode **node = lir_interference_nodes_find_by_var(
+        PG_DYN_SLICE(LirVarInterferenceNodePtrSlice, nodes), lifetime.var);
+    if (!node) {
+      LirVarInterferenceNode *node_new =
+          pg_alloc(allocator, sizeof(LirVarInterferenceNode),
+                   _Alignof(LirVarInterferenceNode), 1);
+      node_new->var = lifetime.var;
+
+      PG_DYN_ENSURE_CAP(&node_new->neighbors, lifetimes.len - 1, allocator);
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&nodes) = node_new;
+
+      node = PG_SLICE_LAST_PTR(&nodes);
+    }
+
+    for (u64 j = 0; j < lifetimes.len; j++) {
       IrVarLifetime it = PG_SLICE_AT(lifetimes, j);
       PG_ASSERT(it.start.value <= it.end.value);
       PG_ASSERT(!it.tombstone);
@@ -566,21 +581,12 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes, bool verbose,
       }
 
       // Interferes: add an edge between the two nodes.
-      LirVarInterferenceEdge edge = {
-          .a = lifetime.var,
-          .b = it.var,
-      };
-      *PG_DYN_PUSH_WITHIN_CAPACITY(&edges) = edge;
-
-      lir_interference_graph_add_edge(&nodes, edge.a, edge.b, lifetimes.len,
+      lir_interference_graph_add_edge(&nodes, *node, it.var, lifetimes.len,
                                       allocator);
     }
   }
 
-  if (verbose) {
-    printf("\n------------ Interference edges ------------\n");
-    lir_print_interference_edges(edges);
-  }
+  PG_ASSERT(nodes.len == lifetimes.len);
 
   return nodes;
 }
