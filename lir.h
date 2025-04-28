@@ -90,7 +90,6 @@ typedef enum {
   LIR_OPERAND_KIND_NONE,
   LIR_OPERAND_KIND_VIRTUAL_REGISTER,
   LIR_OPERAND_KIND_IMMEDIATE,
-  LIR_OPERAND_KIND_EFFECTIVE_ADDRESS,
   LIR_OPERAND_KIND_LABEL,
 } LirOperandKind;
 
@@ -106,7 +105,6 @@ typedef struct {
   union {
     VirtualRegister virt_reg;
     u64 immediate;
-    LirEffectiveAddress effective_address;
     IrLabelId label;
   };
 } LirOperand;
@@ -117,13 +115,12 @@ typedef struct {
   MemoryLocationDyn locations;
   IrVar var;
 } VarToMemoryLocation;
-
 PG_DYN(VarToMemoryLocation) VarToMemoryLocationDyn;
+
 typedef struct {
   LirInstructionKind kind;
   LirOperandDyn operands;
   Origin origin;
-  VarToMemoryLocationDyn var_to_memory_location_frozen;
 } LirInstruction;
 PG_SLICE(LirInstruction) LirInstructionSlice;
 PG_DYN(LirInstruction) LirInstructionDyn;
@@ -152,12 +149,7 @@ struct LirVarInterferenceNode {
 typedef struct {
   LirInstructionDyn instructions;
   VarToMemoryLocationDyn var_to_memory_location;
-  // Relative to base stack pointer.
-  u32 stack_offset;
-  // Relative to base stack pointer.
-  u32 stack_max_offset;
   VirtualRegister virtual_reg;
-  IrVarLifetimeDyn var_lifetimes;
   LirVarInterferenceNodePtrSlice interference_graph;
 } LirEmitter;
 
@@ -253,6 +245,7 @@ static void lir_print_register(VirtualRegister reg) {
   }
 }
 
+#if 0
 static void lir_print_memory_location(MemoryLocation loc) {
   switch (loc.kind) {
   case MEMORY_LOCATION_KIND_REGISTER:
@@ -291,6 +284,7 @@ static void lir_print_var_to_memory_location(
     printf("\n");
   }
 }
+#endif
 
 static void lir_print_operand(LirOperand operand) {
   switch (operand.kind) {
@@ -301,18 +295,6 @@ static void lir_print_operand(LirOperand operand) {
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, operand.immediate);
-    break;
-  case LIR_OPERAND_KIND_EFFECTIVE_ADDRESS:
-    printf("[");
-    lir_print_register(operand.effective_address.base);
-    if (operand.effective_address.index.value) {
-      printf(" + ");
-      lir_print_register(operand.effective_address.index);
-      printf(" * %" PRIu8 " ", operand.effective_address.scale);
-    }
-    printf("%s%" PRIi32 "]",
-           operand.effective_address.displacement >= 0 ? "+" : "",
-           operand.effective_address.displacement);
     break;
   case LIR_OPERAND_KIND_LABEL:
     printf(".%" PRIu32, operand.label.value);
@@ -326,8 +308,6 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
   for (u64 i = 0; i < emitter.instructions.len; i++) {
     LirInstruction ins = PG_SLICE_AT(emitter.instructions, i);
     printf("[%" PRIu64 "]\n", i);
-
-    lir_print_var_to_memory_location(ins.var_to_memory_location_frozen);
 
     origin_print(ins.origin);
     printf(": ");
@@ -376,6 +356,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
   }
 }
 
+#if 0
 [[nodiscard]] static bool lir_memory_location_eq(MemoryLocation a,
                                                  MemoryLocation b) {
   if (a.kind != b.kind) {
@@ -394,6 +375,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
     PG_ASSERT(0);
   }
 }
+#endif
 
 [[nodiscard]] static LirVarInterferenceNode **
 lir_interference_nodes_find_by_var(LirVarInterferenceNodePtrSlice nodes,
@@ -405,6 +387,18 @@ lir_interference_nodes_find_by_var(LirVarInterferenceNodePtrSlice nodes,
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] static VirtualRegister
+lir_interference_nodes_find_virt_reg_by_var(
+    LirVarInterferenceNodePtrSlice nodes, IrVar var) {
+  for (u64 i = 0; i < nodes.len; i++) {
+    LirVarInterferenceNode **node = PG_SLICE_AT_PTR(&nodes, i);
+    if ((*node)->var.id.value == var.id.value) {
+      return (*node)->virt_reg;
+    }
+  }
+  return (VirtualRegister){0};
 }
 
 static void lir_interference_graph_add_edge(LirVarInterferenceNodePtrDyn *nodes,
@@ -594,31 +588,7 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
   return nodes;
 }
 
-[[nodiscard]] static VarToMemoryLocationDyn
-lir_memory_location_clone(VarToMemoryLocationDyn var_to_memory_location,
-                          PgAllocator *allocator) {
-  VarToMemoryLocationDyn res = {0};
-  if (0 == var_to_memory_location.len) {
-    return res;
-  }
-
-  PG_DYN_ENSURE_CAP(&res, var_to_memory_location.len, allocator);
-  res.len = var_to_memory_location.len;
-
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation var_mem_loc_src =
-        PG_SLICE_AT(var_to_memory_location, i);
-    VarToMemoryLocation *var_mem_loc_dst = PG_SLICE_AT_PTR(&res, i);
-    PG_DYN_ENSURE_CAP(&var_mem_loc_dst->locations,
-                      var_mem_loc_src.locations.len, allocator);
-
-    PG_DYN_CLONE(&var_mem_loc_dst->locations, var_mem_loc_src.locations,
-                 allocator);
-    var_mem_loc_dst->var = var_mem_loc_src.var;
-  }
-  return res;
-}
-
+#if 0
 [[nodiscard]]
 static MemoryLocationDyn *
 lir_memory_location_find_var(VarToMemoryLocationDyn var_to_memory_location,
@@ -652,16 +622,12 @@ lir_memory_location_add(VarToMemoryLocationDyn *var_to_memory_location,
 
   return PG_DYN_LAST_PTR(locations);
 }
+#endif
 
 [[nodiscard]]
 static VirtualRegister
 lir_make_virtual_register(LirEmitter *emitter,
                           LirVirtualRegisterConstraint constraint) {
-  if (LIR_VIRT_REG_CONSTRAINT_BASE_POINTER == constraint) {
-    return (VirtualRegister){.constraint =
-                                 LIR_VIRT_REG_CONSTRAINT_BASE_POINTER};
-  }
-
   VirtualRegister res = emitter->virtual_reg;
 
   emitter->virtual_reg.value += 1;
@@ -669,25 +635,22 @@ lir_make_virtual_register(LirEmitter *emitter,
   return res;
 }
 
-static MemoryLocation *
+static VirtualRegister
 lir_reserve_virt_reg_for_var(LirEmitter *emitter, IrVar var,
-                             LirVirtualRegisterConstraint constraint,
-                             PgAllocator *allocator) {
-
-  MemoryLocation mem_loc = {
-      .kind = MEMORY_LOCATION_KIND_REGISTER,
-      .reg = lir_make_virtual_register(emitter, constraint),
-  };
+                             LirVirtualRegisterConstraint constraint) {
   LirVarInterferenceNode **node =
       lir_interference_nodes_find_by_var(emitter->interference_graph, var);
   PG_ASSERT(node);
   PG_ASSERT(*node);
-  (*node)->virt_reg = mem_loc.reg;
+  PG_ASSERT(0 == (*node)->virt_reg.value);
+  PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == (*node)->virt_reg.constraint);
 
-  return lir_memory_location_add(&emitter->var_to_memory_location, var, mem_loc,
-                                 allocator);
+  (*node)->virt_reg = lir_make_virtual_register(emitter, constraint);
+
+  return (*node)->virt_reg;
 }
 
+#if 0
 static void lir_memory_location_empty_register(
     VarToMemoryLocationDyn var_to_memory_location, VirtualRegister virt_reg) {
   for (u64 i = 0; i < var_to_memory_location.len; i++) {
@@ -871,16 +834,19 @@ static void lir_emit_lea_to_register(LirEmitter *emitter, IrVar var,
   lir_memory_location_record_var_copy(&emitter->var_to_memory_location, var,
                                       mem_loc_dst, allocator);
 }
+#endif
 
-static void
-lir_emit_copy_register_to_var_mem_loc(LirEmitter *emitter, IrVar var_dst,
-                                      VirtualRegister src, MemoryLocation dst,
-                                      Origin origin, PgAllocator *allocator) {
+static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
+                                               VirtualRegister src,
+                                               VirtualRegister dst,
+                                               Origin origin,
+                                               PgAllocator *allocator) {
+  PG_ASSERT(src.value);
+  PG_ASSERT(dst.value);
+
   LirInstruction ins = {
       .kind = LIR_INSTRUCTION_KIND_MOV,
       .origin = origin,
-      .var_to_memory_location_frozen =
-          lir_memory_location_clone(emitter->var_to_memory_location, allocator),
   };
   PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
 
@@ -889,35 +855,39 @@ lir_emit_copy_register_to_var_mem_loc(LirEmitter *emitter, IrVar var_dst,
       .virt_reg = src,
   };
 
-  LirOperand lhs = lir_memory_location_to_operand(dst);
+  LirOperand lhs = {
+      .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+      .virt_reg = dst,
+  };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs;
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs;
 
   *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-
-  lir_memory_location_record_var_copy(&emitter->var_to_memory_location, var_dst,
-                                      dst, allocator);
 }
 
-static void lir_emit_copy_immediate_to(LirEmitter *emitter, IrValue val,
-                                       MemoryLocation dst, Origin origin,
-                                       PgAllocator *allocator) {
-  PG_ASSERT(IR_VALUE_KIND_U64 == val.kind);
+static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
+                                                IrValue src,
+                                                VirtualRegister dst,
+                                                Origin origin,
+                                                PgAllocator *allocator) {
+  // TODO: Expand when more immediate types are available.
+  PG_ASSERT(IR_VALUE_KIND_U64 == src.kind);
 
   LirInstruction ins = {
       .kind = LIR_INSTRUCTION_KIND_MOV,
       .origin = origin,
-      .var_to_memory_location_frozen =
-          lir_memory_location_clone(emitter->var_to_memory_location, allocator),
   };
   PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
 
-  LirOperand lhs = lir_memory_location_to_operand(dst);
+  LirOperand lhs = {
+      .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+      .virt_reg = dst,
+  };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs;
 
   LirOperand rhs = {
       .kind = LIR_OPERAND_KIND_IMMEDIATE,
-      .immediate = val.n64,
+      .immediate = src.n64,
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs;
 
@@ -935,26 +905,21 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     IrValue lhs_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
 
-    MemoryLocation *res_mem_loc = lir_reserve_virt_reg_for_var(
-        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
-    PG_ASSERT(res_mem_loc);
-    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == res_mem_loc->kind);
-    VirtualRegister dst_virt_reg = res_mem_loc->reg;
-    PG_ASSERT(dst_virt_reg.value != 0);
+    VirtualRegister res_virt_reg = lir_reserve_virt_reg_for_var(
+        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE);
+    PG_ASSERT(res_virt_reg.value != 0);
 
-    // Copy lhs into a register and then into the stack slot of the result
-    // var.
     if (IR_VALUE_KIND_VAR == lhs_ir_val.kind) {
-      MemoryLocation *lhs_mem_loc = lir_memory_location_find_var_in_virt_reg(
-          emitter->var_to_memory_location, lhs_ir_val.var);
-      PG_ASSERT(lhs_mem_loc);
+      VirtualRegister lhs_virt_reg =
+          lir_interference_nodes_find_virt_reg_by_var(
+              emitter->interference_graph, lhs_ir_val.var);
+      PG_ASSERT(lhs_virt_reg.value);
 
-      lir_emit_copy_register_to_var_mem_loc(emitter, ir_ins.var, dst_virt_reg,
-                                            *res_mem_loc, ir_ins.origin,
-                                            allocator);
+      lir_emit_copy_virt_reg_to_virt_reg(emitter, lhs_virt_reg, res_virt_reg,
+                                         ir_ins.origin, allocator);
     } else if (IR_VALUE_KIND_U64 == lhs_ir_val.kind) {
-      lir_emit_copy_immediate_to(emitter, lhs_ir_val, *res_mem_loc,
-                                 ir_ins.origin, allocator);
+      lir_emit_copy_immediate_to_virt_reg(emitter, lhs_ir_val, res_virt_reg,
+                                          ir_ins.origin, allocator);
     }
     // We now need to add rhs to it.
 
@@ -967,11 +932,13 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     // intermediate register. We cannot copy one stack slot to another stack
     // slot directly.
     if (IR_VALUE_KIND_VAR == rhs_ir_val.kind) {
-      MemoryLocation *rhs_mem_loc = lir_memory_location_find_var_in_virt_reg(
-          emitter->var_to_memory_location, rhs_ir_val.var);
-      PG_ASSERT(rhs_mem_loc);
+      VirtualRegister rhs_virt_reg =
+          lir_interference_nodes_find_virt_reg_by_var(
+              emitter->interference_graph, rhs_ir_val.var);
+      PG_ASSERT(rhs_virt_reg.value);
 
-      rhs_op = lir_memory_location_to_operand(*rhs_mem_loc);
+      rhs_op.kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER;
+      rhs_op.virt_reg = rhs_virt_reg;
     } else if (IR_VALUE_KIND_U64 == rhs_ir_val.kind) {
       rhs_op.kind = LIR_OPERAND_KIND_IMMEDIATE;
       rhs_op.immediate = rhs_ir_val.n64;
@@ -980,12 +947,13 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_ADD,
         .origin = ir_ins.origin,
-        .var_to_memory_location_frozen = lir_memory_location_clone(
-            emitter->var_to_memory_location, allocator),
     };
     PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
 
-    LirOperand lhs_op = lir_memory_location_to_operand(*res_mem_loc);
+    LirOperand lhs_op = {
+        .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+        .virt_reg = res_virt_reg,
+    };
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs_op;
 
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs_op;
@@ -1001,24 +969,21 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(IR_VALUE_KIND_VAR == src_ir_val.kind ||
               IR_VALUE_KIND_U64 == src_ir_val.kind);
 
-    MemoryLocation *res_mem_loc = lir_reserve_virt_reg_for_var(
-        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
-    PG_ASSERT(res_mem_loc);
-    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == res_mem_loc->kind);
-    VirtualRegister res_virt_reg = res_mem_loc->reg;
+    VirtualRegister res_virt_reg = lir_reserve_virt_reg_for_var(
+        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE);
     PG_ASSERT(res_virt_reg.value != 0);
 
     if (IR_VALUE_KIND_U64 == src_ir_val.kind) {
-      lir_emit_copy_immediate_to(emitter, src_ir_val, *res_mem_loc,
-                                 ir_ins.origin, allocator);
+      lir_emit_copy_immediate_to_virt_reg(emitter, src_ir_val, res_virt_reg,
+                                          ir_ins.origin, allocator);
     } else if (IR_VALUE_KIND_VAR == src_ir_val.kind) {
-      MemoryLocation *rhs_mem_loc = lir_memory_location_find_var_in_virt_reg(
-          emitter->var_to_memory_location, src_ir_val.var);
-      PG_ASSERT(rhs_mem_loc);
+      VirtualRegister src_virt_reg =
+          lir_interference_nodes_find_virt_reg_by_var(
+              emitter->interference_graph, src_ir_val.var);
+      PG_ASSERT(src_virt_reg.value);
 
-      lir_emit_copy_register_to_var_mem_loc(emitter, ir_ins.var, res_virt_reg,
-                                            *rhs_mem_loc, ir_ins.origin,
-                                            allocator);
+      lir_emit_copy_virt_reg_to_virt_reg(emitter, src_virt_reg, res_virt_reg,
+                                         ir_ins.origin, allocator);
     }
 
   } break;
@@ -1027,6 +992,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
               1 /* syscall num */ + lir_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
 
+#if 0
     VirtualRegister virt_reg0 = {0};
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
       IrValue val = PG_SLICE_AT(ir_ins.operands, j);
@@ -1079,7 +1045,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
                                             *mem_loc_dst, ir_ins.origin,
                                             allocator);
     }
-
+#endif
   } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir_ins.operands.len);
@@ -1088,6 +1054,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     IrValue src_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_VAR == src_ir_val.kind);
 
+#if 0
     MemoryLocation *res_mem_loc = lir_reserve_virt_reg_for_var(
         emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(res_mem_loc);
@@ -1105,6 +1072,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(dst_mem_loc);
     lir_emit_copy_register_to_var_mem_loc(
         emitter, ir_ins.var, reg, *dst_mem_loc, ir_ins.origin, allocator);
+#endif
   } break;
   case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir_ins.operands.len);
@@ -1116,6 +1084,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     IrValue branch_else = PG_SLICE_AT(ir_ins.operands, 1);
     PG_ASSERT(IR_VALUE_KIND_LABEL == branch_else.kind);
 
+#if 0
     {
       LirInstruction ins_cmp = {
           .kind = LIR_INSTRUCTION_KIND_CMP,
@@ -1153,6 +1122,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_je;
     }
+#endif
   } break;
   case IR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == ir_ins.operands.len);
@@ -1164,8 +1134,6 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_JUMP,
         .origin = ir_ins.origin,
-        .var_to_memory_location_frozen = lir_memory_location_clone(
-            emitter->var_to_memory_location, allocator),
     };
 
     LirOperand lir_op = {
@@ -1186,8 +1154,6 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_LABEL,
         .origin = ir_ins.origin,
-        .var_to_memory_location_frozen = lir_memory_location_clone(
-            emitter->var_to_memory_location, allocator),
     };
 
     LirOperand lir_op = {

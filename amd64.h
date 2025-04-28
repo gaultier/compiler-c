@@ -141,7 +141,6 @@ typedef struct {
   Amd64InstructionKind kind;
   Amd64Operand lhs, rhs;
   Origin origin;
-  VarToMemoryLocationDyn var_to_memory_location_frozen;
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
@@ -1043,14 +1042,6 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
         .kind = AMD64_OPERAND_KIND_IMMEDIATE,
         .immediate = lir_op.immediate,
     };
-  case LIR_OPERAND_KIND_EFFECTIVE_ADDRESS:
-    return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
-        .effective_address.scale = lir_op.effective_address.scale,
-        .effective_address.displacement = lir_op.effective_address.displacement,
-        .effective_address.base = {0},  // FIXME
-        .effective_address.index = {0}, // FIXME
-    };
   case LIR_OPERAND_KIND_LABEL:
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_LABEL,
@@ -1070,9 +1061,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
-    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
-                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
-
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_ADD,
         .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
@@ -1087,9 +1075,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     PG_ASSERT(2 == lir.operands.len);
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
-
-    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
-                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_SUB,
@@ -1107,9 +1092,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
-    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
-                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
-
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
         .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
@@ -1125,8 +1107,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     Amd64Instruction ins = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
         .origin = lir.origin,
-        .var_to_memory_location_frozen = lir_memory_location_clone(
-            emitter->var_to_memory_location, allocator),
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
   } break;
@@ -1181,9 +1161,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
-    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
-                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
-
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_CMP,
         .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
@@ -1199,9 +1176,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
-
-    PG_ASSERT(!(LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == lhs.kind &&
-                LIR_OPERAND_KIND_EFFECTIVE_ADDRESS == rhs.kind));
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LEA,
@@ -1350,8 +1324,6 @@ static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
             },
         .origin.synthetic = true,
     };
-    stack_add.var_to_memory_location_frozen =
-        lir_memory_location_clone(emitter->var_to_memory_location, allocator);
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_add;
   } else {

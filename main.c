@@ -185,7 +185,6 @@ int main(int argc, char *argv[]) {
 
   LirEmitter lir_emitter = {
       .virtual_reg = {.value = 1},
-      .var_lifetimes = ir_emitter.var_lifetimes,
       .interference_graph = interference_graph_nodes_slice,
   };
   lir_emit_instructions(&lir_emitter, irs_slice, allocator);
