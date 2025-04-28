@@ -88,7 +88,7 @@ typedef enum {
 
 typedef enum {
   LIR_OPERAND_KIND_NONE,
-  LIR_OPERAND_KIND_REGISTER,
+  LIR_OPERAND_KIND_VIRTUAL_REGISTER,
   LIR_OPERAND_KIND_IMMEDIATE,
   LIR_OPERAND_KIND_EFFECTIVE_ADDRESS,
   LIR_OPERAND_KIND_LABEL,
@@ -104,7 +104,7 @@ typedef struct {
 typedef struct {
   LirOperandKind kind;
   union {
-    VirtualRegister reg;
+    VirtualRegister virt_reg;
     u64 immediate;
     LirEffectiveAddress effective_address;
     IrLabelId label;
@@ -295,8 +295,8 @@ static void lir_print_operand(LirOperand operand) {
   switch (operand.kind) {
   case LIR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
-  case LIR_OPERAND_KIND_REGISTER:
-    lir_print_register(operand.reg);
+  case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
+    lir_print_register(operand.virt_reg);
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, operand.immediate);
@@ -444,6 +444,22 @@ static void lir_interference_graph_add_edge(LirVarInterferenceNodePtrDyn *nodes,
 
   *PG_DYN_PUSH_WITHIN_CAPACITY(&(*node_a)->neighbors) = *node_b;
   *PG_DYN_PUSH_WITHIN_CAPACITY(&(*node_b)->neighbors) = *node_a;
+}
+
+[[nodiscard]]
+static LirVarInterferenceNode *
+lir_interference_graph_find_by_virt_reg(LirVarInterferenceNodePtrSlice nodes,
+                                        VirtualRegister virt_reg) {
+  for (u64 i = 0; i < nodes.len; i++) {
+    LirVarInterferenceNode *node = PG_SLICE_AT(nodes, i);
+    PG_ASSERT(node);
+    PG_ASSERT(node->var.id.value);
+    PG_ASSERT(node->neighbors.len > 0);
+    if (node->virt_reg.value == virt_reg.value) {
+      return node;
+    }
+  }
+  return nullptr;
 }
 
 static void
@@ -755,8 +771,8 @@ static LirOperand lir_memory_location_to_operand(MemoryLocation mem_loc) {
   LirOperand operand = {0};
 
   if (MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind) {
-    operand.kind = LIR_OPERAND_KIND_REGISTER;
-    operand.reg = mem_loc.reg;
+    operand.kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER;
+    operand.virt_reg = mem_loc.reg;
   } else if (MEMORY_LOCATION_KIND_STACK == mem_loc.kind) {
     operand.kind = LIR_OPERAND_KIND_EFFECTIVE_ADDRESS;
     operand.effective_address.base =
@@ -791,8 +807,8 @@ static void lir_emit_copy_var_to_register(LirEmitter *emitter, IrVar var,
   PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
 
   LirOperand lhs = {
-      .kind = LIR_OPERAND_KIND_REGISTER,
-      .reg = dst,
+      .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+      .virt_reg = dst,
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs;
 
@@ -823,8 +839,8 @@ static void lir_emit_lea_to_register(LirEmitter *emitter, IrVar var,
   PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
 
   LirOperand lhs = {
-      .kind = LIR_OPERAND_KIND_REGISTER,
-      .reg = dst,
+      .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+      .virt_reg = dst,
   };
 
   LirOperand rhs = lir_memory_location_to_operand(src);
@@ -854,8 +870,8 @@ lir_emit_copy_register_to_var_mem_loc(LirEmitter *emitter, IrVar var_dst,
   PG_DYN_ENSURE_CAP(&ins.operands, 2, allocator);
 
   LirOperand rhs = {
-      .kind = LIR_OPERAND_KIND_REGISTER,
-      .reg = src,
+      .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+      .virt_reg = src,
   };
 
   LirOperand lhs = lir_memory_location_to_operand(dst);

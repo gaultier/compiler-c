@@ -1025,12 +1025,15 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
   (void)emitter;
 
   switch (lir_op.kind) {
-  case LIR_OPERAND_KIND_REGISTER: {
-    VarToMemoryLocation *var_mem_loc = lir_memory_location_find_virt_reg(
-        emitter->var_to_memory_location, lir_op.reg);
-    PG_ASSERT(var_mem_loc);
+  case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
+    LirVarInterferenceNode *node = lir_interference_graph_find_by_virt_reg(
+        emitter->interference_nodes, lir_op.virt_reg);
+    PG_ASSERT(node);
+    PG_ASSERT(node->reg.value);
+
     return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_REGISTER, .reg = {0}, // FIXME
+        .kind = AMD64_OPERAND_KIND_REGISTER,
+        .reg = node->reg,
     };
   }
   case LIR_OPERAND_KIND_IMMEDIATE:
