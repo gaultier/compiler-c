@@ -625,15 +625,15 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
           ir_find_var_lifetime_by_var_id(*lifetimes, var.id);
       PG_ASSERT(lifetime);
 
-      IrInstructionIndex var_def_ir_id = lifetime->start;
-      IrInstruction *var_def_ir =
-          irs_find_ir_by_id(*instructions, var_def_ir_id);
-      PG_ASSERT(var_def_ir);
-      if (IR_INSTRUCTION_KIND_LOAD != var_def_ir->kind) {
+      IrInstructionIndex var_def_ins_idx = lifetime->start;
+      IrInstruction *var_def_ins =
+          irs_find_ir_by_id(*instructions, var_def_ins_idx);
+      PG_ASSERT(var_def_ins);
+      if (IR_INSTRUCTION_KIND_LOAD != var_def_ins->kind) {
         continue;
       }
-      PG_ASSERT(1 == var_def_ir->operands.len);
-      IrOperand var_def_val = PG_SLICE_AT(var_def_ir->operands, 0);
+      PG_ASSERT(1 == var_def_ins->operands.len);
+      IrOperand var_def_val = PG_SLICE_AT(var_def_ins->operands, 0);
       bool is_immediate = IR_OPERAND_KIND_U64 == var_def_val.kind;
       if (!is_immediate) {
         continue;
