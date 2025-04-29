@@ -34,7 +34,7 @@ typedef enum {
   IR_OPERAND_KIND_VAR,
   IR_OPERAND_KIND_LABEL,
   IR_OPERAND_KIND_SYSCALL_ARGS,
-} IrValueKind;
+} IrOperandKind;
 
 typedef struct {
   u32 value;
@@ -45,7 +45,7 @@ PG_SLICE(IrOperand) IrOperandSlice;
 PG_DYN(IrOperand) IrOperandDyn;
 
 struct IrOperand {
-  IrValueKind kind;
+  IrOperandKind kind;
   union {
     u64 n64;
     IrVar var;
@@ -674,7 +674,8 @@ static bool irs_optimize_fold_constants(IrInstructionDyn *instructions) {
     IrOperand *lhs = PG_SLICE_AT_PTR(&ins->operands, 0);
     IrOperand *rhs = PG_SLICE_AT_PTR(&ins->operands, 1);
 
-    if (!(IR_OPERAND_KIND_U64 == lhs->kind && IR_OPERAND_KIND_U64 == rhs->kind)) {
+    if (!(IR_OPERAND_KIND_U64 == lhs->kind &&
+          IR_OPERAND_KIND_U64 == rhs->kind)) {
       continue;
     }
 
@@ -786,7 +787,7 @@ static void ir_print_var(IrVar var) {
   }
 }
 
-static void ir_print_value(IrOperand value) {
+static void ir_print_operand(IrOperand value) {
   switch (value.kind) {
   case IR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
@@ -799,6 +800,11 @@ static void ir_print_value(IrOperand value) {
   case IR_OPERAND_KIND_LABEL:
     printf(".%" PRIu32 "", value.label.value);
     break;
+  case IR_OPERAND_KIND_SYSCALL_ARGS: {
+    for (u64 i = 0; i < value.syscall_args.len; i++) {
+      ir_print_operand(PG_SLICE_AT(value.syscall_args, i));
+    }
+  } break;
   default:
     PG_ASSERT(0);
   }
@@ -842,9 +848,9 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
     ir_print_var(ins.res_var);
     printf(" := ");
-    ir_print_value(PG_SLICE_AT(ins.operands, 0));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 0));
     printf(" + ");
-    ir_print_value(PG_SLICE_AT(ins.operands, 1));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 1));
 
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ins.res_var.id);
@@ -859,7 +865,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     IrOperand rhs = PG_SLICE_AT(ins.operands, 0);
     ir_print_var(ins.res_var);
     printf(" := ");
-    ir_print_value(rhs);
+    ir_print_operand(rhs);
 
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ins.res_var.id);
@@ -873,7 +879,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
     ir_print_var(ins.res_var);
     printf(" := &");
-    ir_print_value(PG_SLICE_AT(ins.operands, 0));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 0));
 
     IrVarLifetime *var_lifetime =
         ir_find_var_lifetime_by_var_id(emitter.var_lifetimes, ins.res_var.id);
@@ -886,7 +892,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
     for (u64 j = 0; j < ins.operands.len; j++) {
       IrOperand val = PG_SLICE_AT(ins.operands, j);
-      ir_print_value(val);
+      ir_print_operand(val);
 
       if (j + 1 < ins.operands.len) {
         printf(", ");
@@ -909,15 +915,16 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(0 == ins.res_var.id.value);
 
     IrOperand cond = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind || IR_OPERAND_KIND_U64 == cond.kind);
+    PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
+              IR_OPERAND_KIND_U64 == cond.kind);
 
     IrOperand branch_else = PG_SLICE_AT(ins.operands, 1);
     PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
 
     printf("jump_if_false(");
-    ir_print_value(cond);
+    ir_print_operand(cond);
     printf(", ");
-    ir_print_value(branch_else);
+    ir_print_operand(branch_else);
     printf(")\n");
   } break;
   case IR_INSTRUCTION_KIND_JUMP: {
