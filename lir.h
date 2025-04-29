@@ -937,12 +937,12 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   switch (ir_ins.kind) {
   case IR_INSTRUCTION_KIND_ADD: {
     PG_ASSERT(2 == ir_ins.operands.len);
-    PG_ASSERT(ir_ins.var.id.value);
+    PG_ASSERT(ir_ins.res_var.id.value);
 
     IrValue lhs_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
 
     VirtualRegister res_virt_reg = lir_reserve_virt_reg_for_var(
-        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
+        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(res_virt_reg.value != 0);
 
     if (IR_VALUE_KIND_VAR == lhs_ir_val.kind) {
@@ -1003,14 +1003,14 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   } break;
   case IR_INSTRUCTION_KIND_LOAD: {
     PG_ASSERT(1 == ir_ins.operands.len);
-    PG_ASSERT(ir_ins.var.id.value);
+    PG_ASSERT(ir_ins.res_var.id.value);
 
     IrValue src_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_VAR == src_ir_val.kind ||
               IR_VALUE_KIND_U64 == src_ir_val.kind);
 
     VirtualRegister res_virt_reg = lir_reserve_virt_reg_for_var(
-        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
+        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(res_virt_reg.value != 0);
 
     if (IR_VALUE_KIND_U64 == src_ir_val.kind) {
@@ -1068,14 +1068,15 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
-    if (ir_ins.var.id.value) {
+    if (ir_ins.res_var.id.value) {
       VirtualRegister res_virt_reg = lir_reserve_virt_reg_for_var(
-          emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET, allocator);
+          emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
+          allocator);
       PG_ASSERT(res_virt_reg.value != 0);
       LirVarInterferenceNodeIndex node_idx = lir_interference_nodes_find_by_var(
           PG_DYN_SLICE(LirVarInterferenceNodeSlice,
                        emitter->interference_nodes),
-          ir_ins.var);
+          ir_ins.res_var);
       PG_ASSERT(-1UL != node_idx.value);
       PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value)->virt_reg =
           res_virt_reg;
@@ -1083,7 +1084,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir_ins.operands.len);
-    PG_ASSERT(ir_ins.var.id.value);
+    PG_ASSERT(ir_ins.res_var.id.value);
 
     IrValue src_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_VAR == src_ir_val.kind);
@@ -1110,7 +1111,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   } break;
   case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir_ins.operands.len);
-    PG_ASSERT(0 == ir_ins.var.id.value);
+    PG_ASSERT(0 == ir_ins.res_var.id.value);
 
     IrValue cond = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_VAR == cond.kind);
@@ -1160,7 +1161,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   } break;
   case IR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == ir_ins.operands.len);
-    PG_ASSERT(0 == ir_ins.var.id.value);
+    PG_ASSERT(0 == ir_ins.res_var.id.value);
 
     IrValue label = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
@@ -1180,7 +1181,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   } break;
   case IR_INSTRUCTION_KIND_LABEL: {
     PG_ASSERT(1 == ir_ins.operands.len);
-    PG_ASSERT(0 == ir_ins.var.id.value);
+    PG_ASSERT(0 == ir_ins.res_var.id.value);
 
     IrValue label = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_VALUE_KIND_LABEL == label.kind);
