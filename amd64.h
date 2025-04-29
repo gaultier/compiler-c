@@ -692,7 +692,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
 
     u8 modrm =
         (0b10 /* rbp+disp32 */ << 6) |
-        (u8)((amd64_encode_register_value(instruction.rhs.reg) & 0b111)) |
+        (u8)((amd64_encode_register_value(instruction.rhs.reg) & 0b111) << 3) |
         (u8)(amd64_encode_register_value(
             instruction.lhs.effective_address.base));
 
@@ -721,7 +721,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
     u8 modrm = (0b10 /* rbp+disp32 */ << 6) |
-               (u8)((amd64_encode_register_value(reg) & 0b111)) |
+               (u8)((amd64_encode_register_value(reg) & 0b111) << 3) |
                (u8)(amd64_encode_register_value(effective_address.base));
 
     *PG_DYN_PUSH(sb, allocator) = modrm;
