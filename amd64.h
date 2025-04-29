@@ -252,8 +252,9 @@ static void amd64_print_operand(Amd64Operand operand) {
   case AMD64_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, operand.immediate);
     break;
-  case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS:
-    printf("[");
+  case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
+    char *size_cstr = "qword ptr";
+    printf("%s [", size_cstr);
     amd64_print_register(operand.effective_address.base);
     if (operand.effective_address.index.value) {
       printf(" + ");
@@ -263,7 +264,7 @@ static void amd64_print_operand(Amd64Operand operand) {
     printf("%s%" PRIi32 "]",
            operand.effective_address.displacement >= 0 ? "+" : "",
            operand.effective_address.displacement);
-    break;
+  } break;
   case AMD64_OPERAND_KIND_LABEL:
     printf(".%" PRIu32, operand.label.value);
     break;
@@ -1373,7 +1374,8 @@ static bool amd64_color_interference_graph(Amd64Emitter *emitter,
       amd64_spill_interference_node(emitter, node);
     }
     // TODO: Need to :
-    // - insert loads/stores at the IR/LIR level
+    // - insert loads/stores at the IR/LIR level (only if both operands are
+    // effective addresses)
     // - recompute lifetimes and interference graph
     // - rerun the coloring.
     //
