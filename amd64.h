@@ -1377,9 +1377,8 @@ static bool amd64_color_interference_graph(Amd64Emitter *emitter,
     // - recompute lifetimes and interference graph
     // - rerun the coloring.
     //
-    // E.g.: `mov
-    // [rbp-32], [rbp-24]` => `mov rax, qword ptr [rbp-24]; mov qword ptr
-    // [rbp-32], rax`
+    // E.g.: `mov [rbp-32], [rbp-24]` =>
+    // `mov rax, qword ptr [rbp-24]; mov qword ptr [rbp-32], rax`
     return false;
   }
 
