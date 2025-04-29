@@ -3,3 +3,4 @@
 *.nasm
 a.out
 test*
+!test.s
