@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
 
   CliOptions cli_opts = cli_options_parse(argc, argv);
 
-  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_MiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
