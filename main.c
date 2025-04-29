@@ -133,7 +133,6 @@ int main(int argc, char *argv[]) {
   }
 
   IrEmitter ir_emitter = {
-      .ir_id = {1},
       .label_id = {1},
       .var_id = {1},
   };
