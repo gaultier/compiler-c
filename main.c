@@ -247,4 +247,9 @@ int main(int argc, char *argv[]) {
             (i32)program.file_name.len, program.file_name.data, err_write);
     return 1;
   }
+
+  if (cli_opts.verbose) {
+    printf("arena: use=%lu available=%lu\n", pg_arena_mem_use(arena),
+           pg_arena_mem_available(arena));
+  }
 }
