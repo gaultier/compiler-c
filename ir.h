@@ -70,7 +70,9 @@ typedef struct {
   // Inclusive, inclusive.
   // TODO: Revamp when lifetime splitting is implemented.
   IrInstructionIndex start, end;
-  // TODO: Probably remove.
+
+  // TODO: Probably remove and replace with a proper dataflow analysis (i.e.
+  // what var uses which var including pointer aliases to the same var).
   IrVar ref; // In case of `IR_INSTRUCTION_KIND_ADDRESS_OF` or `x1 := x2`.
   // When optimizing, lifetimes are not directly removed but instead tombstoned.
   bool tombstone;
@@ -139,6 +141,7 @@ static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn lifetimes,
     ir_var_extend_lifetime_on_var_use(lifetimes, lifetime_var->ref, ins_idx);
     // FIXME: If there are multiple aliases to the same pointer, all aliases
     // should have their lifetime extended to this point!
+    // TODO: Dataflow.
   }
 }
 
