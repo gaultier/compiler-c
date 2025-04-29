@@ -1104,12 +1104,14 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         lir_interference_nodes_find_by_var(
             PG_DYN_SLICE(LirVarInterferenceNodeSlice,
                          emitter->interference_nodes),
-            ir_ins.res_var);
+            lhs_ir_op.var);
     PG_ASSERT(-1U != lhs_node_idx.value);
     PG_SLICE_AT_PTR(&emitter->interference_nodes, lhs_node_idx.value)
         ->virt_reg.addressable = true;
     VirtualRegister src_virt_reg =
         PG_SLICE_AT(emitter->interference_nodes, lhs_node_idx.value).virt_reg;
+
+    PG_ASSERT(src_virt_reg.value != res_virt_reg.value);
 
     LirInstruction lir_ins = {
         .kind = LIR_INSTRUCTION_KIND_LOAD_FROM_MEMORY,

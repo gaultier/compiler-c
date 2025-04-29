@@ -1036,11 +1036,19 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
     LirVarInterferenceNode node =
         PG_SLICE_AT(emitter->interference_nodes, node_idx.value);
-    PG_ASSERT(node.reg.value);
+    PG_ASSERT(node.reg.value || node.base_stack_pointer_offset);
+
+    if (0 == node.base_stack_pointer_offset) {
+      return (Amd64Operand){
+          .kind = AMD64_OPERAND_KIND_REGISTER,
+          .reg = node.reg,
+      };
+    }
 
     return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = node.reg,
+        .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+        .effective_address.base = amd64_rbp,
+        .effective_address.displacement = -(i32)node.base_stack_pointer_offset,
     };
   }
   case LIR_OPERAND_KIND_IMMEDIATE:
@@ -1056,6 +1064,17 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
   case LIR_OPERAND_KIND_NONE:
   default:
     PG_ASSERT(0);
+  }
+}
+
+static void
+amd64_sanity_check_instructions(Amd64InstructionSlice instructions) {
+  for (u64 i = 0; i < instructions.len; i++) {
+    Amd64Instruction ins = PG_SLICE_AT(instructions, i);
+
+    // Prohibited by amd64 rules.
+    PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.lhs.kind &&
+                AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind));
   }
 }
 
@@ -1190,7 +1209,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
         .origin = lir.origin,
     };
     PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind);
-
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
   } break;
@@ -1405,4 +1423,7 @@ static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
   } else {
     PG_DYN_REMOVE_AT(&emitter->instructions, stack_sub_instruction_idx);
   }
+
+  amd64_sanity_check_instructions(
+      PG_DYN_SLICE(Amd64InstructionSlice, emitter->instructions));
 }
