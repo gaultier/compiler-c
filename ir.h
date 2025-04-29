@@ -19,7 +19,7 @@ typedef struct {
 
 typedef struct {
   u32 value;
-} IrId;
+} IrInstructionId;
 
 typedef struct {
   IrVarId id;
@@ -33,7 +33,6 @@ typedef enum {
   IR_OPERAND_KIND_U64,
   IR_OPERAND_KIND_VAR,
   IR_OPERAND_KIND_LABEL,
-  IR_OPERAND_KIND_SYSCALL_ARGS,
 } IrOperandKind;
 
 typedef struct {
@@ -50,7 +49,6 @@ struct IrOperand {
     u64 n64;
     IrVar var;
     IrLabelId label;
-    IrOperandDyn syscall_args;
   };
 };
 
@@ -58,10 +56,12 @@ typedef struct {
   IrInstructionKind kind;
   IrOperandDyn operands;
   Origin origin;
-  IrId id;
-  // Out var.
+  // TODO: Maybe remove. Needed?
+  IrInstructionId id;
+  // Result var. Not always present.
   IrVar res_var;
 
+  // When optimizing, IRs are not directly removed but instead tombstoned.
   bool tombstone;
 } IrInstruction;
 PG_SLICE(IrInstruction) IrInstructionSlice;
@@ -70,7 +70,7 @@ PG_DYN(IrInstruction) IrInstructionDyn;
 typedef struct {
   IrVar var;
   // Inclusive, inclusive.
-  IrId start, end;
+  IrInstructionId start, end;
   IrVar ref; // In case of `IR_INSTRUCTION_KIND_ADDRESS_OF`.
   bool tombstone;
 } IrVarLifetime;
@@ -79,15 +79,15 @@ PG_DYN(IrVarLifetime) IrVarLifetimeDyn;
 
 typedef struct {
   IrInstructionDyn instructions;
-  IrId ir_id;
+  IrInstructionId ir_id;
   IrLabelId label_id;
   IrVarId var_id;
   IrVarLifetimeDyn var_lifetimes;
 } IrEmitter;
 
 [[nodiscard]]
-static IrId ir_emitter_next_ir_id(IrEmitter *emitter) {
-  IrId id = emitter->ir_id;
+static IrInstructionId ir_emitter_next_ir_id(IrEmitter *emitter) {
+  IrInstructionId id = emitter->ir_id;
   emitter->ir_id.value += 1;
   return id;
 }
@@ -134,7 +134,8 @@ ir_find_var_lifetime_by_var_identifier(IrVarLifetimeDyn var_lifetimes,
 }
 
 static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn var_lifetimes,
-                                              IrVar var, IrId ir_id) {
+                                              IrVar var,
+                                              IrInstructionId ir_id) {
   IrVarLifetime *lifetime_var =
       ir_find_var_lifetime_by_var_id(var_lifetimes, var.id);
   PG_ASSERT(lifetime_var);
@@ -592,7 +593,7 @@ irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *instructions,
 }
 
 [[nodiscard]] static IrInstruction *
-irs_find_ir_by_id(IrInstructionDyn instructions, IrId ir_id) {
+irs_find_ir_by_id(IrInstructionDyn instructions, IrInstructionId ir_id) {
   for (u64 i = 0; i < instructions.len; i++) {
     IrInstruction *ins = PG_SLICE_AT_PTR(&instructions, i);
     if (ins->id.value == ir_id.value) {
@@ -634,7 +635,7 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
           ir_find_var_lifetime_by_var_id(*var_lifetimes, var.id);
       PG_ASSERT(lifetime);
 
-      IrId var_def_ir_id = lifetime->start;
+      IrInstructionId var_def_ir_id = lifetime->start;
       IrInstruction *var_def_ir =
           irs_find_ir_by_id(*instructions, var_def_ir_id);
       PG_ASSERT(var_def_ir);
@@ -800,11 +801,6 @@ static void ir_print_operand(IrOperand value) {
   case IR_OPERAND_KIND_LABEL:
     printf(".%" PRIu32 "", value.label.value);
     break;
-  case IR_OPERAND_KIND_SYSCALL_ARGS: {
-    for (u64 i = 0; i < value.syscall_args.len; i++) {
-      ir_print_operand(PG_SLICE_AT(value.syscall_args, i));
-    }
-  } break;
   default:
     PG_ASSERT(0);
   }
