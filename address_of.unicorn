@@ -1,0 +1,7 @@
+stdout := 1
+syscall_write_linux_amd64 := 1
+write_val := 478560413032
+write_val_len := 5
+syscall(syscall_write_linux_amd64, stdout, &write_val, write_val_len)
+
+syscall(60, 0)
