@@ -54,7 +54,9 @@ typedef struct {
   u32 value;
   LirVirtualRegisterConstraint constraint;
   bool addressable;
-  bool spilled;
+#if 0
+   bool spilled;
+#endif
 } VirtualRegister;
 PG_SLICE(VirtualRegister) VirtualRegisterSlice;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
@@ -147,6 +149,8 @@ PG_DYN(LirVarInterferenceNodeIndex) LirVarInterferenceNodeIndexDyn;
 struct LirVarInterferenceNode {
   IrVar var;
   Register reg; // Assigned with graph coloring in the target specific layer.
+  u32 base_stack_pointer_offset; // Assigned with graph color in the target
+                                 // specific layer in case of spilling.
   VirtualRegister virt_reg;
   LirVarInterferenceNodeIndexDyn neighbors;
 };
@@ -242,10 +246,13 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
 }
 
 static void lir_print_virtual_register(VirtualRegister virt_reg) {
-  printf("v%u{constraint=%s, addressable=%s, spilled=%s}", virt_reg.value,
+  printf("v%u{constraint=%s, addressable=%s}", virt_reg.value,
          lir_register_constraint_to_cstr(virt_reg.constraint),
-         virt_reg.addressable ? "true" : "false",
-         virt_reg.spilled ? "true" : "false");
+         virt_reg.addressable ? "true" : "false"
+#if 0 
+       ,  virt_reg.spilled ? "true" : "false"
+#endif
+  );
 }
 
 #if 0
@@ -494,13 +501,14 @@ lir_interference_graph_find_by_virt_reg(LirVarInterferenceNodeSlice nodes,
   return (LirVarInterferenceNodeIndex){-1U};
 }
 
-static void lir_print_interference_graph(LirVarInterferenceNodeSlice nodes) {
+static void lir_print_interference_nodes(LirVarInterferenceNodeSlice nodes) {
   for (u64 i = 0; i < nodes.len; i++) {
     LirVarInterferenceNode node = PG_SLICE_AT(nodes, i);
     ir_print_var(node.var);
-    printf(" virt_reg=%u(%s) reg=%u (%lu): ", node.virt_reg.value,
+    printf(" virt_reg=%u(%s) reg=%u base_stack_pointer_offset=%u (%lu): ",
+           node.virt_reg.value,
            lir_register_constraint_to_cstr(node.virt_reg.constraint),
-           node.reg.value, node.neighbors.len);
+           node.reg.value, node.base_stack_pointer_offset, node.neighbors.len);
 
     for (u64 j = 0; j < node.neighbors.len; j++) {
       LirVarInterferenceNodeIndex neighbor_idx = PG_SLICE_AT(node.neighbors, j);
@@ -524,7 +532,7 @@ lir_sanity_check_interference_graph(LirVarInterferenceNodeSlice nodes,
       // Technically, `virt_reg` is assigned in the LIR phase, before coloring.
       PG_ASSERT(node.virt_reg.value);
 
-      PG_ASSERT(node.reg.value);
+      PG_ASSERT(node.reg.value || node.base_stack_pointer_offset);
     }
 
     for (u64 j = 0; j < node.neighbors.len; j++) {
