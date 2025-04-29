@@ -1343,8 +1343,6 @@ static void amd64_spill_interference_node(Amd64Emitter *emitter,
 // so that no two adjacent nodes have the same color.
 // Meaning that if two variables interfere, they are assigned a different
 // physical register.
-// TODO: Register constraint.
-
 static void amd64_color_interference_graph(Amd64Emitter *emitter,
                                            PgAllocator *allocator) {
 
