@@ -1372,10 +1372,14 @@ static bool amd64_color_interference_graph(Amd64Emitter *emitter,
           PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value);
       amd64_spill_interference_node(emitter, node);
     }
-    // TODO: Need to : insert loads/store, recompute lifetimes and interference
-    // graph, rerun the coloring.
-    // E.g.: `mov [rbp-32], [rbp-24]` =>
-    // `mov rax, qword ptr [rbp-24]; mov qword ptr [rbp-32], rax`
+    // TODO: Need to :
+    // - insert loads/stores at the IR/LIR level
+    // - recompute lifetimes and interference graph
+    // - rerun the coloring.
+    //
+    // E.g.: `mov
+    // [rbp-32], [rbp-24]` => `mov rax, qword ptr [rbp-24]; mov qword ptr
+    // [rbp-32], rax`
     return false;
   }
 
