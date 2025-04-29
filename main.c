@@ -132,10 +132,7 @@ int main(int argc, char *argv[]) {
     ast_print(*root, 0);
   }
 
-  IrEmitter ir_emitter = {
-      .label_id = {1},
-      .var_id = {1},
-  };
+  IrEmitter ir_emitter = {0};
   ast_to_ir(*root, &ir_emitter, &errors, false, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {

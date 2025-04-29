@@ -89,15 +89,13 @@ typedef struct {
 
 [[nodiscard]]
 static IrLabelId ir_emitter_next_label_id(IrEmitter *emitter) {
-  IrLabelId id = emitter->label_id;
-  emitter->label_id.value += 1;
+  IrLabelId id = {.value = ++emitter->label_id.value};
   return id;
 }
 
 [[nodiscard]]
 static IrVarId ir_emitter_next_var_id(IrEmitter *emitter) {
-  IrVarId id = emitter->var_id;
-  emitter->var_id.value += 1;
+  IrVarId id = {.value = ++emitter->var_id.value};
   return id;
 }
 
