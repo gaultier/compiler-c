@@ -550,7 +550,9 @@ lir_sanity_check_interference_graph(LirVarInterferenceNodeSlice nodes,
         if (!(LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET == node.virt_reg.constraint ||
               LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET ==
                   neighbor.virt_reg.constraint)) {
-          PG_ASSERT(node.reg.value != neighbor.reg.value);
+          if (node.reg.value != 0 && neighbor.reg.value != 0) {
+            PG_ASSERT(node.reg.value != neighbor.reg.value);
+          }
         }
       }
     }

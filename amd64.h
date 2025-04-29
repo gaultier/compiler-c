@@ -1449,7 +1449,4 @@ static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
   } else {
     PG_DYN_REMOVE_AT(&emitter->instructions, stack_sub_instruction_idx);
   }
-
-  amd64_sanity_check_instructions(
-      PG_DYN_SLICE(Amd64InstructionSlice, emitter->instructions));
 }

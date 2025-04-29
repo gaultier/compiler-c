@@ -275,7 +275,7 @@ static AstNode *ast_parse_term(LexTokenSlice tokens, ErrorDyn *errors,
   }
 
   *tokens_consumed += 1;
-  AstNode *rhs = ast_parse_factor(tokens, errors, tokens_consumed, allocator);
+  AstNode *rhs = ast_parse_term(tokens, errors, tokens_consumed, allocator);
   if (!rhs) {
     *PG_DYN_PUSH(errors, allocator) = (Error){
         .kind = ERROR_KIND_PARSE_FACTOR_MISSING_RHS,

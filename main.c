@@ -206,6 +206,8 @@ int main(int argc, char *argv[]) {
     amd64_print_instructions(
         PG_DYN_SLICE(Amd64InstructionSlice, amd64_emitter.instructions));
   }
+  amd64_sanity_check_instructions(
+      PG_DYN_SLICE(Amd64InstructionSlice, amd64_emitter.instructions));
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
