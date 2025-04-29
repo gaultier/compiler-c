@@ -703,6 +703,34 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
 
     return;
   }
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind) {
+    Register reg = instruction.lhs.reg;
+    Amd64EffectiveAddress effective_address = instruction.rhs.effective_address;
+    PG_ASSERT(0 == effective_address.scale && "todo");
+    PG_ASSERT(0 == effective_address.index.value && "todo");
+    PG_ASSERT(amd64_rbp.value == effective_address.base.value && "todo");
+
+    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
+    if (amd64_is_register_64_bits_only(reg)) {
+      rex |= AMD64_REX_MASK_R;
+    }
+    *PG_DYN_PUSH(sb, allocator) = rex;
+
+    u8 opcode = 0x03;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    u8 modrm = (0b10 /* rbp+disp32 */ << 6) |
+               (u8)((amd64_encode_register_value(reg) & 0b111)) |
+               (u8)(amd64_encode_register_value(effective_address.base));
+
+    *PG_DYN_PUSH(sb, allocator) = modrm;
+
+    pg_byte_buffer_append_u32(sb, (u32)effective_address.displacement,
+                              allocator);
+
+    return;
+  }
   if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
       AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
     u64 immediate = instruction.rhs.immediate;
