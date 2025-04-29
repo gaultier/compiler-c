@@ -505,10 +505,10 @@ static void lir_print_interference_nodes(LirVarInterferenceNodeSlice nodes) {
   for (u64 i = 0; i < nodes.len; i++) {
     LirVarInterferenceNode node = PG_SLICE_AT(nodes, i);
     ir_print_var(node.var);
-    printf(" virt_reg=%u(%s) reg=%u base_stack_pointer_offset=%u (%lu): ",
-           node.virt_reg.value,
-           lir_register_constraint_to_cstr(node.virt_reg.constraint),
-           node.reg.value, node.base_stack_pointer_offset, node.neighbors.len);
+    printf(" virt_reg=");
+    lir_print_virtual_register(node.virt_reg);
+    printf(" reg=%u base_stack_pointer_offset=%u (%lu): ", node.reg.value,
+           node.base_stack_pointer_offset, node.neighbors.len);
 
     for (u64 j = 0; j < node.neighbors.len; j++) {
       LirVarInterferenceNodeIndex neighbor_idx = PG_SLICE_AT(node.neighbors, j);
