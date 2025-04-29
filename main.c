@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
     ir_emitter_print_instructions(ir_emitter);
   }
   if (cli_opts.optimize) {
-    irs_optimize(&ir_emitter.instructions, &ir_emitter.var_lifetimes,
+    irs_optimize(&ir_emitter.instructions, &ir_emitter.lifetimes,
                  cli_opts.verbose);
     if (cli_opts.verbose) {
       printf("\n------------ IR simplified ------------\n");
@@ -170,9 +170,9 @@ int main(int argc, char *argv[]) {
       PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
   LirVarInterferenceNodeDyn interference_graph_nodes = {0};
-  if (ir_emitter.var_lifetimes.len > 0) {
+  if (ir_emitter.lifetimes.len > 0) {
     interference_graph_nodes =
-        lir_build_var_interference_graph(ir_emitter.var_lifetimes, allocator);
+        lir_build_var_interference_graph(ir_emitter.lifetimes, allocator);
   }
   LirVarInterferenceNodeSlice interference_graph_nodes_slice =
       PG_DYN_SLICE(LirVarInterferenceNodeSlice, interference_graph_nodes);
@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
   lir_sanity_check_interference_graph(interference_graph_nodes_slice, false);
 
   LirEmitter lir_emitter = {
-      .lifetimes_count = ir_emitter.var_lifetimes.len,
+      .lifetimes_count = ir_emitter.lifetimes.len,
       .interference_nodes = interference_graph_nodes,
   };
   lir_emit_instructions(&lir_emitter, irs_slice, allocator);
