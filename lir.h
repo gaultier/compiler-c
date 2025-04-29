@@ -85,7 +85,7 @@ typedef enum {
   LIR_INSTRUCTION_KIND_SUB,
   LIR_INSTRUCTION_KIND_MOV,
   LIR_INSTRUCTION_KIND_SYSCALL,
-  LIR_INSTRUCTION_KIND_LOAD_EFFECTIVE_ADDRESS,
+  LIR_INSTRUCTION_KIND_ADDRESS_OF,
   LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
   LIR_INSTRUCTION_KIND_JUMP,
   LIR_INSTRUCTION_KIND_LABEL,
@@ -241,13 +241,11 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
   }
 }
 
-static void lir_print_register(VirtualRegister reg) {
-  if (LIR_VIRT_REG_CONSTRAINT_BASE_POINTER == reg.constraint) {
-    printf("v_bsp");
-  } else {
-    printf("v%u(%s)", reg.value,
-           lir_register_constraint_to_cstr(reg.constraint));
-  }
+static void lir_print_virtual_register(VirtualRegister virt_reg) {
+  printf("v%u{constraint=%s, addressable=%s, spilled=%s}", virt_reg.value,
+         lir_register_constraint_to_cstr(virt_reg.constraint),
+         virt_reg.addressable ? "true" : "false",
+         virt_reg.spilled ? "true" : "false");
 }
 
 #if 0
@@ -296,7 +294,7 @@ static void lir_print_operand(LirOperand operand) {
   case LIR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
-    lir_print_register(operand.virt_reg);
+    lir_print_virtual_register(operand.virt_reg);
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, operand.immediate);
@@ -330,7 +328,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
     case LIR_INSTRUCTION_KIND_SYSCALL:
       printf("syscall ");
       break;
-    case LIR_INSTRUCTION_KIND_LOAD_EFFECTIVE_ADDRESS:
+    case LIR_INSTRUCTION_KIND_ADDRESS_OF:
       printf("lea ");
       break;
     case LIR_INSTRUCTION_KIND_JUMP_IF_EQ:
@@ -1087,28 +1085,34 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(1 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.res_var.id.value);
 
-    IrOperand src_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_VAR == src_ir_val.kind);
+    IrOperand lhs_ir_op = PG_SLICE_AT(ir_ins.operands, 0);
+    PG_ASSERT(IR_OPERAND_KIND_VAR == lhs_ir_op.kind);
 
-#if 0
-    MemoryLocation *res_mem_loc = lir_reserve_virt_reg_for_var(
-        emitter, ir_ins.var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
-    PG_ASSERT(res_mem_loc);
-    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == res_mem_loc->kind);
-    VirtualRegister res_virt_reg = res_mem_loc->reg;
+    VirtualRegister res_virt_reg = lir_reserve_virt_reg_for_var(
+        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(res_virt_reg.value != 0);
 
-    VirtualRegister reg =
-        lir_make_virtual_register(emitter, LIR_VIRT_REG_CONSTRAINT_NONE);
-    lir_emit_lea_to_register(emitter, ir_ins.var, *res_mem_loc, reg,
-                             ir_ins.origin, allocator);
+    LirVarInterferenceNodeIndex lhs_node_idx =
+        lir_interference_nodes_find_by_var(
+            PG_DYN_SLICE(LirVarInterferenceNodeSlice,
+                         emitter->interference_nodes),
+            ir_ins.res_var);
+    PG_ASSERT(-1U != lhs_node_idx.value);
+    PG_SLICE_AT_PTR(&emitter->interference_nodes, lhs_node_idx.value)
+        ->virt_reg.addressable = true;
+    VirtualRegister src_virt_reg =
+        PG_SLICE_AT(emitter->interference_nodes, lhs_node_idx.value).virt_reg;
 
-    MemoryLocation *dst_mem_loc = lir_memory_location_find_var_on_stack(
-        emitter->var_to_memory_location, ir_ins.var);
-    PG_ASSERT(dst_mem_loc);
-    lir_emit_copy_register_to_var_mem_loc(
-        emitter, ir_ins.var, reg, *dst_mem_loc, ir_ins.origin, allocator);
-#endif
+    LirInstruction lir_ins = {
+        .kind = LIR_INSTRUCTION_KIND_ADDRESS_OF,
+        .origin = ir_ins.origin,
+    };
+    LirOperand lhs_lir_op = {
+        .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+        .virt_reg = src_virt_reg,
+    };
+    *PG_DYN_PUSH(&lir_ins.operands, allocator) = lhs_lir_op;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
   } break;
   case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ir_ins.operands.len);

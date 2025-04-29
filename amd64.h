@@ -1177,7 +1177,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
 
-  case LIR_INSTRUCTION_KIND_LOAD_EFFECTIVE_ADDRESS: {
+  case LIR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(2 == lir.operands.len);
 
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);

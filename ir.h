@@ -326,11 +326,10 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;
     ins.origin = node.origin;
     ins.res_var.id = ir_emitter_next_var_id(emitter);
+    *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
-
-    *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
       ir_var_extend_lifetime_on_var_use(emitter->lifetimes, rhs.var, ins_idx);

@@ -10,4 +10,4 @@ write_val_len := 5
 syscall_exit := 60
 z := syscall(syscall_exit, baz)
 
-x := 99
+x := &bar
