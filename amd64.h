@@ -1032,7 +1032,7 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
     LirVarInterferenceNodeIndex node_idx =
         lir_interference_graph_find_by_virt_reg(emitter->interference_nodes,
                                                 lir_op.virt_reg);
-    PG_ASSERT(-1UL != node_idx.value);
+    PG_ASSERT(-1U != node_idx.value);
 
     LirVarInterferenceNode node =
         PG_SLICE_AT(emitter->interference_nodes, node_idx.value);
@@ -1253,7 +1253,7 @@ amd64_color_assign_register(LirVarInterferenceNodeIndexSlice neighbors,
 
   for (u64 i = 0; i < neighbors.len; i++) {
     LirVarInterferenceNodeIndex neighbor_idx = PG_SLICE_AT(neighbors, i);
-    PG_ASSERT(-1UL != neighbor_idx.value);
+    PG_ASSERT(-1U != neighbor_idx.value);
 
     LirVarInterferenceNode neighbor = PG_SLICE_AT(nodes, neighbor_idx.value);
     if (neighbor.reg.value) {
@@ -1286,10 +1286,11 @@ static void amd64_color_interference_graph(LirVarInterferenceNodeSlice nodes,
     LirVarInterferenceNode node = PG_SLICE_AT(nodes, i);
     if (node.neighbors.len >= amd64_gprs_count) {
       *PG_DYN_PUSH_WITHIN_CAPACITY(&node_indices_spill) =
-          (LirVarInterferenceNodeIndex){i};
+          (LirVarInterferenceNodeIndex){(u32)i};
       continue;
     }
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (LirVarInterferenceNodeIndex){i};
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) =
+        (LirVarInterferenceNodeIndex){(u32)i};
   }
 
   if (node_indices_spill.len > 0) {
