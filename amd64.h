@@ -1344,8 +1344,7 @@ static void amd64_spill_interference_node(Amd64Emitter *emitter,
 // so that no two adjacent nodes have the same color.
 // Meaning that if two variables interfere, they are assigned a different
 // physical register.
-[[nodiscard]]
-static bool amd64_color_interference_graph(Amd64Emitter *emitter,
+static void amd64_color_interference_graph(Amd64Emitter *emitter,
                                            PgAllocator *allocator) {
 
   LirVarInterferenceNodeIndexDyn stack = {0};
@@ -1373,15 +1372,15 @@ static bool amd64_color_interference_graph(Amd64Emitter *emitter,
           PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value);
       amd64_spill_interference_node(emitter, node);
     }
-    // TODO: Need to :
-    // - insert loads/stores at the IR/LIR level (only if both operands are
-    // effective addresses)
+    // Potentially need to :
+    // - insert loads/stores at the IR/LIR level (only if both operands
+    // are effective addresses)
     // - recompute lifetimes and interference graph
     // - rerun the coloring.
     //
     // E.g.: `mov [rbp-32], [rbp-24]` =>
     // `mov rax, qword ptr [rbp-24]; mov qword ptr [rbp-32], rax`
-    return false;
+    // But that is detected in the LIR -> amd64 function.
   }
 
   u64 stack_len = stack.len;
@@ -1403,7 +1402,6 @@ static bool amd64_color_interference_graph(Amd64Emitter *emitter,
     PG_ASSERT(reg.value);
     node->reg = reg;
   }
-  return true;
 }
 
 static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
@@ -1426,10 +1424,7 @@ static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_sub;
   u64 stack_sub_instruction_idx = emitter->instructions.len - 1;
 
-  bool done = amd64_color_interference_graph(emitter, allocator);
-  if (!done) {
-    PG_ASSERT(0 && "todo");
-  }
+  amd64_color_interference_graph(emitter, allocator);
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_nodes(emitter->interference_nodes);
