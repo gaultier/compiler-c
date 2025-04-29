@@ -19,7 +19,7 @@ typedef struct {
 
 typedef struct {
   u32 value;
-} IrInstructionId;
+} IrInstructionIndex;
 
 typedef struct {
   IrVarId id;
@@ -69,7 +69,7 @@ typedef struct {
   IrVar var;
   // Inclusive, inclusive.
   // TODO: Revamp when lifetime splitting is implemented.
-  IrInstructionId start, end;
+  IrInstructionIndex start, end;
   // TODO: Probably remove.
   IrVar ref; // In case of `IR_INSTRUCTION_KIND_ADDRESS_OF` or `x1 := x2`.
   // When optimizing, lifetimes are not directly removed but instead tombstoned.
@@ -130,15 +130,15 @@ ir_find_var_lifetime_by_var_identifier(IrVarLifetimeDyn lifetimes,
 
 static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn lifetimes,
                                               IrVar var,
-                                              IrInstructionId ir_id) {
+                                              IrInstructionIndex ins_idx) {
   IrVarLifetime *lifetime_var =
       ir_find_var_lifetime_by_var_id(lifetimes, var.id);
   PG_ASSERT(lifetime_var);
-  lifetime_var->end = ir_id;
+  lifetime_var->end = ins_idx;
 
   // Variable pointed to needs to live at least as long as the pointer to it.
   if (lifetime_var->ref.id.value != 0) {
-    ir_var_extend_lifetime_on_var_use(lifetimes, lifetime_var->ref, ir_id);
+    ir_var_extend_lifetime_on_var_use(lifetimes, lifetime_var->ref, ins_idx);
     // FIXME: If there are multiple aliases to the same pointer, all aliases
     // should have their lifetime extended to this point!
   }
@@ -164,7 +164,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     };
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionId ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
     *PG_DYN_PUSH(&emitter->lifetimes, allocator) = (IrVarLifetime){
         .var = ins.res_var,
@@ -198,7 +198,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionId ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
     *PG_DYN_PUSH(&emitter->lifetimes, allocator) = (IrVarLifetime){
         .var = ins.res_var,
@@ -231,7 +231,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ins.operands = operands;
     ins.res_var.id = ir_emitter_next_var_id(emitter);
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionId ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
     for (u64 i = 0; i < node.operands.len; i++) {
       IrOperand val = PG_SLICE_AT(ins.operands, i);
@@ -272,7 +272,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionId ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
     IrVarLifetime *rhs_lifetime = nullptr;
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
@@ -305,7 +305,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       return (IrOperand){0};
     }
 
-    IrInstructionId ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
     ir_var_extend_lifetime_on_var_use(emitter->lifetimes, lifetime->var,
                                       ins_idx);
 
@@ -327,7 +327,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     ins.res_var.id = ir_emitter_next_var_id(emitter);
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionId ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
@@ -363,7 +363,8 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     };
     *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_cond_jump;
-    IrInstructionId ir_cond_jump_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ir_cond_jump_idx = {
+        (u32)(emitter->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == cond.kind) {
       ir_var_extend_lifetime_on_var_use(emitter->lifetimes, cond.var,
@@ -458,7 +459,7 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
         IrVarLifetime *lifetime =
             ir_find_var_lifetime_by_var_id(lifetimes, val.var.id);
         PG_ASSERT(lifetime);
-        lifetime->end = (IrInstructionId){(u32)i};
+        lifetime->end = (IrInstructionIndex){(u32)i};
         lifetime->tombstone = false;
       }
     } break;
@@ -582,10 +583,10 @@ irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *instructions,
 }
 
 [[nodiscard]] static IrInstruction *
-irs_find_ir_by_id(IrInstructionDyn instructions, IrInstructionId ir_id) {
+irs_find_ir_by_id(IrInstructionDyn instructions, IrInstructionIndex ins_idx) {
   for (u64 i = 0; i < instructions.len; i++) {
     IrInstruction *ins = PG_SLICE_AT_PTR(&instructions, i);
-    if (i == ir_id.value) {
+    if (i == ins_idx.value) {
       return ins;
     }
   }
@@ -624,7 +625,7 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
           ir_find_var_lifetime_by_var_id(*lifetimes, var.id);
       PG_ASSERT(lifetime);
 
-      IrInstructionId var_def_ir_id = lifetime->start;
+      IrInstructionIndex var_def_ir_id = lifetime->start;
       IrInstruction *var_def_ir =
           irs_find_ir_by_id(*instructions, var_def_ir_id);
       PG_ASSERT(var_def_ir);
