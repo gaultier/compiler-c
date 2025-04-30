@@ -117,8 +117,8 @@ static IrVarLifetime *ir_find_var_lifetime_by_var_id(IrVarLifetimeDyn lifetimes,
 }
 
 static IrVarLifetime *
-ir_find_var_lifetime_by_var_identifier(IrVarLifetimeDyn lifetimes,
-                                       PgString identifier) {
+ir_find_var_lifetime_by_identifier(IrVarLifetimeDyn lifetimes,
+                                   PgString identifier) {
   for (u64 i = 0; i < lifetimes.len; i++) {
     IrVarLifetime *lifetime = PG_SLICE_AT_PTR(&lifetimes, i);
     if (pg_string_eq(lifetime->var.identifier, identifier)) {
@@ -295,8 +295,8 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
   }
 
   case AST_NODE_KIND_IDENTIFIER: {
-    IrVarLifetime *lifetime = ir_find_var_lifetime_by_var_identifier(
-        emitter->lifetimes, node.identifier);
+    IrVarLifetime *lifetime =
+        ir_find_var_lifetime_by_identifier(emitter->lifetimes, node.identifier);
 
     if (!lifetime) {
       *PG_DYN_PUSH(errors, allocator) = (Error){
