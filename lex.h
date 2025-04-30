@@ -7,7 +7,6 @@ typedef enum {
   LEX_TOKEN_KIND_NONE,
   LEX_TOKEN_KIND_LITERAL_U64,
   LEX_TOKEN_KIND_PLUS,
-  LEX_TOKEN_KIND_KEYWORD_SYSCALL,
   LEX_TOKEN_KIND_PAREN_LEFT,
   LEX_TOKEN_KIND_PAREN_RIGHT,
   LEX_TOKEN_KIND_CURLY_LEFT,
@@ -18,6 +17,9 @@ typedef enum {
   LEX_TOKEN_KIND_AMPERSAND,
   LEX_TOKEN_KIND_KEYWORD_IF,
   LEX_TOKEN_KIND_KEYWORD_ELSE,
+#if 0
+  LEX_TOKEN_KIND_KEYWORD_SYSCALL,
+#endif
 } LexTokenKind;
 
 typedef struct {
@@ -133,6 +135,7 @@ static bool lex_keyword(PgUtf8Iterator *it, LexTokenDyn *tokens,
     goto end;
   }
 
+#if 0
   if (pg_string_eq(lit, PG_S("syscall"))) {
     *PG_DYN_PUSH(tokens, allocator) = (LexToken){
         .kind = LEX_TOKEN_KIND_KEYWORD_SYSCALL,
@@ -146,6 +149,7 @@ static bool lex_keyword(PgUtf8Iterator *it, LexTokenDyn *tokens,
     };
     return true;
   }
+#endif
   if (pg_string_eq(lit, PG_S("if"))) {
     *PG_DYN_PUSH(tokens, allocator) = (LexToken){
         .kind = LEX_TOKEN_KIND_KEYWORD_IF,
@@ -518,9 +522,11 @@ static void lex_tokens_print(LexTokenSlice tokens) {
     case LEX_TOKEN_KIND_COMMA:
       printf(",\n");
       break;
+#if 0
     case LEX_TOKEN_KIND_KEYWORD_SYSCALL:
       printf("syscall\n");
       break;
+#endif
     case LEX_TOKEN_KIND_KEYWORD_IF:
       printf("if\n");
       break;

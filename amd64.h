@@ -241,6 +241,38 @@ static void amd64_emit_epilog(Amd64InstructionDyn *instructions,
               .reg = amd64_rbp,
           },
   };
+  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+      .kind = AMD64_INSTRUCTION_KIND_MOV,
+      .origin = {.synthetic = true},
+      .lhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .reg = amd64_rax,
+          },
+      .rhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+              .immediate = 60, // Linux x86_64 exit.
+          },
+  };
+  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+      .kind = AMD64_INSTRUCTION_KIND_MOV,
+      .origin = {.synthetic = true},
+      .lhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .reg = amd64_rdi,
+          },
+      .rhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+              .immediate = 0, // Exit code.
+          },
+  };
+  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+      .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
+      .origin = {.synthetic = true},
+  };
 }
 
 static void amd64_print_operand(Amd64Operand operand) {
@@ -1342,8 +1374,7 @@ static u32 amd64_reserve_stack_slot_for_virt_reg(Amd64Emitter *emitter,
 }
 
 static void
-amd64_spill_interference_node(Amd64Emitter *emitter,
-                              InterferenceNode *node,
+amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
                               VirtualRegisterSlice virtual_registers) {
   PG_ASSERT(node->virt_reg_idx.value);
 
@@ -1383,8 +1414,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
           (InterferenceNodeIndex){(u32)i};
       continue;
     }
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) =
-        (InterferenceNodeIndex){(u32)i};
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (InterferenceNodeIndex){(u32)i};
   }
 
   if (node_indices_spill.len > 0) {

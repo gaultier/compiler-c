@@ -6,7 +6,3 @@ baz := foo + bar
 
 write_val := 478560413032
 write_val_len := 5
-
-syscall_exit := 60
-z := syscall(syscall_exit, baz)
-

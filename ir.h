@@ -217,6 +217,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
 
+#if 0
   case AST_NODE_KIND_SYSCALL: {
     IrOperandDyn operands = {0};
     for (u64 i = 0; i < node.operands.len; i++) {
@@ -250,6 +251,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
+#endif
   case AST_NODE_KIND_BLOCK: {
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);

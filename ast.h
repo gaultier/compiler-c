@@ -8,11 +8,13 @@ typedef enum {
   AST_NODE_KIND_U64,
   AST_NODE_KIND_IDENTIFIER,
   AST_NODE_KIND_ADD,
-  AST_NODE_KIND_SYSCALL,
   AST_NODE_KIND_BLOCK,
   AST_NODE_KIND_VAR_DECL,
   AST_NODE_KIND_ADDRESS_OF,
   AST_NODE_KIND_IF,
+#if 0
+  AST_NODE_KIND_SYSCALL,
+#endif
 } AstNodeKind;
 
 typedef struct AstNode AstNode;
@@ -64,6 +66,7 @@ static void ast_print(AstNode node, u32 left_width) {
     }
     printf(")\n");
     break;
+#if 0
   case AST_NODE_KIND_SYSCALL: {
     printf("Syscall(\n");
     for (u64 i = 0; i < node.operands.len; i++) {
@@ -75,6 +78,7 @@ static void ast_print(AstNode node, u32 left_width) {
     }
     printf(")\n");
   } break;
+#endif
   case AST_NODE_KIND_BLOCK: {
     printf("Block\n");
     for (u64 i = 0; i < node.operands.len; i++) {
@@ -121,8 +125,10 @@ static AstNode *ast_parse_statement(LexTokenSlice tokens, ErrorDyn *errors,
 static AstNode *ast_parse_declaration(LexTokenSlice tokens, ErrorDyn *errors,
                                       u64 *tokens_consumed,
                                       PgAllocator *allocator);
+#if 0
 static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
                                   u64 *tokens_consumed, PgAllocator *allocator);
+#endif
 
 static AstNode *ast_parse_var_decl(LexTokenSlice tokens, ErrorDyn *errors,
                                    u64 *tokens_consumed,
@@ -297,9 +303,11 @@ static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
                                u64 *tokens_consumed, PgAllocator *allocator) {
   AstNode *res = nullptr;
 
+#if 0
   if ((res = ast_parse_syscall(tokens, errors, tokens_consumed, allocator))) {
     return res;
   }
+#endif
 
   if ((res = ast_parse_term(tokens, errors, tokens_consumed, allocator))) {
     return res;
@@ -307,6 +315,7 @@ static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
   return nullptr;
 }
 
+#if 0
 static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
                                   u64 *tokens_consumed,
                                   PgAllocator *allocator) {
@@ -397,6 +406,7 @@ static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
 
   return res;
 }
+#endif
 
 static AstNode *ast_parse_block(LexTokenSlice tokens, ErrorDyn *errors,
                                 u64 *tokens_consumed, PgAllocator *allocator) {
