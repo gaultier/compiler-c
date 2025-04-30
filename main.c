@@ -165,13 +165,13 @@ int main(int argc, char *argv[]) {
   IrInstructionSlice irs_slice =
       PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
-  LirVarInterferenceNodeDyn interference_graph_nodes = {0};
+  InterferenceNodeDyn interference_graph_nodes = {0};
   if (ir_emitter.lifetimes.len > 0) {
     interference_graph_nodes =
         lir_build_var_interference_graph(ir_emitter.lifetimes, allocator);
   }
-  LirVarInterferenceNodeSlice interference_graph_nodes_slice =
-      PG_DYN_SLICE(LirVarInterferenceNodeSlice, interference_graph_nodes);
+  InterferenceNodeSlice interference_graph_nodes_slice =
+      PG_DYN_SLICE(InterferenceNodeSlice, interference_graph_nodes);
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
@@ -192,14 +192,14 @@ int main(int argc, char *argv[]) {
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
   interference_graph_nodes_slice =
-      PG_DYN_SLICE(LirVarInterferenceNodeSlice, lir_emitter.interference_nodes);
+      PG_DYN_SLICE(InterferenceNodeSlice, lir_emitter.interference_nodes);
 
   Amd64Emitter amd64_emitter = {
       .interference_nodes = interference_graph_nodes_slice,
       .lir_emitter = &lir_emitter,
   };
   amd64_emit_prolog(&amd64_emitter.instructions, allocator);
-  LirVarInterferenceNodeIndexSlice node_indices_spilled =
+  InterferenceNodeIndexSlice node_indices_spilled =
       amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice, cli_opts.verbose,
                              allocator);
   if (node_indices_spilled.len > 0) {
