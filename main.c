@@ -175,9 +175,10 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
-    lir_print_interference_nodes(interference_graph_nodes_slice);
+    lir_print_interference_nodes(interference_graph_nodes_slice,
+                                 (VirtualRegisterSlice){0});
   }
-  lir_sanity_check_interference_graph(interference_graph_nodes_slice, false);
+  lir_sanity_check_interference_graph(interference_graph_nodes_slice, true);
 
   LirEmitter lir_emitter = {
       .lifetimes_count = ir_emitter.lifetimes.len,
@@ -195,10 +196,15 @@ int main(int argc, char *argv[]) {
 
   Amd64Emitter amd64_emitter = {
       .interference_nodes = interference_graph_nodes_slice,
+      .lir_emitter = &lir_emitter,
   };
   amd64_emit_prolog(&amd64_emitter.instructions, allocator);
-  amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice, cli_opts.verbose,
-                         allocator);
+  LirVarInterferenceNodeIndexSlice node_indices_spilled =
+      amd64_emit_lirs_to_asm(&amd64_emitter, lirs_slice, cli_opts.verbose,
+                             allocator);
+  if (node_indices_spilled.len > 0) {
+    PG_ASSERT(0 && "todo");
+  }
   amd64_emit_epilog(&amd64_emitter.instructions, allocator);
 
   if (cli_opts.verbose) {
