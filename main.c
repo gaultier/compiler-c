@@ -173,7 +173,7 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
-    lir_print_interference_graph(interference_graph);
+    lir_print_interference_graph(interference_graph, ir_emitter.lifetimes);
   }
 #if 0
     lir_sanity_check_interference_graph(interference_graph_nodes_slice, true);

@@ -1505,11 +1505,12 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
     return node_indices_spilled;
   }
 
+  (void)verbose;
+#if 0
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_graph(emitter->interference_graph);
   }
-#if 0
   lir_sanity_check_interference_graph(emitter->interference_graph, true);
 #endif
 

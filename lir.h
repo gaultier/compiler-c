@@ -447,13 +447,23 @@ var_virtual_registers_find_by_var(VarVirtualRegisterDyn var_virtual_registers,
   return (VarVirtualRegisterIndex){-1U};
 }
 
-static void lir_print_interference_graph(InterferenceGraph graph) {
+static void lir_print_interference_graph(InterferenceGraph graph,
+                                         IrVarLifetimeDyn lifetimes) {
+
   for (u64 i = 0; i < graph.matrix.nodes_count; i++) {
     for (u64 j = i + 1; j < graph.matrix.nodes_count; j++) {
-      printf("%c ",
-             pg_adjacency_matrix_has_edge(graph.matrix, i, j) ? '0' : '1');
+      bool edge = pg_adjacency_matrix_has_edge(graph.matrix, i, j);
+      if (!edge) {
+        continue;
+      }
+
+      IrVar a_var = PG_SLICE_AT(lifetimes, i).var;
+      IrVar b_var = PG_SLICE_AT(lifetimes, j).var;
+      ir_print_var(a_var);
+      printf(" -> ");
+      ir_print_var(b_var);
+      printf("\n");
     }
-    printf("\n");
   }
 }
 
