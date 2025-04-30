@@ -147,6 +147,18 @@ static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn lifetimes,
   }
 }
 
+static void ir_var_lifetime_add(IrVarLifetimeDyn *lifetimes, IrVar var,
+                                IrInstructionIndex ir_ins_idx,
+                                PgAllocator *allocator) {
+  ir_ins_idx.value += 1;
+
+  *PG_DYN_PUSH(lifetimes, allocator) = (IrVarLifetime){
+      .var = var,
+      .start = ir_ins_idx,
+      .end = ir_ins_idx,
+  };
+}
+
 static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
                            bool is_immediate_ok, PgAllocator *allocator) {
   switch (node.kind) {
@@ -169,11 +181,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
-    *PG_DYN_PUSH(&emitter->lifetimes, allocator) = (IrVarLifetime){
-        .var = ins.res_var,
-        .start = ins_idx,
-        .end = ins_idx,
-    };
+    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
   case AST_NODE_KIND_ADD: {
@@ -203,11 +211,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
-    *PG_DYN_PUSH(&emitter->lifetimes, allocator) = (IrVarLifetime){
-        .var = ins.res_var,
-        .start = ins_idx,
-        .end = ins_idx,
-    };
+    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
       ir_var_extend_lifetime_on_var_use(emitter->lifetimes, lhs.var, ins_idx);
@@ -287,13 +291,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       PG_ASSERT(rhs_lifetime);
     }
 
-    IrVarLifetime lifetime = {
-        .var = ins.res_var,
-        .ref = rhs_lifetime ? rhs_lifetime->var : (IrVar){0},
-        .start = ins_idx,
-        .end = ins_idx,
-    };
-    *PG_DYN_PUSH(&emitter->lifetimes, allocator) = lifetime;
+    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
@@ -345,12 +343,7 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
       return (IrOperand){0};
     }
 
-    *PG_DYN_PUSH(&emitter->lifetimes, allocator) = (IrVarLifetime){
-        .var = ins.res_var,
-        .ref = rhs.var,
-        .start = ins_idx,
-        .end = ins_idx,
-    };
+    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
