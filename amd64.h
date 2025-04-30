@@ -1200,6 +1200,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
 
   } break;
+#if 0
   case LIR_INSTRUCTION_KIND_SYSCALL: {
     PG_ASSERT(0 == lir.operands.len);
     Amd64Instruction ins = {
@@ -1208,6 +1209,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
   } break;
+#endif
 
   case LIR_INSTRUCTION_KIND_JUMP_IF_EQ: {
     PG_ASSERT(1 == lir.operands.len);
@@ -1301,6 +1303,7 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
     PG_ASSERT(res.value && "todo: spill");
     return res;
   }
+#if 0
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
@@ -1325,6 +1328,7 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
     }
     PG_ASSERT(0 && "todo: spill");
   } break;
+#endif
 
   case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER: {
     return amd64_arch.base_pointer;

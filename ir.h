@@ -6,11 +6,13 @@ typedef enum {
   IR_INSTRUCTION_KIND_NONE,
   IR_INSTRUCTION_KIND_ADD,
   IR_INSTRUCTION_KIND_LOAD,
-  IR_INSTRUCTION_KIND_SYSCALL,
   IR_INSTRUCTION_KIND_ADDRESS_OF,
   IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
   IR_INSTRUCTION_KIND_JUMP,
   IR_INSTRUCTION_KIND_LABEL,
+#if 0
+  IR_INSTRUCTION_KIND_SYSCALL,
+#endif
 } IrInstructionKind;
 
 typedef struct {
@@ -449,7 +451,9 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
     switch (ins.kind) {
     case IR_INSTRUCTION_KIND_ADD:
     case IR_INSTRUCTION_KIND_LOAD:
+#if 0
     case IR_INSTRUCTION_KIND_SYSCALL:
+#endif
     case IR_INSTRUCTION_KIND_ADDRESS_OF:
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
       for (u64 j = 0; j < ins.operands.len; j++) {
@@ -509,11 +513,13 @@ static bool irs_optimize_remove_unused_vars(IrInstructionDyn *instructions,
 
     lifetime->tombstone = true;
 
+#if 0
     // Possible side-effects: keep this IR but erase the variable.
     if (IR_INSTRUCTION_KIND_SYSCALL == ins->kind) {
       ins->res_var.id.value = 0;
       continue;
     }
+#endif
 
     ins->tombstone = true;
     changed = true;
@@ -609,7 +615,9 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
 
     if (!(IR_INSTRUCTION_KIND_LOAD == ins->kind ||
           IR_INSTRUCTION_KIND_ADD == ins->kind ||
+#if 0
           IR_INSTRUCTION_KIND_SYSCALL == ins->kind ||
+#endif
           IR_INSTRUCTION_KIND_JUMP_IF_FALSE == ins->kind)) {
       continue;
     }
@@ -873,6 +881,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" // ");
     ir_emitter_print_var_lifetime(i, *lifetime);
   } break;
+#if 0
   case IR_INSTRUCTION_KIND_SYSCALL: {
     ir_print_var(ins.res_var);
     printf("%ssyscall(", 0 == ins.res_var.id.value ? "" : " := ");
@@ -897,6 +906,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     }
     printf("\n");
   } break;
+#endif
   case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ins.operands.len);
     PG_ASSERT(0 == ins.res_var.id.value);

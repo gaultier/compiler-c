@@ -40,6 +40,7 @@ static const u64 lir_syscall_args_count = 6;
 typedef enum {
   LIR_VIRT_REG_CONSTRAINT_NONE,
   LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
+#if 0
   LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
@@ -48,6 +49,7 @@ typedef enum {
   LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
+#endif
 } LirVirtualRegisterConstraint;
 
 typedef struct {
@@ -86,12 +88,14 @@ typedef enum {
   LIR_INSTRUCTION_KIND_ADD,
   LIR_INSTRUCTION_KIND_SUB,
   LIR_INSTRUCTION_KIND_MOV,
-  LIR_INSTRUCTION_KIND_SYSCALL,
   LIR_INSTRUCTION_KIND_LOAD_FROM_MEMORY,
   LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
   LIR_INSTRUCTION_KIND_JUMP,
   LIR_INSTRUCTION_KIND_LABEL,
   LIR_INSTRUCTION_KIND_CMP,
+#if 0
+  LIR_INSTRUCTION_KIND_SYSCALL,
+#endif
 } LirInstructionKind;
 
 typedef enum {
@@ -240,6 +244,7 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
     return "NONE";
   case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER:
     return "BASE_POINTER";
+#if 0
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
     return "SYSCALL_NUM";
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
@@ -256,6 +261,7 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
     return "SYSCALL5";
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
     return "SYSCALL_RET";
+#endif
 
   default:
     PG_ASSERT(0);
@@ -366,9 +372,11 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
     case LIR_INSTRUCTION_KIND_MOV:
       printf("mov ");
       break;
+#if 0
     case LIR_INSTRUCTION_KIND_SYSCALL:
       printf("syscall ");
       break;
+#endif
     case LIR_INSTRUCTION_KIND_LOAD_FROM_MEMORY:
       printf("lea ");
       break;
@@ -730,13 +738,14 @@ lir_reserve_virt_reg_for_var(LirEmitter *emitter, IrVar var,
   PG_ASSERT(-1U != node_idx.value);
   InterferenceNode *node =
       PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value);
-  PG_ASSERT(-1U != node->virt_reg_idx.value);
-  VirtualRegister virt_reg =
-      PG_SLICE_AT(emitter->virtual_registers, node->virt_reg_idx.value);
-  PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == virt_reg.constraint);
-
   node->virt_reg_idx = lir_make_virtual_register(
       emitter, constraint, emitter->lifetimes_count, false, allocator);
+
+  *PG_DYN_PUSH(&emitter->var_virtual_registers, allocator) =
+      (VarVirtualRegister){
+          .var = var,
+          .virt_reg_idx = node->virt_reg_idx,
+      };
 
   return node->virt_reg_idx;
 }
@@ -1083,6 +1092,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     }
 
   } break;
+#if 0
   case IR_INSTRUCTION_KIND_SYSCALL: {
     PG_ASSERT(ir_ins.operands.len <=
               1 /* syscall num */ + lir_syscall_args_count);
@@ -1136,6 +1146,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
           ->virt_reg_idx = res_virt_reg_idx;
     }
   } break;
+#endif
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.res_var.id.value);
