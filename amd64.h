@@ -193,7 +193,7 @@ typedef struct {
   u32 rbp_offset;
   u32 rbp_max_offset;
   Amd64InstructionDyn instructions;
-  InterferenceNodeSlice interference_nodes;
+  InterferenceGraph interference_graph;
   LirEmitter *lir_emitter;
 } Amd64Emitter;
 
@@ -1293,6 +1293,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 }
 
 // TODO: constraints.
+[[maybe_unused]]
 static Register
 amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
   switch (constraint) {
@@ -1336,6 +1337,7 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
   }
 }
 
+#if 0
 [[nodiscard]] static Register
 amd64_color_assign_register(InterferenceNodeIndexSlice neighbors,
                             InterferenceNodeSlice nodes,
@@ -1360,8 +1362,9 @@ amd64_color_assign_register(InterferenceNodeIndexSlice neighbors,
 
   return res;
 }
+#endif
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static u32 amd64_reserve_stack_slot_for_virt_reg(Amd64Emitter *emitter,
                                                  VirtualRegister virt_reg,
                                                  u32 slot_size) {
@@ -1375,6 +1378,7 @@ static u32 amd64_reserve_stack_slot_for_virt_reg(Amd64Emitter *emitter,
   return emitter->rbp_offset;
 }
 
+#if 0
 static void
 amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
                               VirtualRegisterSlice virtual_registers) {
@@ -1389,6 +1393,7 @@ amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
   node->base_stack_pointer_offset = rbp_offset;
   node->reg.value = 0;
 }
+#endif
 
 // Assign a color (i.e. unique physical register) to each node in the graph
 // so that no two adjacent nodes have the same color.
@@ -1397,16 +1402,19 @@ amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
 [[nodiscard]]
 static InterferenceNodeIndexSlice
 amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
+  (void)emitter;
+  (void)allocator;
+#if 0
 
   InterferenceNodeIndexDyn stack = {0};
-  PG_DYN_ENSURE_CAP(&stack, emitter->interference_nodes.len, allocator);
+  PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.len, allocator);
 
   InterferenceNodeIndexDyn node_indices_spill = {0};
-  PG_DYN_ENSURE_CAP(&node_indices_spill, emitter->interference_nodes.len,
+  PG_DYN_ENSURE_CAP(&node_indices_spill, emitter->interference_graph.len,
                     allocator);
 
-  for (u64 i = 0; i < emitter->interference_nodes.len; i++) {
-    InterferenceNode node = PG_SLICE_AT(emitter->interference_nodes, i);
+  for (u64 i = 0; i < emitter->interference_graph.len; i++) {
+    InterferenceNode node = PG_SLICE_AT(emitter->interference_graph, i);
     bool addressable = PG_SLICE_AT(emitter->lir_emitter->virtual_registers,
                                    node.virt_reg_idx.value)
                            .addressable;
@@ -1423,7 +1431,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     for (u64 i = 0; i < node_indices_spill.len; i++) {
       InterferenceNodeIndex node_idx = PG_SLICE_AT(node_indices_spill, i);
       InterferenceNode *node =
-          PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value);
+          PG_SLICE_AT_PTR(&emitter->interference_graph, node_idx.value);
       amd64_spill_interference_node(
           emitter, node,
           PG_DYN_SLICE(VirtualRegisterSlice,
@@ -1452,7 +1460,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     PG_DYN_SWAP_REMOVE(&stack, 0);
 
     InterferenceNode *node =
-        PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value);
+        PG_SLICE_AT_PTR(&emitter->interference_graph, node_idx.value);
     PG_ASSERT(node->neighbors.len < amd64_gprs_count);
 
     LirVirtualRegisterConstraint constraint =
@@ -1462,10 +1470,11 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
 
     Register reg = amd64_color_assign_register(
         PG_DYN_SLICE(InterferenceNodeIndexSlice, node->neighbors),
-        emitter->interference_nodes, constraint);
+        emitter->interference_graph, constraint);
     PG_ASSERT(reg.value);
     node->reg = reg;
   }
+#endif
   return (InterferenceNodeIndexSlice){0};
 }
 
@@ -1498,10 +1507,11 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
 
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
-    lir_print_interference_nodes(emitter->interference_nodes,
-                                 emitter->lir_emitter->virtual_registers);
+    lir_print_interference_graph(emitter->interference_graph);
   }
-  lir_sanity_check_interference_graph(emitter->interference_nodes, true);
+#if 0
+  lir_sanity_check_interference_graph(emitter->interference_graph, true);
+#endif
 
   for (u64 i = 0; i < lirs.len; i++) {
     amd64_lir_to_asm(emitter, PG_SLICE_AT(lirs, i), allocator);
