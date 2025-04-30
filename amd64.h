@@ -1104,6 +1104,12 @@ amd64_sanity_check_instructions(Amd64InstructionSlice instructions) {
     // Prohibited by amd64 rules.
     PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.lhs.kind &&
                 AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind));
+
+    PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.lhs.kind &&
+                AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind));
+
+    PG_ASSERT(!(AMD64_OPERAND_KIND_IMMEDIATE == ins.lhs.kind &&
+                AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind));
   }
 }
 
