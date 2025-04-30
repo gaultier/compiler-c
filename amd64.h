@@ -1089,8 +1089,6 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
-    PG_ASSERT(lir_op.virt_reg_idx.value);
-
     VarVirtualRegisterIndex var_virt_reg =
         var_virtual_registers_find_by_virt_reg_idx(
             emitter->lir_emitter->var_virtual_registers, lir_op.virt_reg_idx);

@@ -1073,7 +1073,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
         emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
-    PG_ASSERT(res_virt_reg_idx.value != 0);
+    PG_ASSERT(-1U != res_virt_reg_idx.value);
 
     if (IR_OPERAND_KIND_U64 == src_ir_val.kind) {
       lir_emit_copy_immediate_to_virt_reg(emitter, src_ir_val, res_virt_reg_idx,
