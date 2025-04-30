@@ -95,7 +95,7 @@ static const Register amd64_calling_convention[] = {
 };
 
 static const Register amd64_syscall_calling_convention[6] = {
-    amd64_rdi, amd64_rsi, amd64_rdx, amd64_rcx, amd64_r8, amd64_r9,
+    amd64_rdi, amd64_rsi, amd64_rdx, amd64_r10, amd64_r8, amd64_r9,
 };
 
 static const Architecture amd64_arch = {
