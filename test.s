@@ -6,14 +6,16 @@ _start:
 mov rbp, rsp
 sub rbp, 64
 
+mov rcx, 9
+mov r11, 10
 
-mov qword ptr [rbp-24], 12
-mov qword ptr [rbp-32], 45
-
-// mov [rbp-32], [rbp-24]
-mov rax, qword ptr [rbp-24]
-mov qword ptr [rbp-32], rax
+mov rax, 1
+mov rdi, 1
+mov r15, 478560413032
+mov qword ptr [rbp-8], r15
+mov rdx, 5
+syscall
 
 mov rax, 60
-mov rdi, qword ptr [rbp-32]
+mov rdi, r11
 syscall
