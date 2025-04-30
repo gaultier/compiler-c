@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
     lir_print_interference_nodes(interference_graph_nodes_slice,
-                                 (VirtualRegisterSlice){0});
+                                 (VirtualRegisterDyn){0});
   }
   lir_sanity_check_interference_graph(interference_graph_nodes_slice, true);
 

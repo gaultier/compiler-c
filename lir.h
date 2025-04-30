@@ -263,7 +263,7 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
 }
 
 static void lir_print_virtual_register(VirtualRegisterIndex virt_reg_idx,
-                                       VirtualRegisterSlice virtual_registers) {
+                                       VirtualRegisterDyn virtual_registers) {
   VirtualRegister virt_reg = PG_SLICE_AT(virtual_registers, virt_reg_idx.value);
 
   printf("v%u{constraint=%s, addressable=%s}", virt_reg.value,
@@ -317,7 +317,7 @@ static void lir_print_var_to_memory_location(
 #endif
 
 static void lir_print_operand(LirOperand operand,
-                              VirtualRegisterSlice virtual_registers) {
+                              VirtualRegisterDyn virtual_registers) {
   switch (operand.kind) {
   case LIR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
@@ -377,8 +377,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
 
     for (u64 j = 0; j < ins.operands.len; j++) {
       LirOperand op = PG_SLICE_AT(ins.operands, j);
-      lir_print_operand(
-          op, PG_DYN_SLICE(VirtualRegisterSlice, emitter.virtual_registers));
+      lir_print_operand(op, emitter.virtual_registers);
 
       if (j + 1 < ins.operands.len) {
         printf(", ");
@@ -434,18 +433,6 @@ lir_interference_node_indices_find_by_var(
     }
   }
   return (LirVarInterferenceNodeIndex){-1U};
-}
-
-[[nodiscard]] static VirtualRegisterIndex
-lir_interference_nodes_find_virt_reg_by_var(LirVarInterferenceNodeSlice nodes,
-                                            IrVar var) {
-  for (u64 i = 0; i < nodes.len; i++) {
-    LirVarInterferenceNode node = PG_SLICE_AT(nodes, i);
-    if (node.var.id.value == var.id.value) {
-      return node.virt_reg_idx;
-    }
-  }
-  return (VirtualRegisterIndex){-1U};
 }
 
 [[nodiscard]]
@@ -511,21 +498,6 @@ static void lir_interference_graph_add_edge(LirVarInterferenceNodeDyn *nodes,
 }
 
 [[nodiscard]]
-static VarVirtualRegisterIndex var_virtual_registers_find_by_virt_reg(
-    VarVirtualRegisterDyn var_virtual_registers,
-    VirtualRegisterDyn virtual_registers, VirtualRegister needle) {
-  for (u64 i = 0; i < var_virtual_registers.len; i++) {
-    VarVirtualRegister var_virt_reg = PG_SLICE_AT(var_virtual_registers, i);
-    VirtualRegister virt_reg =
-        PG_SLICE_AT(virtual_registers, var_virt_reg.virt_reg_idx.value);
-    if (needle.value == virt_reg.value) {
-      return (VarVirtualRegisterIndex){(u32)i};
-    }
-  }
-  return (VarVirtualRegisterIndex){-1U};
-}
-
-[[nodiscard]]
 static VarVirtualRegisterIndex var_virtual_registers_find_by_virt_reg_idx(
     VarVirtualRegisterDyn var_virtual_registers, VirtualRegisterIndex needle) {
   for (u64 i = 0; i < var_virtual_registers.len; i++) {
@@ -550,9 +522,8 @@ var_virtual_registers_find_by_var(VarVirtualRegisterDyn var_virtual_registers,
   return (VarVirtualRegisterIndex){-1U};
 }
 
-static void
-lir_print_interference_nodes(LirVarInterferenceNodeSlice nodes,
-                             VirtualRegisterSlice virtual_registers) {
+static void lir_print_interference_nodes(LirVarInterferenceNodeSlice nodes,
+                                         VirtualRegisterDyn virtual_registers) {
   for (u64 i = 0; i < nodes.len; i++) {
     LirVarInterferenceNode node = PG_SLICE_AT(nodes, i);
     ir_print_var(node.var);
