@@ -1337,32 +1337,30 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
   }
 }
 
-#if 0
 [[nodiscard]] static Register
-amd64_color_assign_register(InterferenceNodeIndexSlice neighbors,
-                            InterferenceNodeSlice nodes,
+amd64_color_assign_register(InterferenceGraph graph,
+                            InterferenceNodeIndex node_idx,
                             LirVirtualRegisterConstraint constraint) {
   GprSet neighbor_colors = {
       .len = amd64_gprs_count,
       .set = 0,
   };
 
-  for (u64 i = 0; i < neighbors.len; i++) {
-    InterferenceNodeIndex neighbor_idx = PG_SLICE_AT(neighbors, i);
-    PG_ASSERT(-1U != neighbor_idx.value);
-
-    InterferenceNode neighbor = PG_SLICE_AT(nodes, neighbor_idx.value);
-    if (neighbor.reg.value) {
-      lir_gpr_set_add(&neighbor_colors, neighbor.reg.value - 1);
+  for (u64 i = node_idx.value + 1; i < graph.matrix.nodes_count; i++) {
+    bool edge = pg_adjacency_matrix_has_edge(graph.matrix, node_idx.value, i);
+    if (!edge) {
+      continue;
     }
+
+    Register neighbor_reg = PG_SLICE_AT(graph.virt_reg_reg, 0 /* FIXME*/).reg;
+    PG_ASSERT(neighbor_reg.value);
+    lir_gpr_set_add(&neighbor_colors, neighbor_reg.value - 1);
   }
   Register res = amd64_get_free_register(neighbor_colors, constraint);
 
-  PG_ASSERT(res.value > 0 || (neighbors.len < amd64_gprs_count));
-
+  PG_ASSERT(res.value);
   return res;
 }
-#endif
 
 [[maybe_unused]] [[nodiscard]]
 static u32 amd64_reserve_stack_slot_for_virt_reg(Amd64Emitter *emitter,
@@ -1402,52 +1400,61 @@ amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
 [[nodiscard]]
 static InterferenceNodeIndexSlice
 amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
-  (void)emitter;
-  (void)allocator;
-#if 0
 
   InterferenceNodeIndexDyn stack = {0};
-  PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.len, allocator);
-
-  InterferenceNodeIndexDyn node_indices_spill = {0};
-  PG_DYN_ENSURE_CAP(&node_indices_spill, emitter->interference_graph.len,
+  PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,
                     allocator);
 
-  for (u64 i = 0; i < emitter->interference_graph.len; i++) {
-    InterferenceNode node = PG_SLICE_AT(emitter->interference_graph, i);
-    bool addressable = PG_SLICE_AT(emitter->lir_emitter->virtual_registers,
-                                   node.virt_reg_idx.value)
-                           .addressable;
+  InterferenceNodeIndexDyn node_indices_spill = {0};
+  PG_DYN_ENSURE_CAP(&node_indices_spill,
+                    emitter->interference_graph.matrix.nodes_count, allocator);
 
-    if (node.neighbors.len >= amd64_gprs_count || addressable) {
+  for (u64 i = 0; i < emitter->interference_graph.matrix.nodes_count; i++) {
+    u64 neighbors_count = 0;
+    for (u64 j = i + 1; j < emitter->interference_graph.matrix.nodes_count;
+         j++) {
+      bool edge = pg_adjacency_matrix_has_edge(
+          emitter->interference_graph.matrix, i, j);
+      neighbors_count += edge;
+    }
+
+    // TODO: Addressable virtual registers must be spilled.
+    if (neighbors_count >= amd64_gprs_count) {
       *PG_DYN_PUSH_WITHIN_CAPACITY(&node_indices_spill) =
           (InterferenceNodeIndex){(u32)i};
-      continue;
+    } else {
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (InterferenceNodeIndex){(u32)i};
     }
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (InterferenceNodeIndex){(u32)i};
   }
 
   if (node_indices_spill.len > 0) {
-    for (u64 i = 0; i < node_indices_spill.len; i++) {
-      InterferenceNodeIndex node_idx = PG_SLICE_AT(node_indices_spill, i);
-      InterferenceNode *node =
-          PG_SLICE_AT_PTR(&emitter->interference_graph, node_idx.value);
-      amd64_spill_interference_node(
-          emitter, node,
-          PG_DYN_SLICE(VirtualRegisterSlice,
-                       emitter->lir_emitter->virtual_registers));
-    }
-    return PG_DYN_SLICE(InterferenceNodeIndexSlice, node_indices_spill);
-    // Potentially need to :
-    // - insert loads/stores at the IR/LIR level (only if both operands
-    // are effective addresses)
-    // - recompute lifetimes and interference graph
-    // - rerun the coloring.
-    //
-    // E.g.: `mov [rbp-32], [rbp-24]` =>
-    // `mov rax, qword ptr [rbp-24]; mov qword ptr [rbp-32], rax`
-    // But that is detected in the LIR -> amd64 function.
+    PG_ASSERT(0 && "todo: spill");
   }
+
+#if 0
+
+if (node_indices_spill.len > 0) {
+  for (u64 i = 0; i < node_indices_spill.len; i++) {
+    InterferenceNodeIndex node_idx = PG_SLICE_AT(node_indices_spill, i);
+    InterferenceNode *node =
+        PG_SLICE_AT_PTR(&emitter->interference_graph, node_idx.value);
+    amd64_spill_interference_node(
+        emitter, node,
+        PG_DYN_SLICE(VirtualRegisterSlice,
+                     emitter->lir_emitter->virtual_registers));
+  }
+  return PG_DYN_SLICE(InterferenceNodeIndexSlice, node_indices_spill);
+  // Potentially need to :
+  // - insert loads/stores at the IR/LIR level (only if both operands
+  // are effective addresses)
+  // - recompute lifetimes and interference graph
+  // - rerun the coloring.
+  //
+  // E.g.: `mov [rbp-32], [rbp-24]` =>
+  // `mov rax, qword ptr [rbp-24]; mov qword ptr [rbp-32], rax`
+  // But that is detected in the LIR -> amd64 function.
+}
+#endif
 
   u64 stack_len = stack.len;
   for (u64 _i = 0; _i < stack_len; _i++) {
@@ -1459,22 +1466,15 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     InterferenceNodeIndex node_idx = PG_SLICE_AT(stack, 0);
     PG_DYN_SWAP_REMOVE(&stack, 0);
 
-    InterferenceNode *node =
-        PG_SLICE_AT_PTR(&emitter->interference_graph, node_idx.value);
-    PG_ASSERT(node->neighbors.len < amd64_gprs_count);
-
     LirVirtualRegisterConstraint constraint =
-        PG_SLICE_AT(emitter->lir_emitter->virtual_registers,
-                    node->virt_reg_idx.value)
+        PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
             .constraint;
 
-    Register reg = amd64_color_assign_register(
-        PG_DYN_SLICE(InterferenceNodeIndexSlice, node->neighbors),
-        emitter->interference_graph, constraint);
+    Register reg = amd64_color_assign_register(emitter->interference_graph,
+                                               node_idx, constraint);
     PG_ASSERT(reg.value);
-    node->reg = reg;
+    // TODO: push `reg` to `graph.virt_reg_reg`.
   }
-#endif
   return (InterferenceNodeIndexSlice){0};
 }
 
