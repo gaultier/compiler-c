@@ -233,6 +233,8 @@ static void amd64_print_register(Register reg) {
   printf("%.*s", (i32)s.len, s.data);
 }
 
+// TODO: If any of the callee-saved registers were used by the register
+// allocator, emit storing code (push).
 static void amd64_emit_prolog(Amd64InstructionDyn *instructions,
                               PgAllocator *allocator) {
   *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
@@ -261,6 +263,8 @@ static void amd64_emit_prolog(Amd64InstructionDyn *instructions,
   };
 }
 
+// TODO: If any of the callee-saved registers were used by the register
+// allocator, emit loading code (pop).
 static void amd64_emit_epilog(Amd64InstructionDyn *instructions,
                               PgAllocator *allocator) {
   *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
