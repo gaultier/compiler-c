@@ -144,7 +144,7 @@ PG_SLICE(InterferenceNodeIndex) InterferenceNodeIndexSlice;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
 typedef struct {
-  VirtualRegister virt_reg_idx;
+  VirtualRegisterIndex virt_reg_idx;
   Register reg;
 } VirtualRegisterRegister;
 PG_DYN(VirtualRegisterRegister) VirtualRegisterRegisterDyn;
@@ -156,6 +156,10 @@ typedef struct {
   // diagonal).
   PgAdjacencyMatrix matrix;
 } InterferenceGraph;
+
+typedef struct {
+  u32 value;
+} VirtualRegisterRegisterIndex;
 
 typedef struct {
   IrVar var;
@@ -176,6 +180,20 @@ typedef struct {
   InterferenceGraph interference_graph;
   u64 lifetimes_count;
 } LirEmitter;
+
+[[nodiscard]]
+static VirtualRegisterRegisterIndex
+virtual_registers_registers_find_by_virtual_register_index(
+    VirtualRegisterRegisterDyn virt_reg_regs,
+    VirtualRegisterIndex virt_reg_idx) {
+  for (u64 i = 0; i < virt_reg_regs.len; i++) {
+    if (PG_SLICE_AT(virt_reg_regs, i).virt_reg_idx.value ==
+        virt_reg_idx.value) {
+      return (VirtualRegisterRegisterIndex){(u32)i};
+    }
+  }
+  return (VirtualRegisterRegisterIndex){-1U};
+}
 
 static void lir_gpr_set_add(GprSet *set, u32 val) {
   PG_ASSERT(set->len > 0);
