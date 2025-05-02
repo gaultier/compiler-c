@@ -226,6 +226,7 @@ typedef struct {
   Amd64InstructionDyn instructions;
   InterferenceGraph interference_graph;
   LirEmitter *lir_emitter;
+  IrVarLifetimeDyn lifetimes;
 } Amd64Emitter;
 
 static void amd64_print_register(Register reg) {
@@ -1448,6 +1449,10 @@ amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
 [[nodiscard]]
 static InterferenceNodeIndexSlice
 amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
+  if (0 == emitter->interference_graph.matrix.nodes_count) {
+    return (InterferenceNodeIndexSlice){0};
+  }
+
   PG_DYN_ENSURE_CAP(&emitter->interference_graph.virt_reg_reg,
                     emitter->interference_graph.matrix.nodes_count, allocator);
 
@@ -1461,19 +1466,21 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
                     emitter->interference_graph.matrix.nodes_count, allocator);
 #endif
 
-  for (u64 i = 0; i < emitter->interference_graph.matrix.nodes_count; i++) {
+  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count - 1;
+
+       row++) {
     u64 neighbors_count = 0;
-    for (u64 j = i + 1; j < emitter->interference_graph.matrix.nodes_count;
-         j++) {
+    for (u64 column = row + 1;
+         column < emitter->interference_graph.matrix.nodes_count; column++) {
       bool edge = pg_adjacency_matrix_has_edge(
-          emitter->interference_graph.matrix, i, j);
+          emitter->interference_graph.matrix, row, column);
       neighbors_count += edge;
     }
 
     // TODO: Addressable virtual registers must be spilled.
     if (neighbors_count < amd64_register_allocator_gprs_slice.len) {
-      *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (InterferenceNodeIndex){(u32)i};
-      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, i);
+      *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (InterferenceNodeIndex){(u32)row};
+      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, row);
     }
   }
 
@@ -1520,7 +1527,7 @@ if (node_indices_spill.len > 0) {
         PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
             .constraint;
 
-    IrVar var = {.id = {node_idx.value}};
+    IrVar var = PG_SLICE_AT(emitter->lir_emitter->lifetimes, node_idx.value);
     VarVirtualRegisterIndex var_virt_reg_idx =
         var_virtual_registers_find_by_var(
             emitter->lir_emitter->var_virtual_registers, var);

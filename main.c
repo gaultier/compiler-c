@@ -182,6 +182,7 @@ int main(int argc, char *argv[]) {
   LirEmitter lir_emitter = {
       .lifetimes_count = ir_emitter.lifetimes.len,
       .interference_graph = interference_graph,
+      .lifetimes = ir_emitter.lifetimes,
   };
   lir_emit_instructions(&lir_emitter, irs_slice, allocator);
   if (cli_opts.verbose) {

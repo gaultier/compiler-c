@@ -179,6 +179,7 @@ typedef struct {
 
   InterferenceGraph interference_graph;
   u64 lifetimes_count;
+  IrVarLifetimeDyn lifetimes;
 } LirEmitter;
 
 [[nodiscard]]
