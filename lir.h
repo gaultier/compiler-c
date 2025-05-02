@@ -15,7 +15,8 @@ typedef struct {
 
 typedef struct {
   Register return_value;
-  RegisterSlice call_preserved;
+  RegisterSlice caller_saved;
+  RegisterSlice callee_saved;
   RegisterSlice calling_convention;
   Register syscall_num;
   RegisterSlice syscall_calling_convention;

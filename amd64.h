@@ -86,8 +86,14 @@ static const Pgu8Slice amd64_register_to_encoded_value_slice = {
     .len = PG_STATIC_ARRAY_LEN(amd64_register_to_encoded_value),
 };
 
-static const Register amd64_call_preserved[] = {
+// TODO: SystemV ABI vs Windows calling convention!
+static const Register amd64_callee_saved[] = {
     amd64_rbx, amd64_rsp, amd64_rbp, amd64_r12, amd64_r13, amd64_r14, amd64_r15,
+};
+
+static const Register amd64_caller_saved[] = {
+    amd64_rax, amd64_rdi, amd64_rdx, amd64_rcx,
+    amd64_r8,  amd64_r9,  amd64_r10, amd64_r11,
 };
 
 static const Register amd64_calling_convention[] = {
@@ -100,10 +106,15 @@ static const Register amd64_syscall_calling_convention[6] = {
 
 static const Architecture amd64_arch = {
     .return_value = amd64_rax,
-    .call_preserved =
+    .caller_saved =
         {
-            .data = (Register *)amd64_call_preserved,
-            .len = PG_STATIC_ARRAY_LEN(amd64_call_preserved),
+            .data = (Register *)amd64_caller_saved,
+            .len = PG_STATIC_ARRAY_LEN(amd64_caller_saved),
+        },
+    .callee_saved =
+        {
+            .data = (Register *)amd64_callee_saved,
+            .len = PG_STATIC_ARRAY_LEN(amd64_callee_saved),
         },
     .calling_convention =
         {
