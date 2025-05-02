@@ -36,16 +36,34 @@ static const Register amd64_rdi = {5};
 static const Register amd64_rsi = {6};
 static const Register amd64_r8 = {7};
 static const Register amd64_r9 = {8};
-static const Register amd64_r10 = {9};
-static const Register amd64_r11 = {10};
-static const Register amd64_r12 = {11};
-static const Register amd64_r13 = {12};
-static const Register amd64_r14 = {13};
-static const Register amd64_r15 = {14};
+static const Register amd64_r12 = {9};
+static const Register amd64_r13 = {10};
+static const Register amd64_r14 = {11};
+static const Register amd64_r15 = {12};
+static const Register amd64_r10 = {13};
+static const Register amd64_r11 = {14};
 static const Register amd64_rsp = {15};
 static const Register amd64_rbp = {16};
 
-static const u64 amd64_gprs_count = 14;
+static const Register amd64_register_allocator_gprs[] = {
+    amd64_rax,
+    amd64_rdi,
+    amd64_rdx,
+    amd64_rcx,
+    amd64_r8,
+    amd64_r9,
+    /* Reserved for spilling: amd64_r10, amd64_r11, */
+    amd64_rbx,
+    amd64_r12,
+    amd64_r13,
+    amd64_r14,
+    amd64_r15,
+};
+
+static const RegisterSlice amd64_register_allocator_gprs_slice = {
+    .data = (Register *)amd64_register_allocator_gprs,
+    .len = PG_STATIC_ARRAY_LEN(amd64_register_allocator_gprs),
+};
 
 static const PgString amd64_register_to_string[16 + 1] = {
     [0] = PG_S("UNREACHABLE"), [1] = PG_S("rax"),  [2] = PG_S("rbx"),
@@ -95,6 +113,8 @@ static const Register amd64_caller_saved[] = {
     amd64_rax, amd64_rdi, amd64_rdx, amd64_rcx,
     amd64_r8,  amd64_r9,  amd64_r10, amd64_r11,
 };
+
+static const Register amd64_spill_registers[] = {amd64_r10, amd64_r11};
 
 static const Register amd64_calling_convention[] = {
     amd64_rdi, amd64_rsi, amd64_rdx, amd64_rcx, amd64_r8, amd64_r9,
@@ -1353,7 +1373,7 @@ amd64_color_assign_register(InterferenceGraph graph,
                             InterferenceNodeIndex node_idx,
                             LirVirtualRegisterConstraint constraint) {
   GprSet neighbor_colors = {
-      .len = amd64_gprs_count,
+      .len = amd64_register_allocator_gprs_slice.len,
       .set = 0,
   };
 
@@ -1364,7 +1384,8 @@ amd64_color_assign_register(InterferenceGraph graph,
     }
 
     Register neighbor_reg = PG_SLICE_AT(graph.virt_reg_reg, 0 /* FIXME*/).reg;
-    PG_ASSERT(neighbor_reg.value);
+    PG_ASSERT(neighbor_reg.value <=
+              PG_SLICE_LAST(amd64_register_allocator_gprs_slice).value);
     lir_gpr_set_add(&neighbor_colors, neighbor_reg.value - 1);
   }
   Register res = amd64_get_free_register(neighbor_colors, constraint);
@@ -1430,7 +1451,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     }
 
     // TODO: Addressable virtual registers must be spilled.
-    if (neighbors_count >= amd64_gprs_count) {
+    if (neighbors_count >= amd64_register_allocator_gprs_slice.len) {
       *PG_DYN_PUSH_WITHIN_CAPACITY(&node_indices_spill) =
           (InterferenceNodeIndex){(u32)i};
     } else {
