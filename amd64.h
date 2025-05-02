@@ -1455,9 +1455,11 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
   PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,
                     allocator);
 
+#if 0
   InterferenceNodeIndexDyn node_indices_spill = {0};
   PG_DYN_ENSURE_CAP(&node_indices_spill,
                     emitter->interference_graph.matrix.nodes_count, allocator);
+#endif
 
   for (u64 i = 0; i < emitter->interference_graph.matrix.nodes_count; i++) {
     u64 neighbors_count = 0;
@@ -1469,15 +1471,13 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     }
 
     // TODO: Addressable virtual registers must be spilled.
-    if (neighbors_count >= amd64_register_allocator_gprs_slice.len) {
-      *PG_DYN_PUSH_WITHIN_CAPACITY(&node_indices_spill) =
-          (InterferenceNodeIndex){(u32)i};
-    } else {
+    if (neighbors_count < amd64_register_allocator_gprs_slice.len) {
       *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (InterferenceNodeIndex){(u32)i};
+      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, i);
     }
   }
 
-  if (node_indices_spill.len > 0) {
+  if (!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix)) {
     PG_ASSERT(0 && "todo: spill");
   }
 
