@@ -369,7 +369,7 @@ static void lir_print_operand(LirOperand operand,
 static void lir_emitter_print_instructions(LirEmitter emitter) {
   for (u64 i = 0; i < emitter.instructions.len; i++) {
     LirInstruction ins = PG_SLICE_AT(emitter.instructions, i);
-    printf("[%" PRIu64 "]\n", i);
+    printf("[%" PRIu64 "] ", i);
 
     origin_print(ins.origin);
     printf(": ");
