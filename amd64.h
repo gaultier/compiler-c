@@ -1395,6 +1395,8 @@ amd64_color_assign_register(InterferenceGraph *graph,
   {
     MemoryLocation *mem_loc =
         PG_SLICE_AT_PTR(&graph->memory_locations, mem_loc_idx.value);
+    PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
+
     mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
     mem_loc->reg = res;
   }
