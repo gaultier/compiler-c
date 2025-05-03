@@ -1362,9 +1362,11 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
     PG_ASSERT(res.value && "todo: spill");
     return res;
   }
+#if 0
   case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER: {
     return amd64_arch.base_pointer;
   }
+#endif
   default:
     PG_ASSERT(0);
   }
@@ -1379,6 +1381,7 @@ amd64_color_assign_register(InterferenceGraph *graph,
       .set = 0,
   };
 
+  // FIXME(!!!): Review all for loops with row/col.
   for (u64 col = node_idx.value + 1; col < graph->matrix.nodes_count; col++) {
     bool edge =
         pg_adjacency_matrix_has_edge(graph->matrix, node_idx.value, col);

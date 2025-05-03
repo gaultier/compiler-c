@@ -40,8 +40,8 @@ static const u64 lir_syscall_args_count = 6;
 
 typedef enum {
   LIR_VIRT_REG_CONSTRAINT_NONE,
-  LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
 #if 0
+  LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
@@ -265,9 +265,9 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
   switch (constraint) {
   case LIR_VIRT_REG_CONSTRAINT_NONE:
     return "NONE";
+#if 0
   case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER:
     return "BASE_POINTER";
-#if 0
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
     return "SYSCALL_NUM";
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
