@@ -1350,6 +1350,7 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
   switch (constraint) {
   case LIR_VIRT_REG_CONSTRAINT_NONE: {
     // TODO: Smarter free register selection.
+    // E.g. favor caller-saved registers, etc.
     Register res = lir_gpr_pop_first_unset(&regs);
     PG_ASSERT(res.value && "todo: spill");
     return res;
