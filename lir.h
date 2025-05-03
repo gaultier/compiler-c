@@ -487,52 +487,31 @@ static void lir_print_interference_graph(InterferenceGraph graph,
   }
 }
 
-#if 0
-static void lir_sanity_check_interference_graph(InterferenceNodeSlice nodes,
+static void lir_sanity_check_interference_graph(InterferenceGraph graph,
                                                 bool colored) {
-  (void)nodes;
-  (void)colored;
-  for (u64 i = 0; i < nodes.len; i++) {
-    InterferenceNode node = PG_SLICE_AT(nodes, i);
-    if (colored) {
-      // Technically, `virt_reg` is assigned in the LIR phase, before coloring.
-      PG_ASSERT(-1U != node.virt_reg_idx.value);
+  PG_ASSERT(graph.virt_reg_reg.len <= graph.matrix.nodes_count);
+  if (colored) {
+    PG_ASSERT(graph.virt_reg_reg.len == graph.matrix.nodes_count);
+  }
+  PG_ASSERT(graph.matrix.bitfield_len <= graph.matrix.bitfield.len);
 
-      PG_ASSERT(node.reg.value || node.base_stack_pointer_offset);
+  if (0 == graph.matrix.nodes_count) {
+    return;
+  }
+
+  if (colored) {
+    for (u64 i = 0; i < graph.virt_reg_reg.len; i++) {
+      VirtualRegisterRegister virt_reg_reg = PG_SLICE_AT(graph.virt_reg_reg, i);
+      PG_ASSERT(virt_reg_reg.reg.value);
     }
 
-    for (u64 j = 0; j < node.neighbors.len; j++) {
-      InterferenceNodeIndex neighbor_idx = PG_SLICE_AT(node.neighbors, j);
-      PG_ASSERT(-1U != neighbor_idx.value);
-      InterferenceNode neighbor = PG_SLICE_AT(nodes, neighbor_idx.value);
-      PG_ASSERT(neighbor.var.id.value);
-      PG_ASSERT(neighbor.neighbors.len < nodes.len);
-      PG_ASSERT(node.var.id.value != neighbor.var.id.value);
-      if (-1U != node.virt_reg_idx.value &&
-          -1U != neighbor.virt_reg_idx.value) {
-        PG_ASSERT(node.virt_reg_idx.value != neighbor.virt_reg_idx.value);
-      }
-
-#if 0
-      if (colored) {
-        VirtualRegister node_virt_reg =
-            PG_SLICE_AT(virtual_registers, node.virt_reg_idx.value);
-        VirtualRegister neighbor_virt_reg =
-            PG_SLICE_AT(virtual_registers, neighbor.virt_reg_idx.value);
-
-        if (!(LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET == node_virt_reg.constraint ||
-              LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET ==
-                  neighbor_virt_reg.constraint)) {
-          if (node.reg.value != 0 && neighbor.reg.value != 0) {
-            PG_ASSERT(node.reg.value != neighbor.reg.value);
-          }
-        }
-      }
-#endif
+    for (u64 i = 0; i < graph.matrix.bitfield_len; i++) {
+      PG_ASSERT(0 == PG_SLICE_AT(graph.matrix.bitfield, i));
     }
   }
+
+  // TODO: more checks.
 }
-#endif
 
 [[nodiscard]]
 static InterferenceGraph

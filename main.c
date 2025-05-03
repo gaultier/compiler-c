@@ -175,9 +175,7 @@ int main(int argc, char *argv[]) {
     printf("\n------------ Interference graph ------------\n");
     lir_print_interference_graph(interference_graph, ir_emitter.lifetimes);
   }
-#if 0
-    lir_sanity_check_interference_graph(interference_graph_nodes_slice, true);
-#endif
+  lir_sanity_check_interference_graph(interference_graph, false);
 
   LirEmitter lir_emitter = {
       .lifetimes_count = ir_emitter.lifetimes.len,

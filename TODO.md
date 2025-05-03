@@ -2,6 +2,7 @@
 - ir: optimization: show diff output in each step, like git diff
 - control flow graph
 - data flow analysis
+- simple alias analysis (type-based, conservative)
 - codegen: aarch64
 - codegen: riscv
 - codegen: macho format
@@ -15,5 +16,5 @@
 - lang: types
 - typechecker, pass type information to codegen for sizes
 - lang: strings
-- migrate to TAC (three-address-code) for IR & LIR (no allocations, shorter code)
 - spill registers
+- migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator)
