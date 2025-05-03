@@ -1379,34 +1379,31 @@ amd64_color_assign_register(InterferenceGraph *graph,
       .set = 0,
   };
 
-  for (u64 i = node_idx.value + 1; i < graph->matrix.nodes_count; i++) {
-    bool edge = pg_adjacency_matrix_has_edge(graph->matrix, node_idx.value, i);
+  for (u64 col = node_idx.value + 1; col < graph->matrix.nodes_count; col++) {
+    bool edge =
+        pg_adjacency_matrix_has_edge(graph->matrix, node_idx.value, col);
     if (!edge) {
       continue;
     }
 
     MemoryLocationIndex neighbor_mem_loc_idx =
         memory_locations_find_by_node_index(graph->memory_locations,
-                                            (InterferenceNodeIndex){(u32)i});
+                                            (InterferenceNodeIndex){(u32)col});
     PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
 
-    Register neighbor_reg = {0};
+    // If a neighbor already has an assigned register, add it to the set.
     {
       MemoryLocation neighbor_mem_loc =
           PG_SLICE_AT(graph->memory_locations, neighbor_mem_loc_idx.value);
       if (MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
         PG_ASSERT(neighbor_mem_loc.reg.value);
-        neighbor_reg = neighbor_mem_loc.reg;
+        PG_ASSERT(neighbor_mem_loc.reg.value <=
+                  PG_SLICE_LAST(amd64_register_allocator_gprs_slice).value);
+        lir_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg.value - 1);
       }
-    }
-    PG_ASSERT(neighbor_reg.value <=
-              PG_SLICE_LAST(amd64_register_allocator_gprs_slice).value);
-    if (neighbor_reg.value) {
-      lir_gpr_set_add(&neighbor_colors, neighbor_reg.value - 1);
     }
   }
   Register res = amd64_get_free_register(neighbor_colors, constraint);
-
   PG_ASSERT(res.value);
 
   MemoryLocationIndex mem_loc_idx =
