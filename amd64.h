@@ -1418,16 +1418,27 @@ static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
 // TODO: Better strategy to pick which virtual registers to spill.
 // For now we simply spill them all if they have more neighbors than there are
 // GPRs, on a 'first encounter' basis.
-static void amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
-                                                       PgAllocator *allocator) {
+static void amd64_color_spill_remaining_nodes_in_graph(
+    Amd64Emitter *emitter, InterferenceNodeIndexDyn *stack,
+    PgString nodes_tombstones_bitfield, PgAllocator *allocator) {
   PG_ASSERT(!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix));
 
-  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
-       row++) {
+  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;) {
+    if (pg_bitfield_get(nodes_tombstones_bitfield, row)) {
+      row++;
+      continue;
+    }
+
     u64 neighbors_count = pg_adjacency_matrix_count_neighbors(
         emitter->interference_graph.matrix, row);
 
+    pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, row);
+    pg_bitfield_set(nodes_tombstones_bitfield, row, true);
+
+    InterferenceNodeIndex node_idx = {(u32)row};
     if (neighbors_count < amd64_register_allocator_gprs_slice.len) {
+      PG_ASSERT(stack->len < emitter->interference_graph.matrix.nodes_count);
+      *PG_DYN_PUSH_WITHIN_CAPACITY(stack) = node_idx;
       continue;
     }
 
@@ -1435,8 +1446,7 @@ static void amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
     u32 rbp_offset = amd64_reserve_stack_slot(emitter, sizeof(u64) /*FIXME*/);
 
     MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
-        emitter->interference_graph.memory_locations,
-        (InterferenceNodeIndex){(u32)row});
+        emitter->interference_graph.memory_locations, node_idx);
     PG_ASSERT(-1U != mem_loc_idx.value);
     {
       MemoryLocation *mem_loc = PG_SLICE_AT_PTR(
@@ -1478,6 +1488,8 @@ static void amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
+
+    row++;
   }
 }
 
@@ -1496,6 +1508,11 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
   PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,
                     allocator);
 
+  // Bitfield.
+  PgString nodes_tombstones_bitfield = pg_string_make(
+      pg_div_ceil(emitter->interference_graph.matrix.nodes_count, 8),
+      allocator);
+
   PgAdjacencyMatrix graph_clone =
       pg_adjacency_matrix_clone(emitter->interference_graph.matrix, allocator);
 
@@ -1506,8 +1523,11 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
 
     // TODO: Addressable virtual registers must be spilled.
     if (neighbors_count < amd64_register_allocator_gprs_slice.len) {
+      PG_ASSERT(stack.len < emitter->interference_graph.matrix.nodes_count);
+
       *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = (InterferenceNodeIndex){(u32)row};
       pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, row);
+      pg_bitfield_set(nodes_tombstones_bitfield, row, true);
     }
   }
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
@@ -1517,7 +1537,8 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     lir_print_interference_graph(emitter->interference_graph,
                                  emitter->lir_emitter->lifetimes);
 
-    amd64_color_spill_remaining_nodes_in_graph(emitter, allocator);
+    amd64_color_spill_remaining_nodes_in_graph(
+        emitter, &stack, nodes_tombstones_bitfield, allocator);
   }
 
 #if 0
