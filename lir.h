@@ -178,7 +178,6 @@ typedef struct {
   VarVirtualRegisterDyn var_virtual_registers;
 
   InterferenceGraph interference_graph;
-  u64 lifetimes_count;
   IrVarLifetimeDyn lifetimes;
 } LirEmitter;
 

@@ -178,7 +178,6 @@ int main(int argc, char *argv[]) {
   lir_sanity_check_interference_graph(interference_graph, false);
 
   LirEmitter lir_emitter = {
-      .lifetimes_count = ir_emitter.lifetimes.len,
       .interference_graph = interference_graph,
       .lifetimes = ir_emitter.lifetimes,
   };
