@@ -1591,22 +1591,22 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
       u64 row = node_idx.value;
       pg_bitfield_set(nodes_tombstones_bitfield, row, false);
 
-      for (u64 column = row + 1; column < graph_clone.nodes_count; column++) {
-        bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, column);
+      for (u64 col = row + 1; col < graph_clone.nodes_count; col++) {
+        bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, col);
         if (!edge) {
           continue;
         }
 
         // The node was connected in the original graph to its neighbor
-        // (`graph_clone(row,column)==1`).
+        // (`graph_clone(row,col)==1`).
         // When re-adding the node to the graph, we only connect it to
         // non-tombstoned neighbors.
-        if (pg_bitfield_get(nodes_tombstones_bitfield, column)) {
+        if (pg_bitfield_get(nodes_tombstones_bitfield, col)) {
           continue;
         }
 
         pg_adjacency_matrix_add_edge(&emitter->interference_graph.matrix, row,
-                                     column);
+                                     col);
       }
     }
 
@@ -1622,8 +1622,8 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
   // Sanity check: if two nodes interferred (had an edge) in the original
   // graph, then their assigned registers MUST be different.
   for (u64 row = 0; row < graph_clone.nodes_count; row++) {
-    for (u64 column = row + 1; column < graph_clone.nodes_count; column++) {
-      bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, column);
+    for (u64 col = row + 1; col < graph_clone.nodes_count; col++) {
+      bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, col);
       if (!edge) {
         continue;
       }
@@ -1636,7 +1636,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
       MemoryLocation node_mem_loc = PG_SLICE_AT(
           emitter->interference_graph.memory_locations, node_mem_loc_idx.value);
 
-      InterferenceNodeIndex neighbor_idx = {(u32)column};
+      InterferenceNodeIndex neighbor_idx = {(u32)col};
       MemoryLocationIndex neighbor_mem_loc_idx =
           memory_locations_find_by_node_index(
               emitter->interference_graph.memory_locations, neighbor_idx);
