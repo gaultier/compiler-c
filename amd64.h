@@ -1587,7 +1587,10 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
 
     // Add the node (row) back to the graph.
     {
+
       u64 row = node_idx.value;
+      pg_bitfield_set(nodes_tombstones_bitfield, row, false);
+
       for (u64 column = row + 1; column < graph_clone.nodes_count; column++) {
         bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, column);
         if (!edge) {
@@ -1595,22 +1598,15 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
         }
 
         // The node was connected in the original graph to its neighbor
-        // (`graph_clone(row,column)==1`). If the stack contains the neighbor,
-        // that means the current graph does not, so no edge should be inserted
-        // back.
-        bool neighbor_found = false;
-        for (u64 k = 0; k < stack.len; k++) {
-          InterferenceNodeIndex it = PG_SLICE_AT(stack, k);
-          if (it.value == column) {
-            neighbor_found = true;
-            break;
-          }
+        // (`graph_clone(row,column)==1`).
+        // When re-adding the node to the graph, we only connect it to
+        // non-tombstoned neighbors.
+        if (pg_bitfield_get(nodes_tombstones_bitfield, column)) {
+          continue;
         }
 
-        if (!neighbor_found) {
-          pg_adjacency_matrix_add_edge(&emitter->interference_graph.matrix, row,
-                                       column);
-        }
+        pg_adjacency_matrix_add_edge(&emitter->interference_graph.matrix, row,
+                                     column);
       }
     }
 
