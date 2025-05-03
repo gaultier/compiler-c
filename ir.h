@@ -150,8 +150,6 @@ static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn lifetimes,
 static void ir_var_lifetime_add(IrVarLifetimeDyn *lifetimes, IrVar var,
                                 IrInstructionIndex ir_ins_idx,
                                 PgAllocator *allocator) {
-  ir_ins_idx.value += 1;
-
   *PG_DYN_PUSH(lifetimes, allocator) = (IrVarLifetime){
       .var = var,
       .start = ir_ins_idx,
