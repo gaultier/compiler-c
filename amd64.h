@@ -1402,11 +1402,7 @@ amd64_color_assign_register(InterferenceGraph *graph,
 }
 
 [[maybe_unused]] [[nodiscard]]
-static u32 amd64_reserve_stack_slot_for_virt_reg(Amd64Emitter *emitter,
-                                                 VirtualRegister virt_reg,
-                                                 u32 slot_size) {
-  (void)virt_reg;
-
+static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
   emitter->rbp_offset += slot_size;
   emitter->rbp_max_offset =
       PG_MAX(emitter->rbp_max_offset, emitter->rbp_offset);
@@ -1432,6 +1428,74 @@ amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
 }
 #endif
 
+// TODO: Better strategy to pick which virtual registers to spill.
+// For now we simply spill them all if they have more neighbors than there are
+// GPRs, on a 'first encounter' basis.
+static void amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
+                                                       PgAllocator *allocator) {
+  PG_ASSERT(!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix));
+
+  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
+       row++) {
+    u64 neighbors_count = pg_adjacency_matrix_count_neighbors(
+        emitter->interference_graph.matrix, row);
+
+    if (neighbors_count < amd64_register_allocator_gprs_slice.len) {
+      continue;
+    }
+
+    // Need to spill.
+    u32 rbp_offset = amd64_reserve_stack_slot(emitter, sizeof(u64) /*FIXME*/);
+
+#if 0
+    IrVar var = PG_SLICE_AT(emitter->lir_emitter->lifetimes, row).var;
+    PG_ASSERT(var.id.value);
+
+    VarVirtualRegisterIndex var_virt_reg_idx =
+        var_virtual_registers_find_by_var(
+            emitter->lir_emitter->var_virtual_registers, var);
+    PG_ASSERT(-1U != var_virt_reg_idx.value);
+
+    VarVirtualRegister var_virt_reg = PG_SLICE_AT(
+        emitter->lir_emitter->var_virtual_registers, var_virt_reg_idx.value);
+#endif
+
+    Amd64Instruction ins_load = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .origin = {.synthetic = true},
+        .lhs =
+            {
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                .reg = amd64_spill_registers[0], // TODO: mark it as used?
+            },
+        .rhs =
+            {
+                // FIXME
+                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                .immediate = 99,
+            },
+    };
+
+    Amd64Instruction ins_store = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .origin = {.synthetic = true},
+        .lhs =
+            {
+                .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+                .effective_address =
+                    {
+                        .base = amd64_rbp,
+                        .displacement = (i32)rbp_offset,
+                    },
+            },
+        .rhs = ins_load.lhs,
+    };
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
+  }
+}
+
 // Assign a color (i.e. unique physical register) to each node in the graph
 // so that no two adjacent nodes have the same color.
 // Meaning that if two variables interfere, they are assigned a different
@@ -1455,13 +1519,8 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
 
   for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
        row++) {
-    u64 neighbors_count = 0;
-    for (u64 column = row + 1;
-         column < emitter->interference_graph.matrix.nodes_count; column++) {
-      bool edge = pg_adjacency_matrix_has_edge(
-          emitter->interference_graph.matrix, row, column);
-      neighbors_count += edge;
-    }
+    u64 neighbors_count = pg_adjacency_matrix_count_neighbors(
+        emitter->interference_graph.matrix, row);
 
     // TODO: Addressable virtual registers must be spilled.
     if (neighbors_count < amd64_register_allocator_gprs_slice.len) {
@@ -1472,7 +1531,11 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
 
   if (!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix)) {
-    PG_ASSERT(0 && "todo: spill");
+    printf("\n============\n");
+    lir_print_interference_graph(emitter->interference_graph,
+                                 emitter->lir_emitter->lifetimes);
+
+    amd64_color_spill_remaining_nodes_in_graph(emitter, allocator);
   }
 
 #if 0
