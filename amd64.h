@@ -357,9 +357,10 @@ static void amd64_print_memory_locations(MemoryLocationDyn memory_locations,
       amd64_print_register(mem_loc.reg);
       break;
     case MEMORY_LOCATION_KIND_STACK: {
+      printf("[");
       amd64_print_register(amd64_rbp);
       i32 offset = mem_loc.base_pointer_offset;
-      printf("%" PRIi32, offset);
+      printf("-%" PRIi32 "]", offset);
     } break;
 #if 0
     case MEMORY_LOCATION_KIND_MEMORY:
