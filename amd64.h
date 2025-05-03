@@ -1533,8 +1533,8 @@ if (node_indices_spill.len > 0) {
     }
 
     // Pop the first node from the stack.
-    InterferenceNodeIndex node_idx = PG_SLICE_AT(stack, 0);
-    PG_DYN_SWAP_REMOVE(&stack, 0);
+    InterferenceNodeIndex node_idx = PG_SLICE_LAST(stack);
+    stack.len -= 1;
 
     LirVirtualRegisterConstraint constraint =
         PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
