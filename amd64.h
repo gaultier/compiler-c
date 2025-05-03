@@ -1575,6 +1575,10 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
                                     var_virt_reg.virt_reg_idx, constraint);
     PG_ASSERT(reg.value);
   }
+
+  // TODO: Sanity check: if two nodes interferred (had an edge) in the original
+  // graph, then their assigned registers MUST be different.
+
   return (InterferenceNodeIndexSlice){0};
 }
 
