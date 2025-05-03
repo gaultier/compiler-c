@@ -1572,7 +1572,6 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
 
     // Add the node back to the graph.
     {
-
       u64 row = node_idx.value;
       pg_bitfield_set(nodes_tombstones_bitfield, row, false);
 
@@ -1582,9 +1581,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
           continue;
         }
 
-        // The node was connected in the original graph to its neighbor
-        // (`graph_clone(row,col)==1`).
-        // When re-adding the node to the graph, we only connect it to
+        // The node was originally connected in the original graph to its
+        // neighbor. When re-adding the node to the graph, we only connect it to
         // non-tombstoned neighbors.
         if (pg_bitfield_get(nodes_tombstones_bitfield, col)) {
           continue;
