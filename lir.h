@@ -29,7 +29,9 @@ typedef enum {
   MEMORY_LOCATION_KIND_NONE,
   MEMORY_LOCATION_KIND_REGISTER,
   MEMORY_LOCATION_KIND_STACK,
-  // MEMORY_LOCATION_KIND_MEMORY,
+#if 0
+  MEMORY_LOCATION_KIND_MEMORY,
+#endif
 } MemoryLocationKind;
 
 // On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
@@ -67,13 +69,23 @@ typedef struct {
 } VirtualRegisterIndex;
 
 typedef struct {
+  u32 value;
+} InterferenceNodeIndex;
+
+typedef struct {
   MemoryLocationKind kind;
   union {
     Register reg;
     i32 base_pointer_offset;
-    // u64 memory_address;
+#if 0
+     u64 memory_address;
+#endif
   };
   VirtualRegisterIndex virt_reg_idx;
+  InterferenceNodeIndex node_idx;
+#if 0
+  IrVar var;
+#endif
 } MemoryLocation;
 PG_SLICE(MemoryLocation) MemoryLocationSlice;
 PG_DYN(MemoryLocation) MemoryLocationDyn;
@@ -138,9 +150,6 @@ typedef struct {
 PG_SLICE(LirInstruction) LirInstructionSlice;
 PG_DYN(LirInstruction) LirInstructionDyn;
 
-typedef struct {
-  u32 value;
-} InterferenceNodeIndex;
 PG_SLICE(InterferenceNodeIndex) InterferenceNodeIndexSlice;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
@@ -179,6 +188,20 @@ static MemoryLocationIndex memory_locations_find_by_virtual_register_index(
     MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
 
     if (mem_loc.virt_reg_idx.value == virt_reg_idx.value) {
+      return (MemoryLocationIndex){(u32)i};
+    }
+  }
+  return (MemoryLocationIndex){-1U};
+}
+
+[[nodiscard]]
+static MemoryLocationIndex
+memory_locations_find_by_node_index(MemoryLocationDyn memory_locations,
+                                    InterferenceNodeIndex node_idx) {
+  for (u64 i = 0; i < memory_locations.len; i++) {
+    MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
+
+    if (mem_loc.node_idx.value == node_idx.value) {
       return (MemoryLocationIndex){(u32)i};
     }
   }
@@ -519,6 +542,8 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
   }
 
   graph.matrix = pg_adjacency_matrix_make(lifetimes.len, allocator);
+  PG_DYN_ENSURE_CAP(&graph.memory_locations, graph.matrix.nodes_count,
+                    allocator);
 
   for (u64 i = 0; i < lifetimes.len; i++) {
     IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
@@ -547,6 +572,11 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
 
       pg_adjacency_matrix_add_edge(&graph.matrix, i, j);
     }
+
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&graph.memory_locations) = (MemoryLocation){
+        .kind = MEMORY_LOCATION_KIND_NONE,
+        .node_idx = {(u32)i},
+    };
   }
 
   return graph;
