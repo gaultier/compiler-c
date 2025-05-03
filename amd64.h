@@ -1367,7 +1367,8 @@ amd64_color_assign_register(InterferenceGraph *graph,
     }
 
     MemoryLocationIndex neighbor_mem_loc_idx =
-        memory_locations_find_by_node_index(graph->memory_locations, node_idx);
+        memory_locations_find_by_node_index(graph->memory_locations,
+                                            (InterferenceNodeIndex){(u32)i});
     PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
 
     Register neighbor_reg = {0};
@@ -1617,6 +1618,7 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_graph(emitter->interference_graph,
                                  emitter->lir_emitter->lifetimes);
+    printf("\n------------ Memory locations ------------\n");
     amd64_print_memory_locations(emitter->interference_graph.memory_locations,
                                  emitter->lir_emitter->virtual_registers);
   }
