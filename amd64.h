@@ -1536,6 +1536,9 @@ if (node_indices_spill.len > 0) {
     InterferenceNodeIndex node_idx = PG_SLICE_LAST(stack);
     stack.len -= 1;
 
+    // Add the node back to the graph.
+    // TODO
+
     LirVirtualRegisterConstraint constraint =
         PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
             .constraint;
