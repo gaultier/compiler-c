@@ -1345,43 +1345,15 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   }
 }
 
-// TODO: constraints.
-[[maybe_unused]]
 static Register
 amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
   switch (constraint) {
   case LIR_VIRT_REG_CONSTRAINT_NONE: {
+    // TODO: Smarter free register selection.
     Register res = lir_gpr_pop_first_unset(&regs);
     PG_ASSERT(res.value && "todo: spill");
     return res;
   }
-#if 0
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5: {
-    Register res = PG_SLICE_AT(amd64_arch.syscall_calling_convention,
-                               constraint - LIR_VIRT_REG_CONSTRAINT_SYSCALL0);
-    if (!lir_gpr_is_set(regs, res.value)) {
-      return res;
-    }
-    PG_ASSERT(0 && "todo: spill");
-  } break;
-
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM: {
-    PG_ASSERT(amd64_arch.syscall_num.value == amd64_arch.syscall_ret.value);
-
-    Register res = amd64_arch.syscall_num;
-    if (!lir_gpr_is_set(regs, res.value)) {
-      return res;
-    }
-    PG_ASSERT(0 && "todo: spill");
-  } break;
-#endif
-
   case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER: {
     return amd64_arch.base_pointer;
   }
