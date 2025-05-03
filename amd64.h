@@ -1395,23 +1395,6 @@ static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
   return emitter->rbp_offset;
 }
 
-#if 0
-static void
-amd64_spill_interference_node(Amd64Emitter *emitter, InterferenceNode *node,
-                              VirtualRegisterSlice virtual_registers) {
-  PG_ASSERT(node->virt_reg_idx.value);
-
-  VirtualRegister virt_reg =
-      PG_SLICE_AT(virtual_registers, node->virt_reg_idx.value);
-
-  u32 rbp_offset = amd64_reserve_stack_slot_for_virt_reg(emitter, virt_reg,
-                                                         sizeof(u64) /*FIXME*/);
-
-  node->base_stack_pointer_offset = rbp_offset;
-  node->reg.value = 0;
-}
-#endif
-
 // TODO: Better strategy to pick which virtual registers to spill.
 // For now we simply spill them all if they have more neighbors than there are
 // GPRs, on a 'first encounter' basis.
@@ -1431,7 +1414,6 @@ static void amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
     // Need to spill.
     u32 rbp_offset = amd64_reserve_stack_slot(emitter, sizeof(u64) /*FIXME*/);
 
-#if 0
     IrVar var = PG_SLICE_AT(emitter->lir_emitter->lifetimes, row).var;
     PG_ASSERT(var.id.value);
 
@@ -1442,7 +1424,11 @@ static void amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
 
     VarVirtualRegister var_virt_reg = PG_SLICE_AT(
         emitter->lir_emitter->var_virtual_registers, var_virt_reg_idx.value);
-#endif
+    MemoryLocationIndex mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations,
+            var_virt_reg.virt_reg_idx);
+    PG_ASSERT(-1U != mem_loc_idx.value);
 
     Amd64Instruction ins_load = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
