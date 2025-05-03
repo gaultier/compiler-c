@@ -1472,14 +1472,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
   PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,
                     allocator);
 
-#if 0
-  InterferenceNodeIndexDyn node_indices_spill = {0};
-  PG_DYN_ENSURE_CAP(&node_indices_spill,
-                    emitter->interference_graph.matrix.nodes_count, allocator);
-#endif
-
   for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
-
        row++) {
     u64 neighbors_count = 0;
     for (u64 column = row + 1;
@@ -1502,18 +1495,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
   }
 
 #if 0
-
-if (node_indices_spill.len > 0) {
-  for (u64 i = 0; i < node_indices_spill.len; i++) {
-    InterferenceNodeIndex node_idx = PG_SLICE_AT(node_indices_spill, i);
-    InterferenceNode *node =
-        PG_SLICE_AT_PTR(&emitter->interference_graph, node_idx.value);
-    amd64_spill_interference_node(
-        emitter, node,
-        PG_DYN_SLICE(VirtualRegisterSlice,
-                     emitter->lir_emitter->virtual_registers));
-  }
-  return PG_DYN_SLICE(InterferenceNodeIndexSlice, node_indices_spill);
+  // TODO: Spill.
   // Potentially need to :
   // - insert loads/stores at the IR/LIR level (only if both operands
   // are effective addresses)
