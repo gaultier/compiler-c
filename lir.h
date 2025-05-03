@@ -29,7 +29,7 @@ typedef enum {
   MEMORY_LOCATION_KIND_NONE,
   MEMORY_LOCATION_KIND_REGISTER,
   MEMORY_LOCATION_KIND_STACK,
-  MEMORY_LOCATION_KIND_MEMORY,
+  // MEMORY_LOCATION_KIND_MEMORY,
 } MemoryLocationKind;
 
 // On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
@@ -63,13 +63,17 @@ PG_SLICE(VirtualRegister) VirtualRegisterSlice;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
 
 typedef struct {
+  u32 value;
+} VirtualRegisterIndex;
+
+typedef struct {
   MemoryLocationKind kind;
   union {
     Register reg;
     i32 base_pointer_offset;
-    u64 memory_address;
+    // u64 memory_address;
   };
-  VirtualRegister virt_reg;
+  VirtualRegisterIndex virt_reg_idx;
 } MemoryLocation;
 PG_SLICE(MemoryLocation) MemoryLocationSlice;
 PG_DYN(MemoryLocation) MemoryLocationDyn;
@@ -108,10 +112,6 @@ typedef enum {
 } LirOperandKind;
 
 typedef struct {
-  u32 value;
-} VirtualRegisterIndex;
-
-typedef struct {
   LirOperandKind kind;
   union {
     VirtualRegisterIndex virt_reg_idx;
@@ -145,22 +145,12 @@ PG_SLICE(InterferenceNodeIndex) InterferenceNodeIndexSlice;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
 typedef struct {
-  VirtualRegisterIndex virt_reg_idx;
-  Register reg;
-} VirtualRegisterRegister;
-PG_DYN(VirtualRegisterRegister) VirtualRegisterRegisterDyn;
-
-typedef struct {
-  VirtualRegisterRegisterDyn virt_reg_reg;
+  MemoryLocationDyn memory_locations;
   // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
   // between i and j), stored as a bitfield of the right-upper half (without the
   // diagonal).
   PgAdjacencyMatrix matrix;
 } InterferenceGraph;
-
-typedef struct {
-  u32 value;
-} VirtualRegisterRegisterIndex;
 
 typedef struct {
   IrVar var;
@@ -183,17 +173,16 @@ typedef struct {
 } LirEmitter;
 
 [[nodiscard]]
-static VirtualRegisterRegisterIndex
-virtual_registers_registers_find_by_virtual_register_index(
-    VirtualRegisterRegisterDyn virt_reg_regs,
-    VirtualRegisterIndex virt_reg_idx) {
-  for (u64 i = 0; i < virt_reg_regs.len; i++) {
-    if (PG_SLICE_AT(virt_reg_regs, i).virt_reg_idx.value ==
-        virt_reg_idx.value) {
-      return (VirtualRegisterRegisterIndex){(u32)i};
+static MemoryLocationIndex memory_locations_find_by_virtual_register_index(
+    MemoryLocationDyn memory_locations, VirtualRegisterIndex virt_reg_idx) {
+  for (u64 i = 0; i < memory_locations.len; i++) {
+    MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
+
+    if (mem_loc.virt_reg_idx.value == virt_reg_idx.value) {
+      return (MemoryLocationIndex){(u32)i};
     }
   }
-  return (VirtualRegisterRegisterIndex){-1U};
+  return (MemoryLocationIndex){-1U};
 }
 
 static void lir_gpr_set_add(GprSet *set, u32 val) {
@@ -489,9 +478,9 @@ static void lir_print_interference_graph(InterferenceGraph graph,
 
 static void lir_sanity_check_interference_graph(InterferenceGraph graph,
                                                 bool colored) {
-  PG_ASSERT(graph.virt_reg_reg.len <= graph.matrix.nodes_count);
+  PG_ASSERT(graph.memory_locations.len <= graph.matrix.nodes_count);
   if (colored) {
-    PG_ASSERT(graph.virt_reg_reg.len == graph.matrix.nodes_count);
+    PG_ASSERT(graph.memory_locations.len == graph.matrix.nodes_count);
   }
   PG_ASSERT(graph.matrix.bitfield_len <= graph.matrix.bitfield.len);
 
@@ -500,9 +489,19 @@ static void lir_sanity_check_interference_graph(InterferenceGraph graph,
   }
 
   if (colored) {
-    for (u64 i = 0; i < graph.virt_reg_reg.len; i++) {
-      VirtualRegisterRegister virt_reg_reg = PG_SLICE_AT(graph.virt_reg_reg, i);
-      PG_ASSERT(virt_reg_reg.reg.value);
+    for (u64 i = 0; i < graph.memory_locations.len; i++) {
+      MemoryLocation mem_loc = PG_SLICE_AT(graph.memory_locations, i);
+      switch (mem_loc.kind) {
+      case MEMORY_LOCATION_KIND_REGISTER:
+        PG_ASSERT(mem_loc.reg.value);
+        break;
+      case MEMORY_LOCATION_KIND_STACK:
+        PG_ASSERT(mem_loc.base_pointer_offset != 0);
+        break;
+      case MEMORY_LOCATION_KIND_NONE:
+      default:
+        PG_ASSERT(0);
+      }
     }
   }
 

@@ -341,39 +341,35 @@ static void amd64_print_operand(Amd64Operand operand) {
   }
 }
 
-#if 0
-static void amd64_print_var_to_memory_location(
-    VarToMemoryLocationDyn var_to_memory_location) {
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation var_to_mem_loc = PG_SLICE_AT(var_to_memory_location, i);
-    printf("; ");
-    ir_print_var(var_to_mem_loc.var);
+static void amd64_print_memory_locations(MemoryLocationDyn memory_locations,
+                                         VirtualRegisterDyn virtual_registers) {
+  for (u64 i = 0; i < memory_locations.len; i++) {
+    MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
+    lir_print_virtual_register(mem_loc.virt_reg_idx, virtual_registers);
     printf(": ");
-    for (u64 j = 0; j < var_to_mem_loc.locations.len; j++) {
-      MemoryLocation loc = PG_SLICE_AT(var_to_mem_loc.locations, j);
-      switch (loc.kind) {
-      case MEMORY_LOCATION_KIND_REGISTER:
-        amd64_print_register(loc.reg);
-        break;
-      case MEMORY_LOCATION_KIND_STACK: {
-        amd64_print_register(amd64_rbp);
-        i32 offset = loc.base_pointer_offset;
-        printf("%" PRIi32, offset);
-      } break;
-      case MEMORY_LOCATION_KIND_MEMORY:
-        printf("%#lx", loc.memory_address);
-        break;
-      case MEMORY_LOCATION_KIND_NONE:
-      default:
-        PG_ASSERT(0);
-      }
 
-      printf(" ");
+    switch (mem_loc.kind) {
+    case MEMORY_LOCATION_KIND_REGISTER:
+      amd64_print_register(mem_loc.reg);
+      break;
+    case MEMORY_LOCATION_KIND_STACK: {
+      amd64_print_register(amd64_rbp);
+      i32 offset = mem_loc.base_pointer_offset;
+      printf("%" PRIi32, offset);
+    } break;
+#if 0
+    case MEMORY_LOCATION_KIND_MEMORY:
+      printf("%#lx", loc.memory_address);
+      break;
+#endif
+    case MEMORY_LOCATION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
     }
+
     printf("\n");
   }
 }
-#endif
 
 static void amd64_print_instructions(Amd64InstructionSlice instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
@@ -461,18 +457,6 @@ static void amd64_print_section(Amd64Section section) {
   printf(":\n");
 
   amd64_print_instructions(section.instructions);
-}
-
-static void
-amd64_print_virtual_register_registers(VirtualRegisterRegisterDyn virt_reg_regs,
-                                       VirtualRegisterDyn virtual_registers) {
-  for (u64 i = 0; i < virt_reg_regs.len; i++) {
-    VirtualRegisterRegister virt_reg_reg = PG_SLICE_AT(virt_reg_regs, i);
-    lir_print_virtual_register(virt_reg_reg.virt_reg_idx, virtual_registers);
-    printf(": ");
-    amd64_print_register(virt_reg_reg.reg);
-    printf("\n");
-  }
 }
 
 [[nodiscard]]
@@ -1136,19 +1120,19 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
-    VirtualRegisterRegisterIndex virt_reg_reg_idx =
-        virtual_registers_registers_find_by_virtual_register_index(
-            emitter->interference_graph.virt_reg_reg, lir_op.virt_reg_idx);
-    PG_ASSERT(-1U != virt_reg_reg_idx.value);
+    MemoryLocationIndex mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations, lir_op.virt_reg_idx);
+    PG_ASSERT(-1U != mem_loc_idx.value);
 
-    Register reg = PG_SLICE_AT(emitter->interference_graph.virt_reg_reg,
-                               virt_reg_reg_idx.value)
-                       .reg;
-    PG_ASSERT(reg.value);
+    MemoryLocation mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, mem_loc_idx.value);
+    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
+    PG_ASSERT(mem_loc.reg.value);
 
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = reg,
+        .reg = mem_loc.reg,
     };
 #if 0
     InterferenceNode node =
@@ -1379,23 +1363,23 @@ amd64_color_assign_register(InterferenceGraph *graph,
       continue;
     }
 
-    VirtualRegisterRegisterIndex neighbor_virt_reg_reg_idx =
-        virtual_registers_registers_find_by_virtual_register_index(
-            graph->virt_reg_reg, (VirtualRegisterIndex){(u32)i});
-    PG_ASSERT(-1U != neighbor_virt_reg_reg_idx.value);
+    MemoryLocationIndex neighbor_mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            graph->memory_locations, (VirtualRegisterIndex){(u32)i});
+    PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
 
     Register neighbor_reg =
-        PG_SLICE_AT(graph->virt_reg_reg, neighbor_virt_reg_reg_idx.value).reg;
+        PG_SLICE_AT(graph->memory_locations, neighbor_mem_loc_idx.value).reg;
     PG_ASSERT(neighbor_reg.value <=
               PG_SLICE_LAST(amd64_register_allocator_gprs_slice).value);
     lir_gpr_set_add(&neighbor_colors, neighbor_reg.value - 1);
   }
   Register res = amd64_get_free_register(neighbor_colors, constraint);
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&graph->virt_reg_reg) =
-      (VirtualRegisterRegister){
-          .virt_reg_idx = virt_reg_idx,
-          .reg = res,
-      };
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&graph->memory_locations) = (MemoryLocation){
+      .kind = MEMORY_LOCATION_KIND_REGISTER,
+      .virt_reg_idx = virt_reg_idx,
+      .reg = res,
+  };
 
   PG_ASSERT(res.value);
   return res;
@@ -1507,7 +1491,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     return (InterferenceNodeIndexSlice){0};
   }
 
-  PG_DYN_ENSURE_CAP(&emitter->interference_graph.virt_reg_reg,
+  PG_DYN_ENSURE_CAP(&emitter->interference_graph.memory_locations,
                     emitter->interference_graph.matrix.nodes_count, allocator);
 
   InterferenceNodeIndexDyn stack = {0};
@@ -1649,9 +1633,8 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_graph(emitter->interference_graph,
                                  emitter->lir_emitter->lifetimes);
-    amd64_print_virtual_register_registers(
-        emitter->interference_graph.virt_reg_reg,
-        emitter->lir_emitter->virtual_registers);
+    amd64_print_memory_locations(emitter->interference_graph.memory_locations,
+                                 emitter->lir_emitter->virtual_registers);
   }
   lir_sanity_check_interference_graph(emitter->interference_graph, true);
 
