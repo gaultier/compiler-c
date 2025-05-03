@@ -1517,18 +1517,17 @@ static void amd64_color_spill_remaining_nodes_in_graph(
 // so that no two adjacent nodes have the same color.
 // Meaning that if two variables interfere, they are assigned a different
 // physical register.
-[[nodiscard]]
-static InterferenceNodeIndexSlice
-amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
+
+static void amd64_color_interference_graph(Amd64Emitter *emitter,
+                                           PgAllocator *allocator) {
   if (0 == emitter->interference_graph.matrix.nodes_count) {
-    return (InterferenceNodeIndexSlice){0};
+    return;
   }
 
   InterferenceNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,
                     allocator);
 
-  // Bitfield.
   PgString nodes_tombstones_bitfield = pg_string_make(
       pg_div_ceil(emitter->interference_graph.matrix.nodes_count, 8),
       allocator);
@@ -1560,20 +1559,6 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     amd64_color_spill_remaining_nodes_in_graph(
         emitter, &stack, nodes_tombstones_bitfield, allocator);
   }
-
-#if 0
-  // TODO: Spill.
-  // Potentially need to :
-  // - insert loads/stores at the IR/LIR level (only if both operands
-  // are effective addresses)
-  // - recompute lifetimes and interference graph
-  // - rerun the coloring.
-  //
-  // E.g.: `mov [rbp-32], [rbp-24]` =>
-  // `mov rax, qword ptr [rbp-24]; mov qword ptr [rbp-32], rax`
-  // But that is detected in the LIR -> amd64 function.
-}
-#endif
 
   u64 stack_len = stack.len;
   for (u64 _i = 0; _i < stack_len; _i++) {
@@ -1651,8 +1636,6 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
       }
     }
   }
-
-  return (InterferenceNodeIndexSlice){0};
 }
 
 [[nodiscard]]
@@ -1676,11 +1659,7 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_sub;
   u64 stack_sub_instruction_idx = emitter->instructions.len - 1;
 
-  InterferenceNodeIndexSlice node_indices_spilled =
-      amd64_color_interference_graph(emitter, allocator);
-  if (node_indices_spilled.len > 0) {
-    return node_indices_spilled;
-  }
+  amd64_color_interference_graph(emitter, allocator);
 
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
