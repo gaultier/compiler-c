@@ -192,6 +192,28 @@ int main(int argc, char *argv[]) {
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
 
+  // Fill Memory locations will all of the required information.
+  for (u64 i = 0; i < lir_emitter.lifetimes.len; i++) {
+    IrVarLifetime lifetime = PG_SLICE_AT(lir_emitter.lifetimes, i);
+
+    MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
+        interference_graph.memory_locations, (InterferenceNodeIndex){(u32)i});
+    PG_ASSERT(-1U != mem_loc_idx.value);
+
+    VarVirtualRegisterIndex var_virt_reg_idx =
+        var_virtual_registers_find_by_var(lir_emitter.var_virtual_registers,
+                                          lifetime.var);
+    PG_ASSERT(-1U != var_virt_reg_idx.value);
+
+    VarVirtualRegister var_virt_reg =
+        PG_SLICE_AT(lir_emitter.var_virtual_registers, var_virt_reg_idx.value);
+
+    MemoryLocation *mem_loc = PG_SLICE_AT_PTR(
+        &interference_graph.memory_locations, mem_loc_idx.value);
+    mem_loc->virt_reg_idx = var_virt_reg.virt_reg_idx;
+    mem_loc->var = var_virt_reg.var;
+  }
+
   Amd64Emitter amd64_emitter = {
       .interference_graph = interference_graph,
       .lir_emitter = &lir_emitter,

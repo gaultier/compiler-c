@@ -83,9 +83,7 @@ typedef struct {
   };
   VirtualRegisterIndex virt_reg_idx;
   InterferenceNodeIndex node_idx;
-#if 0
   IrVar var;
-#endif
 } MemoryLocation;
 PG_SLICE(MemoryLocation) MemoryLocationSlice;
 PG_DYN(MemoryLocation) MemoryLocationDyn;

@@ -345,8 +345,12 @@ static void amd64_print_memory_locations(MemoryLocationDyn memory_locations,
                                          VirtualRegisterDyn virtual_registers) {
   for (u64 i = 0; i < memory_locations.len; i++) {
     MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
+    printf("var=");
+    ir_print_var(mem_loc.var);
+    printf(" virt_reg=");
     lir_print_virtual_register(mem_loc.virt_reg_idx, virtual_registers);
-    printf(": ");
+    printf(" node_idx=%u ", mem_loc.node_idx.value);
+    printf(" mem_loc=");
 
     switch (mem_loc.kind) {
     case MEMORY_LOCATION_KIND_REGISTER:
