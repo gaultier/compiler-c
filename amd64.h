@@ -1504,6 +1504,8 @@ static void amd64_color_spill_remaining_nodes_in_graph(
         .rhs = ins_load.lhs,
     };
 
+    // FIXME: Should not be 'push' (at the end) but somwhere in the middle.
+    // FIXME: The original LIR should be removed.
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
 
