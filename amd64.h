@@ -1585,7 +1585,7 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     InterferenceNodeIndex node_idx = PG_SLICE_LAST(stack);
     stack.len -= 1;
 
-    // Add the node (row) back to the graph.
+    // Add the node back to the graph.
     {
 
       u64 row = node_idx.value;
@@ -1619,8 +1619,38 @@ amd64_color_interference_graph(Amd64Emitter *emitter, PgAllocator *allocator) {
     PG_ASSERT(reg.value);
   }
 
-  // TODO: Sanity check: if two nodes interferred (had an edge) in the original
+  // Sanity check: if two nodes interferred (had an edge) in the original
   // graph, then their assigned registers MUST be different.
+  for (u64 row = 0; row < graph_clone.nodes_count; row++) {
+    for (u64 column = row + 1; column < graph_clone.nodes_count; column++) {
+      bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, column);
+      if (!edge) {
+        continue;
+      }
+
+      InterferenceNodeIndex node_idx = {(u32)row};
+      MemoryLocationIndex node_mem_loc_idx =
+          memory_locations_find_by_node_index(
+              emitter->interference_graph.memory_locations, node_idx);
+      PG_ASSERT(-1U != node_mem_loc_idx.value);
+      MemoryLocation node_mem_loc = PG_SLICE_AT(
+          emitter->interference_graph.memory_locations, node_mem_loc_idx.value);
+
+      InterferenceNodeIndex neighbor_idx = {(u32)column};
+      MemoryLocationIndex neighbor_mem_loc_idx =
+          memory_locations_find_by_node_index(
+              emitter->interference_graph.memory_locations, neighbor_idx);
+      PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
+      MemoryLocation neighbor_mem_loc =
+          PG_SLICE_AT(emitter->interference_graph.memory_locations,
+                      neighbor_mem_loc_idx.value);
+
+      if (MEMORY_LOCATION_KIND_REGISTER == node_mem_loc.kind &&
+          MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
+        PG_ASSERT(node_mem_loc.reg.value != neighbor_mem_loc.reg.value);
+      }
+    }
+  }
 
   return (InterferenceNodeIndexSlice){0};
 }
