@@ -1132,13 +1132,31 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
     MemoryLocation mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, mem_loc_idx.value);
-    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
-    PG_ASSERT(mem_loc.reg.value);
+    switch (mem_loc.kind) {
+    case MEMORY_LOCATION_KIND_REGISTER: {
+      PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
+      PG_ASSERT(mem_loc.reg.value);
 
-    return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_REGISTER,
-        .reg = mem_loc.reg,
-    };
+      return (Amd64Operand){
+          .kind = AMD64_OPERAND_KIND_REGISTER,
+          .reg = mem_loc.reg,
+      };
+    }
+    case MEMORY_LOCATION_KIND_STACK: {
+      PG_ASSERT(mem_loc.base_pointer_offset);
+      return (Amd64Operand){
+          .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+          .effective_address =
+              {
+                  .base = amd64_rbp,
+                  .displacement = -mem_loc.base_pointer_offset,
+              },
+      };
+    }
+    case MEMORY_LOCATION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
 #if 0
     InterferenceNode node =
         PG_SLICE_AT(emitter->interference_nodes, node_idx.value);
@@ -1480,7 +1498,7 @@ static void amd64_color_spill_remaining_nodes_in_graph(
                 .effective_address =
                     {
                         .base = amd64_rbp,
-                        .displacement = (i32)rbp_offset,
+                        .displacement = -(i32)rbp_offset,
                     },
             },
         .rhs = ins_load.lhs,
