@@ -226,7 +226,6 @@ typedef struct {
   Amd64InstructionDyn instructions;
   InterferenceGraph interference_graph;
   LirEmitter *lir_emitter;
-  IrVarLifetimeDyn lifetimes;
 } Amd64Emitter;
 
 static void amd64_print_register(Register reg) {
@@ -1603,7 +1602,7 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_graph(emitter->interference_graph,
-                                 emitter->lifetimes);
+                                 emitter->lir_emitter->lifetimes);
     amd64_print_virtual_register_registers(
         emitter->interference_graph.virt_reg_reg,
         emitter->lir_emitter->virtual_registers);

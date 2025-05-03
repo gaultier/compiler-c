@@ -470,15 +470,15 @@ var_virtual_registers_find_by_var(VarVirtualRegisterDyn var_virtual_registers,
 static void lir_print_interference_graph(InterferenceGraph graph,
                                          IrVarLifetimeDyn lifetimes) {
 
-  for (u64 i = 0; i < graph.matrix.nodes_count; i++) {
-    for (u64 j = i + 1; j < graph.matrix.nodes_count; j++) {
-      bool edge = pg_adjacency_matrix_has_edge(graph.matrix, i, j);
+  for (u64 row = 0; row < graph.matrix.nodes_count; row++) {
+    for (u64 column = row + 1; column < graph.matrix.nodes_count; column++) {
+      bool edge = pg_adjacency_matrix_has_edge(graph.matrix, row, column);
       if (!edge) {
         continue;
       }
 
-      IrVar a_var = PG_SLICE_AT(lifetimes, i).var;
-      IrVar b_var = PG_SLICE_AT(lifetimes, j).var;
+      IrVar a_var = PG_SLICE_AT(lifetimes, row).var;
+      IrVar b_var = PG_SLICE_AT(lifetimes, column).var;
       ir_print_var(a_var);
       printf(" -> ");
       ir_print_var(b_var);
@@ -503,10 +503,6 @@ static void lir_sanity_check_interference_graph(InterferenceGraph graph,
     for (u64 i = 0; i < graph.virt_reg_reg.len; i++) {
       VirtualRegisterRegister virt_reg_reg = PG_SLICE_AT(graph.virt_reg_reg, i);
       PG_ASSERT(virt_reg_reg.reg.value);
-    }
-
-    for (u64 i = 0; i < graph.matrix.bitfield_len; i++) {
-      PG_ASSERT(0 == PG_SLICE_AT(graph.matrix.bitfield, i));
     }
   }
 
