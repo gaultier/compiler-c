@@ -1136,13 +1136,19 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
-    VarVirtualRegisterIndex var_virt_reg =
-        var_virtual_registers_find_by_virt_reg_idx(
-            emitter->lir_emitter->var_virtual_registers, lir_op.virt_reg_idx);
-    PG_ASSERT(-1U != var_virt_reg.value);
+    VirtualRegisterRegisterIndex virt_reg_reg_idx =
+        virtual_registers_registers_find_by_virtual_register_index(
+            emitter->interference_graph.virt_reg_reg, lir_op.virt_reg_idx);
+    PG_ASSERT(-1U != virt_reg_reg_idx.value);
+
+    Register reg = PG_SLICE_AT(emitter->interference_graph.virt_reg_reg,
+                               virt_reg_reg_idx.value)
+                       .reg;
+    PG_ASSERT(reg.value);
 
     return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_REGISTER, .reg = {0}, // FIXME
+        .kind = AMD64_OPERAND_KIND_REGISTER,
+        .reg = reg,
     };
 #if 0
     InterferenceNode node =

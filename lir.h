@@ -441,7 +441,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
 }
 #endif
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static VarVirtualRegisterIndex var_virtual_registers_find_by_virt_reg_idx(
     VarVirtualRegisterDyn var_virtual_registers, VirtualRegisterIndex needle) {
   for (u64 i = 0; i < var_virtual_registers.len; i++) {

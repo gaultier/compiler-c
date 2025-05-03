@@ -2,7 +2,7 @@ foo := 1
 
 bar := 2
 
-baz := foo + bar
-
 write_val := 478560413032
+baz := foo + bar + write_val
+
 write_val_len := 5
