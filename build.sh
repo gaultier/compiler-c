@@ -45,3 +45,5 @@ elif [ $# -eq 1 ]; then
 else
 	error "Too many arguments!"
 fi
+
+echo "Built: $(date)"

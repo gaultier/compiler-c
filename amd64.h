@@ -1387,6 +1387,9 @@ amd64_color_assign_register(InterferenceGraph *graph,
   PgAdjacencyMatrixNeighbor neighbor = {0};
   do {
     neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
+    if (!neighbor.has_value) {
+      break;
+    }
     MemoryLocationIndex neighbor_mem_loc_idx =
         memory_locations_find_by_node_index(
             graph->memory_locations,
@@ -1584,6 +1587,10 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
       PgAdjacencyMatrixNeighbor neighbor = {0};
       do {
         neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
+        if (!neighbor.has_value) {
+          break;
+        }
+
         // The node was originally connected in the original graph to its
         // neighbor. When re-adding the node to the graph, we only connect it
         // to non-tombstoned neighbors.
@@ -1591,8 +1598,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
           continue;
         }
 
-        pg_adjacency_matrix_add_edge(&emitter->interference_graph.matrix, row,
-                                     neighbor.col);
+        pg_adjacency_matrix_add_edge(&emitter->interference_graph.matrix,
+                                     neighbor.row, neighbor.col);
       } while (neighbor.has_value);
 
       LirVirtualRegisterConstraint constraint =
@@ -1614,8 +1621,11 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
     PgAdjacencyMatrixNeighbor neighbor = {0};
     do {
       neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
+      if (!neighbor.has_value) {
+        break;
+      }
 
-      InterferenceNodeIndex san_node_idx = {(u32)row};
+      InterferenceNodeIndex san_node_idx = {(u32)neighbor.row};
       MemoryLocationIndex node_mem_loc_idx =
           memory_locations_find_by_node_index(
               emitter->interference_graph.memory_locations, san_node_idx);

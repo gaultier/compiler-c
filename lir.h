@@ -481,14 +481,14 @@ static void lir_print_interference_graph(InterferenceGraph graph,
                                          IrVarLifetimeDyn lifetimes) {
 
   for (u64 row = 0; row < graph.matrix.nodes_count; row++) {
-    for (u64 column = row + 1; column < graph.matrix.nodes_count; column++) {
-      bool edge = pg_adjacency_matrix_has_edge(graph.matrix, row, column);
+    for (u64 col = 0; col < row; col++) {
+      bool edge = pg_adjacency_matrix_has_edge(graph.matrix, row, col);
       if (!edge) {
         continue;
       }
 
       IrVar a_var = PG_SLICE_AT(lifetimes, row).var;
-      IrVar b_var = PG_SLICE_AT(lifetimes, column).var;
+      IrVar b_var = PG_SLICE_AT(lifetimes, col).var;
       ir_print_var(a_var);
       printf(" -> ");
       ir_print_var(b_var);
@@ -568,7 +568,7 @@ lir_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
 
       // Interferes: add an edge between the two nodes.
 
-      pg_adjacency_matrix_add_edge(&graph.matrix, i, j);
+      pg_adjacency_matrix_add_edge(&graph.matrix, j, i);
     }
 
     *PG_DYN_PUSH_WITHIN_CAPACITY(&graph.memory_locations) = (MemoryLocation){
