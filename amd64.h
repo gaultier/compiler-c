@@ -1381,17 +1381,16 @@ amd64_color_assign_register(InterferenceGraph *graph,
       .set = 0,
   };
 
-  // FIXME(!!!): Review all for loops with row/col.
-  for (u64 col = node_idx.value + 1; col < graph->matrix.nodes_count; col++) {
-    bool edge =
-        pg_adjacency_matrix_has_edge(graph->matrix, node_idx.value, col);
-    if (!edge) {
-      continue;
-    }
+  PgAdjacencyMatrixNeighborIterator it =
+      pg_adjacency_matrix_make_neighbor_iterator(graph->matrix, node_idx.value);
 
+  PgAdjacencyMatrixNeighbor neighbor = {0};
+  do {
+    neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
     MemoryLocationIndex neighbor_mem_loc_idx =
-        memory_locations_find_by_node_index(graph->memory_locations,
-                                            (InterferenceNodeIndex){(u32)col});
+        memory_locations_find_by_node_index(
+            graph->memory_locations,
+            (InterferenceNodeIndex){(u32)neighbor.col});
     PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
 
     // If a neighbor already has an assigned register, add it to the set.
@@ -1405,9 +1404,12 @@ amd64_color_assign_register(InterferenceGraph *graph,
         lir_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg.value - 1);
       }
     }
-  }
+  } while (neighbor.has_value);
+
   Register res = amd64_get_free_register(neighbor_colors, constraint);
   PG_ASSERT(res.value);
+
+  // Update memory location.
 
   MemoryLocationIndex mem_loc_idx =
       memory_locations_find_by_node_index(graph->memory_locations, node_idx);
@@ -1575,51 +1577,53 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
       u64 row = node_idx.value;
       pg_bitfield_set(nodes_tombstones_bitfield, row, false);
 
-      for (u64 col = row + 1; col < graph_clone.nodes_count; col++) {
-        bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, col);
-        if (!edge) {
-          continue;
-        }
+      PgAdjacencyMatrixNeighborIterator it =
+          pg_adjacency_matrix_make_neighbor_iterator(graph_clone,
+                                                     node_idx.value);
 
+      PgAdjacencyMatrixNeighbor neighbor = {0};
+      do {
+        neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
         // The node was originally connected in the original graph to its
-        // neighbor. When re-adding the node to the graph, we only connect it to
-        // non-tombstoned neighbors.
-        if (pg_bitfield_get(nodes_tombstones_bitfield, col)) {
+        // neighbor. When re-adding the node to the graph, we only connect it
+        // to non-tombstoned neighbors.
+        if (pg_bitfield_get(nodes_tombstones_bitfield, neighbor.col)) {
           continue;
         }
 
         pg_adjacency_matrix_add_edge(&emitter->interference_graph.matrix, row,
-                                     col);
-      }
+                                     neighbor.col);
+      } while (neighbor.has_value);
+
+      LirVirtualRegisterConstraint constraint =
+          PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
+              .constraint;
+
+      Register reg = amd64_color_assign_register(&emitter->interference_graph,
+                                                 node_idx, constraint);
+      PG_ASSERT(reg.value);
     }
-
-    LirVirtualRegisterConstraint constraint =
-        PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
-            .constraint;
-
-    Register reg = amd64_color_assign_register(&emitter->interference_graph,
-                                               node_idx, constraint);
-    PG_ASSERT(reg.value);
   }
 
   // Sanity check: if two nodes interferred (had an edge) in the original
   // graph, then their assigned registers MUST be different.
   for (u64 row = 0; row < graph_clone.nodes_count; row++) {
-    for (u64 col = row + 1; col < graph_clone.nodes_count; col++) {
-      bool edge = pg_adjacency_matrix_has_edge(graph_clone, row, col);
-      if (!edge) {
-        continue;
-      }
+    PgAdjacencyMatrixNeighborIterator it =
+        pg_adjacency_matrix_make_neighbor_iterator(graph_clone, row);
 
-      InterferenceNodeIndex node_idx = {(u32)row};
+    PgAdjacencyMatrixNeighbor neighbor = {0};
+    do {
+      neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
+
+      InterferenceNodeIndex san_node_idx = {(u32)row};
       MemoryLocationIndex node_mem_loc_idx =
           memory_locations_find_by_node_index(
-              emitter->interference_graph.memory_locations, node_idx);
+              emitter->interference_graph.memory_locations, san_node_idx);
       PG_ASSERT(-1U != node_mem_loc_idx.value);
       MemoryLocation node_mem_loc = PG_SLICE_AT(
           emitter->interference_graph.memory_locations, node_mem_loc_idx.value);
 
-      InterferenceNodeIndex neighbor_idx = {(u32)col};
+      InterferenceNodeIndex neighbor_idx = {(u32)neighbor.col};
       MemoryLocationIndex neighbor_mem_loc_idx =
           memory_locations_find_by_node_index(
               emitter->interference_graph.memory_locations, neighbor_idx);
@@ -1632,7 +1636,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
           MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
         PG_ASSERT(node_mem_loc.reg.value != neighbor_mem_loc.reg.value);
       }
-    }
+
+    } while (neighbor.has_value);
   }
 }
 
