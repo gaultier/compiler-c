@@ -1620,6 +1620,13 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
     PgAdjacencyMatrixNeighborIterator it =
         pg_adjacency_matrix_make_neighbor_iterator(graph_clone, row);
 
+    InterferenceNodeIndex san_node_idx = {(u32)row};
+    MemoryLocationIndex node_mem_loc_idx = memory_locations_find_by_node_index(
+        emitter->interference_graph.memory_locations, san_node_idx);
+    PG_ASSERT(-1U != node_mem_loc_idx.value);
+    MemoryLocation node_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, node_mem_loc_idx.value);
+
     PgAdjacencyMatrixNeighbor neighbor = {0};
     do {
       neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
@@ -1627,15 +1634,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
         break;
       }
 
-      InterferenceNodeIndex san_node_idx = {(u32)neighbor.row};
-      MemoryLocationIndex node_mem_loc_idx =
-          memory_locations_find_by_node_index(
-              emitter->interference_graph.memory_locations, san_node_idx);
-      PG_ASSERT(-1U != node_mem_loc_idx.value);
-      MemoryLocation node_mem_loc = PG_SLICE_AT(
-          emitter->interference_graph.memory_locations, node_mem_loc_idx.value);
-
-      InterferenceNodeIndex neighbor_idx = {(u32)neighbor.col};
+      InterferenceNodeIndex neighbor_idx = {(u32)neighbor.row};
       MemoryLocationIndex neighbor_mem_loc_idx =
           memory_locations_find_by_node_index(
               emitter->interference_graph.memory_locations, neighbor_idx);
