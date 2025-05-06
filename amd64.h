@@ -1612,6 +1612,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
     }
   }
 
+  pg_adjacency_matrix_print(graph_clone);
+
   // Sanity check: if two nodes interferred (had an edge) in the original
   // graph, then their assigned registers MUST be different.
   for (u64 row = 0; row < graph_clone.nodes_count; row++) {
