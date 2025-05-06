@@ -105,6 +105,7 @@ typedef enum {
   LIR_INSTRUCTION_KIND_JUMP,
   LIR_INSTRUCTION_KIND_LABEL,
   LIR_INSTRUCTION_KIND_CMP,
+  LIR_INSTRUCTION_KIND_ADDRESS_OF,
 #if 0
   LIR_INSTRUCTION_KIND_SYSCALL,
 #endif
@@ -399,6 +400,9 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
       printf("jmp ");
       break;
     case LIR_INSTRUCTION_KIND_LABEL:
+      break;
+    case LIR_INSTRUCTION_KIND_ADDRESS_OF:
+      printf("address_of ");
       break;
     case LIR_INSTRUCTION_KIND_CMP:
       printf("cmp ");
@@ -1060,7 +1064,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(src_var_virt_reg_idx.value != res_virt_reg_idx.value);
 
     LirInstruction lir_ins = {
-        .kind = LIR_INSTRUCTION_KIND_MOV,
+        .kind = LIR_INSTRUCTION_KIND_ADDRESS_OF,
         .origin = ir_ins.origin,
     };
     LirOperand lhs_lir_op = {

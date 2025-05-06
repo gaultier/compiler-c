@@ -1493,6 +1493,54 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
   } break;
+  case LIR_INSTRUCTION_KIND_ADDRESS_OF: {
+    PG_ASSERT(2 == lir.operands.len);
+
+    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
+    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
+
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == rhs.kind);
+
+    MemoryLocationIndex lhs_mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
+    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
+    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
+
+    MemoryLocationIndex rhs_mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations, rhs.virt_reg_idx);
+    PG_ASSERT(-1U != rhs_mem_loc_idx.value);
+    MemoryLocation rhs_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, rhs_mem_loc_idx.value);
+
+    PG_ASSERT(MEMORY_LOCATION_KIND_STACK == rhs_mem_loc.kind);
+
+    Amd64Instruction ins_load = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .origin = {.synthetic = true},
+        .lhs =
+            {
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                // TODO: pick one of the spill registers?
+                .reg = amd64_spill_registers[0], // TODO: mark it as used?
+            },
+        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
+
+    Amd64Instruction ins_lea = {
+        .kind = AMD64_INSTRUCTION_KIND_LEA,
+        .rhs = ins_load.lhs,
+        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .origin = lir.origin,
+    };
+    PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins_lea.rhs.kind);
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_lea;
+
+  } break;
 
   case LIR_INSTRUCTION_KIND_NONE:
   default:
