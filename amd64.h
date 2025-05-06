@@ -1394,6 +1394,9 @@ amd64_color_assign_register(InterferenceGraph *graph,
     if (!neighbor.has_value) {
       break;
     }
+
+    PG_ASSERT(node_idx.value != neighbor.node);
+
     MemoryLocationIndex neighbor_mem_loc_idx =
         memory_locations_find_by_node_index(
             graph->memory_locations,
@@ -1583,8 +1586,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
 
     // Add the node back to the graph.
     {
-      u64 row = node_idx.value;
-      pg_bitfield_set(nodes_tombstones_bitfield, row, false);
+      pg_bitfield_set(nodes_tombstones_bitfield, node_idx.value, false);
 
       PgAdjacencyMatrixNeighborIterator it =
           pg_adjacency_matrix_make_neighbor_iterator(graph_clone,
@@ -1596,6 +1598,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
         if (!neighbor.has_value) {
           break;
         }
+        PG_ASSERT(node_idx.value != neighbor.node);
 
         // The node was originally connected in the original graph to its
         // neighbor. When re-adding the node to the graph, we only connect it
@@ -1641,6 +1644,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
       if (!neighbor.has_value) {
         break;
       }
+      PG_ASSERT(row != neighbor.node);
 
       InterferenceNodeIndex neighbor_idx = {(u32)neighbor.node};
       MemoryLocationIndex neighbor_mem_loc_idx =
