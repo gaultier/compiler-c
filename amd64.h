@@ -1376,6 +1376,10 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
 amd64_color_assign_register(InterferenceGraph *graph,
                             InterferenceNodeIndex node_idx,
                             LirVirtualRegisterConstraint constraint) {
+  printf("\n------amd64_color_assign_register %u-------\n", node_idx.value);
+  pg_adjacency_matrix_print(graph->matrix);
+  printf("\n-------------\n");
+
   GprSet neighbor_colors = {
       .len = amd64_register_allocator_gprs_slice.len,
       .set = 0,
@@ -1565,6 +1569,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
         emitter, &stack, nodes_tombstones_bitfield, allocator);
   }
 
+  PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
+
   u64 stack_len = stack.len;
   for (u64 _i = 0; _i < stack_len; _i++) {
     if (0 == stack.len) {
@@ -1612,7 +1618,9 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
     }
   }
 
+  printf("\n-------------\n");
   pg_adjacency_matrix_print(graph_clone);
+  printf("\n-------------\n");
 
   // Sanity check: if two nodes interferred (had an edge) in the original
   // graph, then their assigned registers MUST be different.
