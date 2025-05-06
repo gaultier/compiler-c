@@ -1661,8 +1661,6 @@ static void
 amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
                                            InterferenceNodeIndexDyn *stack,
                                            PgString nodes_tombstones_bitfield) {
-  PG_ASSERT(!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix));
-
   for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
        row++) {
     if (pg_bitfield_get(nodes_tombstones_bitfield, row)) {
@@ -1791,42 +1789,57 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
     }
   }
 
-  // Sanity check: if two nodes interferred (had an edge) in the original
-  // graph, then their assigned registers MUST be different.
+  // Sanity checks:
+  // - if two nodes interferred (had an edge) in the original graph,
+  //   then their assigned registers MUST be different.
+  // - if a virtual register is addressable, then it MUST be on the stack
   for (u64 row = 0; row < graph_clone.nodes_count; row++) {
     PgAdjacencyMatrixNeighborIterator it =
         pg_adjacency_matrix_make_neighbor_iterator(graph_clone, row);
 
-    InterferenceNodeIndex san_node_idx = {(u32)row};
+    InterferenceNodeIndex node_idx = {(u32)row};
     MemoryLocationIndex node_mem_loc_idx = memory_locations_find_by_node_index(
-        emitter->interference_graph.memory_locations, san_node_idx);
+        emitter->interference_graph.memory_locations, node_idx);
     PG_ASSERT(-1U != node_mem_loc_idx.value);
     MemoryLocation node_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, node_mem_loc_idx.value);
 
-    PgAdjacencyMatrixNeighbor neighbor = {0};
-    do {
-      neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
-      if (!neighbor.has_value) {
-        break;
+    // Interference check.
+    {
+      PgAdjacencyMatrixNeighbor neighbor = {0};
+      do {
+        neighbor = pg_adjacency_matrix_neighbor_iterator_next(&it);
+        if (!neighbor.has_value) {
+          break;
+        }
+        PG_ASSERT(row != neighbor.node);
+
+        InterferenceNodeIndex neighbor_idx = {(u32)neighbor.node};
+        MemoryLocationIndex neighbor_mem_loc_idx =
+            memory_locations_find_by_node_index(
+                emitter->interference_graph.memory_locations, neighbor_idx);
+        PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
+        MemoryLocation neighbor_mem_loc =
+            PG_SLICE_AT(emitter->interference_graph.memory_locations,
+                        neighbor_mem_loc_idx.value);
+
+        if (MEMORY_LOCATION_KIND_REGISTER == node_mem_loc.kind &&
+            MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
+          PG_ASSERT(node_mem_loc.reg.value != neighbor_mem_loc.reg.value);
+        }
+
+      } while (neighbor.has_value);
+    }
+
+    // Addressable check.
+    {
+      bool addressable = PG_SLICE_AT(emitter->lir_emitter->virtual_registers,
+                                     node_mem_loc.virt_reg_idx.value)
+                             .addressable;
+      if (addressable) {
+        PG_ASSERT(MEMORY_LOCATION_KIND_STACK == node_mem_loc.kind);
       }
-      PG_ASSERT(row != neighbor.node);
-
-      InterferenceNodeIndex neighbor_idx = {(u32)neighbor.node};
-      MemoryLocationIndex neighbor_mem_loc_idx =
-          memory_locations_find_by_node_index(
-              emitter->interference_graph.memory_locations, neighbor_idx);
-      PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
-      MemoryLocation neighbor_mem_loc =
-          PG_SLICE_AT(emitter->interference_graph.memory_locations,
-                      neighbor_mem_loc_idx.value);
-
-      if (MEMORY_LOCATION_KIND_REGISTER == node_mem_loc.kind &&
-          MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
-        PG_ASSERT(node_mem_loc.reg.value != neighbor_mem_loc.reg.value);
-      }
-
-    } while (neighbor.has_value);
+    }
   }
 }
 
