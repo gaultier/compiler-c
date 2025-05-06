@@ -1217,15 +1217,57 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_ADD,
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
+    MemoryLocationIndex lhs_mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
+    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
+    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
+
+    // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
+    if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
+      Amd64Instruction instruction = {
+          .kind = AMD64_INSTRUCTION_KIND_ADD,
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .origin = lir.origin,
+      };
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
+      return;
+    }
+
+    // Need to insert load/stores.
+
+    Amd64Instruction ins_load = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .origin = {.synthetic = true},
+        .lhs =
+            {
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                // TODO: pick one of the spill registers?
+                .reg = amd64_spill_registers[0], // TODO: mark it as used?
+            },
         .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
+
+    Amd64Instruction ins_add = {
+        .kind = AMD64_INSTRUCTION_KIND_ADD,
+        .origin = lir.origin,
+        .lhs = ins_load.lhs,
+        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_add;
+
+    Amd64Instruction ins_store = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
         .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .rhs = ins_load.lhs,
         .origin = lir.origin,
     };
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
-
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
   } break;
   case LIR_INSTRUCTION_KIND_SUB: {
     PG_ASSERT(2 == lir.operands.len);
@@ -1248,12 +1290,57 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
     MemoryLocationIndex lhs_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
             emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
     PG_ASSERT(-1U != lhs_mem_loc_idx.value);
     MemoryLocation lhs_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
+
+    // Easy case: `mov rax, 123`.
+    if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind &&
+        LIR_OPERAND_KIND_IMMEDIATE == rhs.kind) {
+      Amd64Instruction instruction = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .origin = lir.origin,
+      };
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
+      return;
+    }
+
+    // Need to use a spill register: `mov [rbp-8], 123` is not allowed.
+    // Need to transform it to a store: `mov r10, 123; mov [rbp-8], r10`.
+    if (MEMORY_LOCATION_KIND_REGISTER != lhs_mem_loc.kind &&
+        LIR_OPERAND_KIND_IMMEDIATE == rhs.kind) {
+      Amd64Instruction ins_load = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .origin = {.synthetic = true},
+          .lhs =
+              {
+                  .kind = AMD64_OPERAND_KIND_REGISTER,
+                  // TODO: pick one of the spill registers?
+                  .reg = amd64_spill_registers[0], // TODO: mark it as used?
+              },
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+      };
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
+
+      Amd64Instruction ins_store = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .rhs = ins_load.lhs,
+          .origin = lir.origin,
+      };
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
+      return;
+    }
+
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == rhs.kind);
 
     MemoryLocationIndex rhs_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
@@ -1262,13 +1349,13 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     MemoryLocation rhs_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, rhs_mem_loc_idx.value);
 
-    // Easy case.
+    // Easy case: at least one memory location is a register.
     if ((MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind ||
          MEMORY_LOCATION_KIND_REGISTER == rhs_mem_loc.kind)) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
           .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
           .origin = lir.origin,
       };
 
@@ -1292,14 +1379,14 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
 
-      Amd64Instruction instruction = {
+      Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
           .rhs = ins_load.lhs,
           .origin = lir.origin,
       };
 
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
       return;
     }
 
