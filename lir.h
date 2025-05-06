@@ -57,9 +57,6 @@ typedef struct {
   u32 value;
   LirVirtualRegisterConstraint constraint;
   bool addressable;
-#if 0
-   bool spilled;
-#endif
 } VirtualRegister;
 PG_SLICE(VirtualRegister) VirtualRegisterSlice;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
@@ -296,11 +293,7 @@ static void lir_print_virtual_register(VirtualRegisterIndex virt_reg_idx,
 
   printf("v%u{constraint=%s, addressable=%s}", virt_reg.value,
          lir_register_constraint_to_cstr(virt_reg.constraint),
-         virt_reg.addressable ? "true" : "false"
-#if 0 
-       ,  virt_reg.spilled ? "true" : "false"
-#endif
-  );
+         virt_reg.addressable ? "true" : "false");
 }
 
 static void lir_print_var_virtual_registers(LirEmitter emitter) {
