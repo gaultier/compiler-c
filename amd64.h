@@ -1397,7 +1397,7 @@ amd64_color_assign_register(InterferenceGraph *graph,
     MemoryLocationIndex neighbor_mem_loc_idx =
         memory_locations_find_by_node_index(
             graph->memory_locations,
-            (InterferenceNodeIndex){(u32)neighbor.col});
+            (InterferenceNodeIndex){(u32)neighbor.node});
     PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
 
     // If a neighbor already has an assigned register, add it to the set.
@@ -1600,7 +1600,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
         // The node was originally connected in the original graph to its
         // neighbor. When re-adding the node to the graph, we only connect it
         // to non-tombstoned neighbors.
-        if (pg_bitfield_get(nodes_tombstones_bitfield, neighbor.col)) {
+        if (pg_bitfield_get(nodes_tombstones_bitfield, neighbor.node)) {
           continue;
         }
 
@@ -1642,7 +1642,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
         break;
       }
 
-      InterferenceNodeIndex neighbor_idx = {(u32)neighbor.row};
+      InterferenceNodeIndex neighbor_idx = {(u32)neighbor.node};
       MemoryLocationIndex neighbor_mem_loc_idx =
           memory_locations_find_by_node_index(
               emitter->interference_graph.memory_locations, neighbor_idx);
