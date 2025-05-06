@@ -1248,14 +1248,80 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
-        .origin = lir.origin,
-    };
+    MemoryLocationIndex lhs_mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
+    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
+    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
+    MemoryLocationIndex rhs_mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations, rhs.virt_reg_idx);
+    PG_ASSERT(-1U != rhs_mem_loc_idx.value);
+    MemoryLocation rhs_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, rhs_mem_loc_idx.value);
+
+    // Easy case.
+    if ((MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind ||
+         MEMORY_LOCATION_KIND_REGISTER == rhs_mem_loc.kind)) {
+      Amd64Instruction instruction = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .origin = lir.origin,
+      };
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
+      return;
+    }
+
+    // Need to insert load/store instructions from/to stack/memory.
+
+    if (MEMORY_LOCATION_KIND_REGISTER != rhs_mem_loc.kind) {
+      Amd64Instruction ins_load = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .origin = {.synthetic = true},
+          .lhs =
+              {
+                  .kind = AMD64_OPERAND_KIND_REGISTER,
+                  // TODO: pick one of the spill registers?
+                  .reg = amd64_spill_registers[0], // TODO: mark it as used?
+              },
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+      };
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
+
+      Amd64Instruction instruction = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .rhs = ins_load.lhs,
+          .origin = lir.origin,
+      };
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = instruction;
+      return;
+    }
+
+    else if (MEMORY_LOCATION_KIND_REGISTER != lhs_mem_loc.kind) {
+      Amd64Instruction ins_store = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .origin = {.synthetic = true},
+          .lhs =
+              {
+                  .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+                  .effective_address =
+                      {
+                          .base = amd64_rbp,
+                          .displacement = -(i32)lhs_mem_loc.base_pointer_offset,
+                      },
+              },
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+      };
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
+    } else {
+      PG_ASSERT(0);
+    }
 
   } break;
 #if 0
@@ -1448,9 +1514,10 @@ static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
 // TODO: Better strategy to pick which virtual registers to spill.
 // For now we simply spill them all if they have more neighbors than there are
 // GPRs, on a 'first encounter' basis.
-static void amd64_color_spill_remaining_nodes_in_graph(
-    Amd64Emitter *emitter, InterferenceNodeIndexDyn *stack,
-    PgString nodes_tombstones_bitfield, PgAllocator *allocator) {
+static void
+amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
+                                           InterferenceNodeIndexDyn *stack,
+                                           PgString nodes_tombstones_bitfield) {
   PG_ASSERT(!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix));
 
   for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;) {
@@ -1484,42 +1551,6 @@ static void amd64_color_spill_remaining_nodes_in_graph(
       mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
       mem_loc->base_pointer_offset = (i32)rbp_offset;
     }
-
-    Amd64Instruction ins_load = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .origin = {.synthetic = true},
-        .lhs =
-            {
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = amd64_spill_registers[0], // TODO: mark it as used?
-            },
-        .rhs =
-            {
-                // FIXME
-                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                .immediate = 99,
-            },
-    };
-
-    Amd64Instruction ins_store = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .origin = {.synthetic = true},
-        .lhs =
-            {
-                .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
-                .effective_address =
-                    {
-                        .base = amd64_rbp,
-                        .displacement = -(i32)rbp_offset,
-                    },
-            },
-        .rhs = ins_load.lhs,
-    };
-
-    // FIXME: Should not be 'push' (at the end) but somwhere in the middle.
-    // FIXME: The original LIR should be removed.
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
 
     row++;
   }
@@ -1568,8 +1599,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
     lir_print_interference_graph(emitter->interference_graph,
                                  emitter->lir_emitter->lifetimes);
 
-    amd64_color_spill_remaining_nodes_in_graph(
-        emitter, &stack, nodes_tombstones_bitfield, allocator);
+    amd64_color_spill_remaining_nodes_in_graph(emitter, &stack,
+                                               nodes_tombstones_bitfield);
   }
 
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
