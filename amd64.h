@@ -1274,6 +1274,18 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
+
+    MemoryLocationIndex lhs_mem_loc_idx =
+        memory_locations_find_by_virtual_register_index(
+            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
+    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
+    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
+
+    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind &&
+              "todo: load/store");
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_SUB,
         .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
