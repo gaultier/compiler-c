@@ -1618,6 +1618,7 @@ amd64_color_assign_register(InterferenceGraph *graph,
     MemoryLocation *mem_loc =
         PG_SLICE_AT_PTR(&graph->memory_locations, mem_loc_idx.value);
     PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
+    PG_ASSERT(node_idx.value == mem_loc->node_idx.value);
 
     mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
     mem_loc->reg = res;
@@ -1637,7 +1638,6 @@ static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
 
 static void amd64_spill_node(Amd64Emitter *emitter,
                              InterferenceNodeIndex node_idx) {
-  u32 rbp_offset = amd64_reserve_stack_slot(emitter, sizeof(u64) /*FIXME*/);
 
   MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
       emitter->interference_graph.memory_locations, node_idx);
@@ -1645,7 +1645,11 @@ static void amd64_spill_node(Amd64Emitter *emitter,
   {
     MemoryLocation *mem_loc = PG_SLICE_AT_PTR(
         &emitter->interference_graph.memory_locations, mem_loc_idx.value);
+    PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
+    PG_ASSERT(node_idx.value == mem_loc->node_idx.value);
+
     mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
+    u32 rbp_offset = amd64_reserve_stack_slot(emitter, sizeof(u64) /*FIXME*/);
     mem_loc->base_pointer_offset = (i32)rbp_offset;
   }
 }
@@ -1659,9 +1663,9 @@ amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
                                            PgString nodes_tombstones_bitfield) {
   PG_ASSERT(!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix));
 
-  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;) {
+  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
+       row++) {
     if (pg_bitfield_get(nodes_tombstones_bitfield, row)) {
-      row++;
       continue;
     }
 
@@ -1680,8 +1684,6 @@ amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
 
     // Need to spill.
     amd64_spill_node(emitter, node_idx);
-
-    row++;
   }
 }
 
@@ -1726,9 +1728,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
     bool needs_spill =
         neighbors_count >= amd64_register_allocator_gprs_slice.len ||
         virt_reg_addressable;
-    if (needs_spill) {
-      amd64_spill_node(emitter, node_idx);
-    } else {
+    if (!needs_spill) {
       PG_ASSERT(stack.len < emitter->interference_graph.matrix.nodes_count);
 
       *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node_idx;
@@ -1739,10 +1739,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
   }
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
 
-  if (!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix)) {
-    amd64_color_spill_remaining_nodes_in_graph(emitter, &stack,
-                                               nodes_tombstones_bitfield);
-  }
+  amd64_color_spill_remaining_nodes_in_graph(emitter, &stack,
+                                             nodes_tombstones_bitfield);
 
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
 
