@@ -1506,8 +1506,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
         memory_locations_find_by_virtual_register_index(
             emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
     PG_ASSERT(-1U != lhs_mem_loc_idx.value);
-    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
 
     MemoryLocationIndex rhs_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
@@ -1519,8 +1517,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     PG_ASSERT(MEMORY_LOCATION_KIND_STACK == rhs_mem_loc.kind);
 
     Amd64Instruction ins_load = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .origin = {.synthetic = true},
+        .kind = AMD64_INSTRUCTION_KIND_LEA,
+        .origin = lir.origin,
         .lhs =
             {
                 .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -1529,16 +1527,16 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
             },
         .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
     };
+    PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins_load.rhs.kind);
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
 
-    Amd64Instruction ins_lea = {
-        .kind = AMD64_INSTRUCTION_KIND_LEA,
-        .rhs = ins_load.lhs,
+    Amd64Instruction ins_store = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
         .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .rhs = ins_load.lhs,
         .origin = lir.origin,
     };
-    PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins_lea.rhs.kind);
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_lea;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
 
   } break;
 
@@ -1572,10 +1570,6 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
 amd64_color_assign_register(InterferenceGraph *graph,
                             InterferenceNodeIndex node_idx,
                             LirVirtualRegisterConstraint constraint) {
-  printf("\n------amd64_color_assign_register %u-------\n", node_idx.value);
-  pg_adjacency_matrix_print(graph->matrix);
-  printf("\n-------------\n");
-
   GprSet neighbor_colors = {
       .len = amd64_register_allocator_gprs_slice.len,
       .set = 0,
@@ -1738,20 +1732,12 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
       PG_ASSERT(stack.len < emitter->interference_graph.matrix.nodes_count);
 
       *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node_idx;
-      printf("\n=====[D010] %lu=======\n", row);
-      pg_adjacency_matrix_print(emitter->interference_graph.matrix);
 
       pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, row);
       pg_bitfield_set(nodes_tombstones_bitfield, row, true);
-
-      printf("\n=====[D011] %lu=======\n", row);
-      pg_adjacency_matrix_print(emitter->interference_graph.matrix);
     }
   }
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
-
-  printf("\n=====[D001]=======\n");
-  pg_adjacency_matrix_print(emitter->interference_graph.matrix);
 
   if (!pg_adjacency_matrix_is_empty(emitter->interference_graph.matrix)) {
     amd64_color_spill_remaining_nodes_in_graph(emitter, &stack,
@@ -1806,10 +1792,6 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
       PG_ASSERT(reg.value);
     }
   }
-
-  printf("\n-------------\n");
-  pg_adjacency_matrix_print(graph_clone);
-  printf("\n-------------\n");
 
   // Sanity check: if two nodes interferred (had an edge) in the original
   // graph, then their assigned registers MUST be different.
@@ -1877,6 +1859,11 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_graph(emitter->interference_graph,
                                  emitter->lir_emitter->lifetimes);
+
+    printf("\n------------ Adjacency matrix of interference graph "
+           "------------\n\n");
+    pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+
     printf("\n------------ Memory locations ------------\n");
     amd64_print_memory_locations(emitter->interference_graph.memory_locations,
                                  emitter->lir_emitter->virtual_registers);
