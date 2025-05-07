@@ -21,6 +21,6 @@
 - [ ] typechecker, pass type information to codegen for sizes
 - [ ] lang: strings
 - [x] spill registers
-- [ ] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator)
+- [ ] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
 - [ ] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
 - [ ] lang: builtin assert
