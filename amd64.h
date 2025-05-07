@@ -1469,6 +1469,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   } break;
 
   case LIR_INSTRUCTION_KIND_COMPARISON: {
+    PG_ASSERT(2 == lir.operands.len);
     PG_ASSERT(0);
   } break;
 

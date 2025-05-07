@@ -257,7 +257,9 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
       printf("address_of ");
       break;
     case LIR_INSTRUCTION_KIND_CMP:
-      printf("cmp ");
+      PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind);
+      printf("cmp%s ",
+             LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
       break;
     case LIR_INSTRUCTION_KIND_NONE:
     default:
@@ -442,7 +444,6 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         .virt_reg_idx = res_virt_reg_idx,
     };
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs_op;
-
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs_op;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
@@ -665,8 +666,41 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   } break;
 
   case IR_INSTRUCTION_KIND_COMPARISON: {
-    PG_ASSERT(0);
-  }
+    PG_ASSERT(2 == ir_ins.operands.len);
+    PG_ASSERT(ir_ins.res_var.id.value);
+
+    VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
+        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
+    PG_ASSERT(-1U != res_virt_reg_idx.value);
+
+    IrOperand ir_lhs = PG_SLICE_AT(ir_ins.operands, 0);
+    IrOperand ir_rhs = PG_SLICE_AT(ir_ins.operands, 1);
+
+    LirInstruction ins_cmp = {
+        .kind = LIR_INSTRUCTION_KIND_CMP,
+        .origin = ir_ins.origin,
+        .token_kind = ir_ins.token_kind,
+    };
+    PG_DYN_ENSURE_CAP(&ins_cmp.operands, 2, allocator);
+
+    LirOperand lhs_op = {0};
+    LirOperand rhs_op = {0};
+
+    if (IR_OPERAND_KIND_U64 == ir_lhs.kind) {
+      lhs_op.kind = LIR_OPERAND_KIND_IMMEDIATE;
+      lhs_op.immediate = ir_lhs.n64;
+    }
+
+    if (IR_OPERAND_KIND_U64 == ir_rhs.kind) {
+      rhs_op.kind = LIR_OPERAND_KIND_IMMEDIATE;
+      rhs_op.immediate = ir_rhs.n64;
+    }
+
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) = lhs_op;
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) = rhs_op;
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
+
+  } break;
 
   case IR_INSTRUCTION_KIND_NONE:
   default:
