@@ -280,3 +280,14 @@ asm_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
 
   return graph;
 }
+
+[[nodiscard]]
+static u32 asm_reserve_stack_slot(AsmEmitter *emitter, u32 slot_size) {
+  emitter->stack_base_pointer_offset += slot_size;
+  emitter->stack_base_pointer_max_offset =
+      PG_MAX(emitter->stack_base_pointer_max_offset,
+             emitter->stack_base_pointer_offset);
+
+  PG_ASSERT(emitter->stack_base_pointer_offset > 0);
+  return emitter->stack_base_pointer_offset;
+}

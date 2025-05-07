@@ -1602,17 +1602,6 @@ amd64_color_assign_register(InterferenceGraph *graph,
 }
 
 [[nodiscard]]
-static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
-  emitter->stack_base_pointer_offset += slot_size;
-  emitter->stack_base_pointer_max_offset =
-      PG_MAX(emitter->stack_base_pointer_max_offset,
-             emitter->stack_base_pointer_offset);
-
-  PG_ASSERT(emitter->stack_base_pointer_offset > 0);
-  return emitter->stack_base_pointer_offset;
-}
-
-[[nodiscard]]
 static bool amd64_must_spill(Amd64Emitter emitter,
                              InterferenceNodeIndex node_idx,
                              u64 neighbors_count) {
@@ -1647,7 +1636,8 @@ static void amd64_spill_node(Amd64Emitter *emitter,
     PG_ASSERT(node_idx.value == mem_loc->node_idx.value);
 
     mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
-    u32 rbp_offset = amd64_reserve_stack_slot(emitter, sizeof(u64) /*FIXME*/);
+    u32 rbp_offset =
+        asm_reserve_stack_slot((AsmEmitter *)emitter, sizeof(u64) /*FIXME*/);
     mem_loc->base_pointer_offset = (i32)rbp_offset;
   }
 }
