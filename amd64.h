@@ -1814,10 +1814,9 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
   }
 }
 
-[[nodiscard]]
-static InterferenceNodeIndexSlice
-amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
-                       bool verbose, PgAllocator *allocator) {
+static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
+                                   LirInstructionSlice lirs, bool verbose,
+                                   PgAllocator *allocator) {
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
       .lhs =
@@ -1882,5 +1881,4 @@ amd64_emit_lirs_to_asm(Amd64Emitter *emitter, LirInstructionSlice lirs,
   } else {
     PG_DYN_REMOVE_AT(&emitter->instructions, stack_sub_instruction_idx);
   }
-  return (InterferenceNodeIndexSlice){0};
 }

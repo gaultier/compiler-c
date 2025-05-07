@@ -41,3 +41,16 @@ typedef struct {
 
   PgString file_name;
 } AsmProgram;
+
+typedef struct AsmEmitter AsmEmitter;
+struct AsmEmitter {
+  void (*emit_prolog)(AsmEmitter *asm_emitter, PgAllocator *allocator);
+  void (*emit_epilog)(AsmEmitter *asm_emitter, PgAllocator *allocator);
+  void (*emit_lirs_to_asm)(AsmEmitter *asm_emitter,
+                           LirInstructionSlice lir_instructions, bool verbose,
+                           PgAllocator *allocator);
+  PgString (*encode_code)(AsmProgram *program, PgAllocator *allocator);
+  PgAnySlice (*get_instructions_slice)();
+  void (*print_instructions)(PgAnySlice instructions);
+  void (*sanity_check_instructions)(PgAnySlice instructions);
+};

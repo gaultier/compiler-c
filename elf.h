@@ -38,7 +38,8 @@ typedef struct {
 static_assert(64 == sizeof(ElfSectionHeader));
 
 [[nodiscard]]
-static PgError elf_write_exe(AsmProgram *program, PgAllocator *allocator) {
+static PgError elf_write_exe(AsmEmitter *asm_emitter, AsmProgram *program,
+                             PgAllocator *allocator) {
   // The ELF header and program headers take less than a page size but are
   // padded with zeroes to occupy one page. Then comes the program text. This
   // page gets loaded as well as the program text in one swoop, but the
@@ -62,7 +63,7 @@ static PgError elf_write_exe(AsmProgram *program, PgAllocator *allocator) {
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;
 
-  PgString program_encoded = amd64_encode_program_text(program, allocator);
+  PgString program_encoded = asm_emitter->encode_code(program, allocator);
 
   u64 rodata_size = 0;
   {

@@ -214,25 +214,21 @@ int main(int argc, char *argv[]) {
     mem_loc->var = var_virt_reg.var;
   }
 
-  Amd64Emitter amd64_emitter = {
-      .interference_graph = interference_graph,
-      .lir_emitter = &lir_emitter,
-  };
-  amd64_emit_prolog(&amd64_emitter.instructions, allocator);
-  InterferenceNodeIndexSlice node_indices_spilled = amd64_emit_lirs_to_asm(
-      &amd64_emitter, lirs_slice, cli_opts.verbose, allocator);
-  if (node_indices_spilled.len > 0) {
-    PG_ASSERT(0 && "todo");
-  }
-  amd64_emit_epilog(&amd64_emitter.instructions, allocator);
+  // Amd64Emitter amd64_emitter = {
+  //     .interference_graph = interference_graph,
+  //     .lir_emitter = &lir_emitter,
+  // };
+  AsmEmitter *asm_emitter = {0}; // FIXME
+  asm_emitter->emit_epilog(asm_emitter, allocator);
+  asm_emitter->emit_lirs_to_asm(asm_emitter, lirs_slice, cli_opts.verbose,
+                                allocator);
+  asm_emitter->emit_prolog(asm_emitter, allocator);
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM ------------\n");
-    amd64_print_instructions(
-        PG_DYN_SLICE(Amd64InstructionSlice, amd64_emitter.instructions));
+    asm_emitter->print_instructions(asm_emitter->get_instructions_slice());
   }
-  amd64_sanity_check_instructions(
-      PG_DYN_SLICE(Amd64InstructionSlice, amd64_emitter.instructions));
+  asm_emitter->sanity_check_instructions(asm_emitter->get_instructions_slice());
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
@@ -249,7 +245,7 @@ int main(int argc, char *argv[]) {
   AsmCodeSection section_start = {
       .name = PG_S("_start"),
       .flags = ASM_SECTION_FLAG_GLOBAL,
-      .instructions = PG_DYN_SLICE(PgAnySlice, amd64_emitter.instructions),
+      .instructions = asm_emitter->get_instructions_slice(),
   };
 
   AsmProgram program = {
@@ -267,7 +263,7 @@ int main(int argc, char *argv[]) {
           },
   };
 
-  PgError err_write = elf_write_exe(&program, allocator);
+  PgError err_write = elf_write_exe(asm_emitter, &program, allocator);
   if (err_write) {
     fprintf(stderr, "failed to write to file %.*s: %u\n",
             (i32)program.file_name.len, program.file_name.data, err_write);
