@@ -1539,7 +1539,7 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
   case LIR_VIRT_REG_CONSTRAINT_NONE: {
     // TODO: Smarter free register selection.
     // E.g. favor caller-saved registers, etc.
-    Register res = lir_gpr_pop_first_unset(&regs);
+    Register res = asm_gpr_pop_first_unset(&regs);
     PG_ASSERT(res.value && "todo: spill");
     return res;
   }
@@ -1588,7 +1588,7 @@ amd64_color_assign_register(InterferenceGraph *graph,
         PG_ASSERT(neighbor_mem_loc.reg.value);
         PG_ASSERT(neighbor_mem_loc.reg.value <=
                   PG_SLICE_LAST(amd64_register_allocator_gprs_slice).value);
-        lir_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg.value - 1);
+        asm_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg.value - 1);
       }
     }
   } while (neighbor.has_value);
@@ -1867,7 +1867,7 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
 
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
-    lir_print_interference_graph(amd64_emitter->interference_graph,
+    asm_print_interference_graph(amd64_emitter->interference_graph,
                                  amd64_emitter->lir_emitter->lifetimes);
 
     printf("\n------------ Adjacency matrix of interference graph "
@@ -1879,7 +1879,7 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
         amd64_emitter->interference_graph.memory_locations,
         amd64_emitter->lir_emitter->virtual_registers);
   }
-  lir_sanity_check_interference_graph(amd64_emitter->interference_graph, true);
+  asm_sanity_check_interference_graph(amd64_emitter->interference_graph, true);
 
   for (u64 i = 0; i < lirs.len; i++) {
     amd64_lir_to_asm(amd64_emitter, PG_SLICE_AT(lirs, i), allocator);

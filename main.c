@@ -54,36 +54,6 @@ static CliOptions cli_options_parse(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
-  {
-    GprSet gpr_set = {
-        .len = 3,
-        .set = (1 << 3) - 1,
-    };
-    PG_ASSERT(true == lir_gpr_is_set(gpr_set, 0));
-    PG_ASSERT(true == lir_gpr_is_set(gpr_set, 1));
-    PG_ASSERT(true == lir_gpr_is_set(gpr_set, 2));
-
-    lir_gpr_set_remove(&gpr_set, 0);
-    PG_ASSERT(false == lir_gpr_is_set(gpr_set, 0));
-
-    lir_gpr_set_remove(&gpr_set, 2);
-    PG_ASSERT(false == lir_gpr_is_set(gpr_set, 2));
-    PG_ASSERT(0b010 == gpr_set.set);
-
-    PG_ASSERT(1 == lir_gpr_pop_first_unset(&gpr_set).value);
-    PG_ASSERT(0b11 == gpr_set.set);
-
-    lir_gpr_set_add(&gpr_set, 0);
-    lir_gpr_set_remove(&gpr_set, 1);
-    lir_gpr_set_add(&gpr_set, 2);
-    PG_ASSERT(0b101 == gpr_set.set);
-
-    GprSet neighbors = {.len = 3, .set = 0b011};
-
-    GprSet minus_res = lir_gpr_set_minus(gpr_set, neighbors);
-    PG_ASSERT(0b100 == minus_res.set);
-  }
-
   CliOptions cli_opts = cli_options_parse(argc, argv);
 
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
@@ -169,17 +139,16 @@ int main(int argc, char *argv[]) {
   InterferenceGraph interference_graph = {0};
   if (ir_emitter.lifetimes.len > 0) {
     interference_graph =
-        lir_build_var_interference_graph(ir_emitter.lifetimes, allocator);
+        asm_build_var_interference_graph(ir_emitter.lifetimes, allocator);
   }
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
-    lir_print_interference_graph(interference_graph, ir_emitter.lifetimes);
+    asm_print_interference_graph(interference_graph, ir_emitter.lifetimes);
   }
-  lir_sanity_check_interference_graph(interference_graph, false);
+  asm_sanity_check_interference_graph(interference_graph, false);
 
   LirEmitter lir_emitter = {
-      .interference_graph = interference_graph,
       .lifetimes = ir_emitter.lifetimes,
   };
   lir_emit_instructions(&lir_emitter, irs_slice, allocator);
