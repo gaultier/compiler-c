@@ -178,14 +178,21 @@ PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
 
 typedef struct {
-#if 0
-  VarToMemoryLocationDyn var_to_memory_location;
-#endif
-  u32 rbp_offset;
-  u32 rbp_max_offset;
-  Amd64InstructionDyn instructions;
+  void (*emit_prolog)(AsmEmitter *asm_emitter, PgAllocator *allocator);
+  void (*emit_epilog)(AsmEmitter *asm_emitter, PgAllocator *allocator);
+  void (*emit_lirs_to_asm)(AsmEmitter *asm_emitter,
+                           LirInstructionSlice lir_instructions, bool verbose,
+                           PgAllocator *allocator);
+  PgString (*encode_code)(AsmProgram *program, PgAllocator *allocator);
+  void (*print_instructions)(AsmEmitter *asm_emitter);
+  void (*sanity_check_instructions)(AsmEmitter *asm_emitter);
+  PgAnySlice (*get_instructions_slice)(AsmEmitter *asm_emitter);
+
+  u32 stack_base_pointer_offset;
+  u32 stack_base_pointer_max_offset;
   InterferenceGraph interference_graph;
   LirEmitter *lir_emitter;
+  Amd64InstructionDyn instructions;
 } Amd64Emitter;
 
 static void amd64_print_register(Register reg) {
@@ -195,9 +202,10 @@ static void amd64_print_register(Register reg) {
 
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit storing code (push).
-static void amd64_emit_prolog(Amd64InstructionDyn *instructions,
-                              PgAllocator *allocator) {
-  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+static void amd64_emit_prolog(AsmEmitter *asm_emitter, PgAllocator *allocator) {
+  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+
+  *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_PUSH,
       .origin = {.synthetic = true},
       .lhs =
@@ -207,7 +215,7 @@ static void amd64_emit_prolog(Amd64InstructionDyn *instructions,
           },
   };
 
-  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+  *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_MOV,
       .origin = {.synthetic = true},
       .lhs =
@@ -225,9 +233,10 @@ static void amd64_emit_prolog(Amd64InstructionDyn *instructions,
 
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit loading code (pop).
-static void amd64_emit_epilog(Amd64InstructionDyn *instructions,
-                              PgAllocator *allocator) {
-  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+static void amd64_emit_epilog(AsmEmitter *asm_emitter, PgAllocator *allocator) {
+  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+
+  *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_POP,
       .origin = {.synthetic = true},
       .lhs =
@@ -236,7 +245,7 @@ static void amd64_emit_epilog(Amd64InstructionDyn *instructions,
               .reg = amd64_rbp,
           },
   };
-  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+  *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_MOV,
       .origin = {.synthetic = true},
       .lhs =
@@ -250,7 +259,7 @@ static void amd64_emit_epilog(Amd64InstructionDyn *instructions,
               .immediate = 60, // Linux x86_64 exit.
           },
   };
-  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+  *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_MOV,
       .origin = {.synthetic = true},
       .lhs =
@@ -264,7 +273,7 @@ static void amd64_emit_epilog(Amd64InstructionDyn *instructions,
               .immediate = 0, // Exit code.
           },
   };
-  *PG_DYN_PUSH(instructions, allocator) = (Amd64Instruction){
+  *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = (Amd64Instruction){
       .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
       .origin = {.synthetic = true},
   };
@@ -336,12 +345,11 @@ static void amd64_print_memory_locations(MemoryLocationDyn memory_locations,
   }
 }
 
-static void amd64_print_instructions(PgAnySlice instructions) {
+static void amd64_print_instructions(Amd64InstructionSlice instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
     printf("[%" PRIu64 "] ", i);
 
-    Amd64Instruction instruction =
-        PG_SLICE_AT_CAST(Amd64Instruction, instructions, i);
+    Amd64Instruction instruction = PG_SLICE_AT(instructions, i);
 #if 0
     amd64_print_var_to_memory_location(
         instruction.var_to_memory_location_frozen);
@@ -411,6 +419,23 @@ static void amd64_print_instructions(PgAnySlice instructions) {
   }
 }
 
+static void amd64_print_instructions_any(PgAnySlice instructions_any) {
+  Amd64InstructionSlice instructions = {
+      .data = instructions_any.data,
+      .len = instructions_any.len,
+  };
+  amd64_print_instructions(instructions);
+}
+
+static void amd64_asm_print_instructions(AsmEmitter *asm_emitter) {
+  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+  Amd64InstructionSlice instructions = {
+      .data = amd64_emitter->instructions.data,
+      .len = amd64_emitter->instructions.len,
+  };
+  amd64_print_instructions(instructions);
+}
+
 [[maybe_unused]]
 static void amd64_print_section(AsmCodeSection section) {
   if (ASM_SECTION_FLAG_GLOBAL & section.flags) {
@@ -422,7 +447,7 @@ static void amd64_print_section(AsmCodeSection section) {
   printf("%.*s", (i32)section.name.len, section.name.data);
   printf(":\n");
 
-  amd64_print_instructions(section.instructions);
+  amd64_print_instructions_any(section.instructions);
 }
 
 [[nodiscard]]
@@ -1066,8 +1091,7 @@ static void amd64_encode_section(Pgu8Dyn *sb, AsmCodeSection section,
 }
 
 [[nodiscard]]
-static PgString amd64_encode_program_text(AsmProgram *program,
-                                          PgAllocator *allocator) {
+static PgString amd64_encode_code(AsmProgram *program, PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
 
@@ -1153,10 +1177,12 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
   }
 }
 
-static void
-amd64_sanity_check_instructions(Amd64InstructionSlice instructions) {
-  for (u64 i = 0; i < instructions.len; i++) {
-    Amd64Instruction ins = PG_SLICE_AT(instructions, i);
+static void amd64_sanity_check_instructions(AsmEmitter *asm_emitter) {
+  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+
+  for (u64 i = 0; i < amd64_emitter->instructions.len; i++) {
+    Amd64Instruction ins =
+        PG_SLICE_AT_CAST(Amd64Instruction, amd64_emitter->instructions, i);
 
     // Prohibited by amd64 rules.
     PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.lhs.kind &&
@@ -1589,12 +1615,13 @@ amd64_color_assign_register(InterferenceGraph *graph,
 
 [[maybe_unused]] [[nodiscard]]
 static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
-  emitter->rbp_offset += slot_size;
-  emitter->rbp_max_offset =
-      PG_MAX(emitter->rbp_max_offset, emitter->rbp_offset);
+  emitter->stack_base_pointer_offset += slot_size;
+  emitter->stack_base_pointer_max_offset =
+      PG_MAX(emitter->stack_base_pointer_max_offset,
+             emitter->stack_base_pointer_offset);
 
-  PG_ASSERT(emitter->rbp_offset > 0);
-  return emitter->rbp_offset;
+  PG_ASSERT(emitter->stack_base_pointer_offset > 0);
+  return emitter->stack_base_pointer_offset;
 }
 
 [[nodiscard]]
@@ -1814,9 +1841,11 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
   }
 }
 
-static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
+static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
                                    LirInstructionSlice lirs, bool verbose,
                                    PgAllocator *allocator) {
+  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
       .lhs =
@@ -1831,35 +1860,36 @@ static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
           },
       .origin.synthetic = true,
   };
-  *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_sub;
-  u64 stack_sub_instruction_idx = emitter->instructions.len - 1;
+  *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = stack_sub;
+  u64 stack_sub_instruction_idx = amd64_emitter->instructions.len - 1;
 
-  amd64_color_interference_graph(emitter, allocator);
+  amd64_color_interference_graph(amd64_emitter, allocator);
 
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
-    lir_print_interference_graph(emitter->interference_graph,
-                                 emitter->lir_emitter->lifetimes);
+    lir_print_interference_graph(amd64_emitter->interference_graph,
+                                 amd64_emitter->lir_emitter->lifetimes);
 
     printf("\n------------ Adjacency matrix of interference graph "
            "------------\n\n");
-    pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+    pg_adjacency_matrix_print(amd64_emitter->interference_graph.matrix);
 
     printf("\n------------ Memory locations ------------\n");
-    amd64_print_memory_locations(emitter->interference_graph.memory_locations,
-                                 emitter->lir_emitter->virtual_registers);
+    amd64_print_memory_locations(
+        amd64_emitter->interference_graph.memory_locations,
+        amd64_emitter->lir_emitter->virtual_registers);
   }
-  lir_sanity_check_interference_graph(emitter->interference_graph, true);
+  lir_sanity_check_interference_graph(amd64_emitter->interference_graph, true);
 
   for (u64 i = 0; i < lirs.len; i++) {
-    amd64_lir_to_asm(emitter, PG_SLICE_AT(lirs, i), allocator);
+    amd64_lir_to_asm(amd64_emitter, PG_SLICE_AT(lirs, i), allocator);
   }
 
-  if (emitter->rbp_max_offset > 0) {
+  if (amd64_emitter->stack_base_pointer_max_offset > 0) {
     u32 rsp_max_offset_aligned_16 =
-        (u32)PG_ROUNDUP(emitter->rbp_max_offset, 16);
+        (u32)PG_ROUNDUP(amd64_emitter->stack_base_pointer_max_offset, 16);
 
-    PG_SLICE_AT_PTR(&emitter->instructions, stack_sub_instruction_idx)
+    PG_SLICE_AT_PTR(&amd64_emitter->instructions, stack_sub_instruction_idx)
         ->rhs.immediate = rsp_max_offset_aligned_16;
 
     Amd64Instruction stack_add = {
@@ -1877,8 +1907,37 @@ static void amd64_emit_lirs_to_asm(Amd64Emitter *emitter,
         .origin.synthetic = true,
     };
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = stack_add;
+    *PG_DYN_PUSH(&amd64_emitter->instructions, allocator) = stack_add;
   } else {
-    PG_DYN_REMOVE_AT(&emitter->instructions, stack_sub_instruction_idx);
+    PG_DYN_REMOVE_AT(&amd64_emitter->instructions, stack_sub_instruction_idx);
   }
+}
+
+[[nodiscard]] static PgAnySlice
+amd64_get_instructions_slice(AsmEmitter *asm_emitter) {
+  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+  PgAnySlice instructions = {
+      .data = amd64_emitter->instructions.data,
+      .len = amd64_emitter->instructions.len,
+  };
+  return instructions;
+}
+
+[[nodiscard]]
+static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
+                                          LirEmitter *lir_emitter,
+                                          PgAllocator *allocator) {
+  Amd64Emitter *amd64_emitter =
+      pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
+  amd64_emitter->interference_graph = interference_graph;
+  amd64_emitter->lir_emitter = lir_emitter;
+  amd64_emitter->emit_prolog = amd64_emit_prolog;
+  amd64_emitter->emit_epilog = amd64_emit_epilog;
+  amd64_emitter->emit_lirs_to_asm = amd64_emit_lirs_to_asm;
+  amd64_emitter->encode_code = amd64_encode_code;
+  amd64_emitter->print_instructions = amd64_asm_print_instructions;
+  amd64_emitter->sanity_check_instructions = amd64_sanity_check_instructions;
+  amd64_emitter->get_instructions_slice = amd64_get_instructions_slice;
+
+  return (AsmEmitter *)amd64_emitter;
 }

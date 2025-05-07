@@ -1,3 +1,4 @@
+#include "amd64.h"
 #include "ast.h"
 #include "elf.h"
 #include "error.h"
@@ -218,7 +219,8 @@ int main(int argc, char *argv[]) {
   //     .interference_graph = interference_graph,
   //     .lir_emitter = &lir_emitter,
   // };
-  AsmEmitter *asm_emitter = {0}; // FIXME
+  AsmEmitter *asm_emitter =
+      amd64_make_asm_emitter(interference_graph, &lir_emitter, allocator);
   asm_emitter->emit_epilog(asm_emitter, allocator);
   asm_emitter->emit_lirs_to_asm(asm_emitter, lirs_slice, cli_opts.verbose,
                                 allocator);
@@ -226,9 +228,9 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM ------------\n");
-    asm_emitter->print_instructions(asm_emitter->get_instructions_slice());
+    asm_emitter->print_instructions(asm_emitter);
   }
-  asm_emitter->sanity_check_instructions(asm_emitter->get_instructions_slice());
+  asm_emitter->sanity_check_instructions(asm_emitter);
 
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
@@ -245,7 +247,7 @@ int main(int argc, char *argv[]) {
   AsmCodeSection section_start = {
       .name = PG_S("_start"),
       .flags = ASM_SECTION_FLAG_GLOBAL,
-      .instructions = asm_emitter->get_instructions_slice(),
+      .instructions = asm_emitter->get_instructions_slice(asm_emitter),
   };
 
   AsmProgram program = {

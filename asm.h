@@ -50,7 +50,12 @@ struct AsmEmitter {
                            LirInstructionSlice lir_instructions, bool verbose,
                            PgAllocator *allocator);
   PgString (*encode_code)(AsmProgram *program, PgAllocator *allocator);
-  PgAnySlice (*get_instructions_slice)();
-  void (*print_instructions)(PgAnySlice instructions);
-  void (*sanity_check_instructions)(PgAnySlice instructions);
+  void (*print_instructions)(AsmEmitter *asm_emitter);
+  void (*sanity_check_instructions)(AsmEmitter *asm_emitter);
+  PgAnySlice (*get_instructions_slice)(AsmEmitter *asm_emitter);
+
+  u32 stack_base_pointer_offset;
+  u32 stack_base_pointer_max_offset;
+  InterferenceGraph interference_graph;
+  LirEmitter *lir_emitter;
 };
