@@ -1,4 +1,5 @@
 #pragma once
+#include "asm.h"
 #include "lir.h"
 
 typedef enum {
@@ -176,47 +177,6 @@ typedef struct {
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
 
-typedef enum {
-  AMD64_SECTION_FLAG_NONE = 0,
-  AMD64_SECTION_FLAG_GLOBAL = 1 << 0,
-} Amd64SectionFlag;
-
-typedef struct {
-  PgString name;
-  Amd64SectionFlag flags;
-  Amd64InstructionSlice instructions;
-} Amd64Section;
-PG_SLICE(Amd64Section) Amd64SectionSlice;
-PG_DYN(Amd64Section) Amd64SectionDyn;
-
-typedef enum {
-  AMD64_CONSTANT_KIND_NONE,
-  AMD64_CONSTANT_KIND_U64,
-  AMD64_CONSTANT_KIND_BYTES,
-} Amd64ConstantKind;
-
-typedef struct {
-  PgString name;
-  u64 address_absolute;
-  Amd64ConstantKind kind;
-  union {
-    u64 n64;
-    PgString bytes;
-  };
-} Amd64Constant;
-PG_SLICE(Amd64Constant) Amd64ConstantSlice;
-PG_DYN(Amd64Constant) Amd64ConstantDyn;
-
-typedef struct {
-  Amd64SectionSlice text;
-  Amd64ConstantSlice rodata;
-  u64 vm_start;
-  LabelAddressDyn label_addresses;
-  LabelAddressDyn jumps_to_backpatch;
-
-  PgString file_name;
-} Amd64Program;
-
 typedef struct {
 #if 0
   VarToMemoryLocationDyn var_to_memory_location;
@@ -376,11 +336,12 @@ static void amd64_print_memory_locations(MemoryLocationDyn memory_locations,
   }
 }
 
-static void amd64_print_instructions(Amd64InstructionSlice instructions) {
+static void amd64_print_instructions(PgAnySlice instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
     printf("[%" PRIu64 "] ", i);
 
-    Amd64Instruction instruction = PG_SLICE_AT(instructions, i);
+    Amd64Instruction instruction =
+        PG_SLICE_AT_CAST(Amd64Instruction, instructions, i);
 #if 0
     amd64_print_var_to_memory_location(
         instruction.var_to_memory_location_frozen);
@@ -451,7 +412,7 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
 }
 
 [[maybe_unused]]
-static void amd64_print_section(Amd64Section section) {
+static void amd64_print_section(AsmCodeSection section) {
   if (AMD64_SECTION_FLAG_GLOBAL & section.flags) {
     printf("global ");
     printf("%.*s", (i32)section.name.len, section.name.data);
@@ -1066,11 +1027,12 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
   }
 }
 
-static void amd64_encode_section(Pgu8Dyn *sb, Amd64Section section,
+static void amd64_encode_section(Pgu8Dyn *sb, AsmCodeSection section,
                                  Amd64Program *program,
                                  PgAllocator *allocator) {
   for (u64 i = 0; i < section.instructions.len; i++) {
-    Amd64Instruction instruction = PG_SLICE_AT(section.instructions, i);
+    Amd64Instruction instruction =
+        PG_SLICE_AT_CAST(Amd64Instruction, section.instructions, i);
     amd64_encode_instruction(sb, instruction, program, allocator);
   }
 
@@ -1111,7 +1073,7 @@ static PgString amd64_encode_program_text(Amd64Program *program,
   PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
 
   for (u64 i = 0; i < program->text.len; i++) {
-    Amd64Section section = PG_SLICE_AT(program->text, i);
+    AsmCodeSection section = PG_SLICE_AT(program->text, i);
     amd64_encode_section(&sb, section, program, allocator);
   }
 

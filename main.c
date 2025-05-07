@@ -246,11 +246,10 @@ int main(int argc, char *argv[]) {
           .address_absolute = vm_start + rodata_offset + 0x00,
       },
   };
-  Amd64Section section_start = {
+  AsmCodeSection section_start = {
       .name = PG_S("_start"),
       .flags = AMD64_SECTION_FLAG_GLOBAL,
-      .instructions =
-          PG_DYN_SLICE(Amd64InstructionSlice, amd64_emitter.instructions),
+      .instructions = PG_DYN_SLICE(PgAnySlice, amd64_emitter.instructions),
   };
 
   Amd64Program program = {
