@@ -462,6 +462,7 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
       PgUtf8Iterator it_tmp = it;
       PgRuneResult rune_next_res = pg_utf8_iterator_next(&it_tmp);
       if ('=' == rune_next_res.res) {
+        it = it_tmp;
         *PG_DYN_PUSH(tokens, allocator) = (LexToken){
             .kind = LEX_TOKEN_KIND_EQUAL_EQUAL,
             .origin =
@@ -472,10 +473,9 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
                     .file_offset = (u32)idx_prev,
                 },
         };
-        column += 1;
+        column += 2;
         break;
       }
-      it = it_tmp;
 
       *PG_DYN_PUSH(tokens, allocator) = (LexToken){
           .kind = LEX_TOKEN_KIND_EQUAL,
@@ -488,7 +488,7 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
               },
       };
 
-      column += 2;
+      column += 1;
 
     } break;
 

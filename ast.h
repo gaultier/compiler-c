@@ -348,11 +348,11 @@ static AstNode *ast_parse_equality(LexTokenSlice tokens, ErrorDyn *errors,
   }
 
   AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-  res->origin = lhs->origin;
+  res->origin = op.origin;
   res->kind = AST_NODE_KIND_COMPARISON;
   res->token_kind = op.kind;
-  *PG_DYN_PUSH(&lhs->operands, allocator) = *lhs;
-  *PG_DYN_PUSH(&lhs->operands, allocator) = *rhs;
+  *PG_DYN_PUSH(&res->operands, allocator) = *lhs;
+  *PG_DYN_PUSH(&res->operands, allocator) = *rhs;
 
   return res;
 }
