@@ -1636,6 +1636,28 @@ static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
   return emitter->rbp_offset;
 }
 
+[[nodiscard]]
+static bool amd64_must_spill(Amd64Emitter emitter,
+                             InterferenceNodeIndex node_idx,
+                             u64 neighbors_count) {
+  MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
+      emitter.interference_graph.memory_locations, node_idx);
+  PG_ASSERT(-1U != mem_loc_idx.value);
+  MemoryLocation mem_loc = PG_SLICE_AT(
+      emitter.interference_graph.memory_locations, mem_loc_idx.value);
+
+  bool virt_reg_addressable =
+      PG_SLICE_AT(emitter.lir_emitter->virtual_registers,
+                  mem_loc.virt_reg_idx.value)
+          .addressable;
+
+  bool needs_spill =
+      neighbors_count >= amd64_register_allocator_gprs_slice.len ||
+      virt_reg_addressable;
+
+  return needs_spill;
+}
+
 static void amd64_spill_node(Amd64Emitter *emitter,
                              InterferenceNodeIndex node_idx) {
 
@@ -1674,7 +1696,7 @@ amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
     pg_bitfield_set(nodes_tombstones_bitfield, row, true);
 
     InterferenceNodeIndex node_idx = {(u32)row};
-    if (neighbors_count < amd64_register_allocator_gprs_slice.len) {
+    if (!amd64_must_spill(*emitter, node_idx, neighbors_count)) {
       PG_ASSERT(stack->len < emitter->interference_graph.matrix.nodes_count);
       *PG_DYN_PUSH_WITHIN_CAPACITY(stack) = node_idx;
       continue;
@@ -1713,20 +1735,8 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
         emitter->interference_graph.matrix, row);
 
     InterferenceNodeIndex node_idx = {(u32)row};
-    MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
-        emitter->interference_graph.memory_locations, node_idx);
-    PG_ASSERT(-1U != mem_loc_idx.value);
-    MemoryLocation mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, mem_loc_idx.value);
-    bool virt_reg_addressable =
-        PG_SLICE_AT(emitter->lir_emitter->virtual_registers,
-                    mem_loc.virt_reg_idx.value)
-            .addressable;
 
-    bool needs_spill =
-        neighbors_count >= amd64_register_allocator_gprs_slice.len ||
-        virt_reg_addressable;
-    if (!needs_spill) {
+    if (!amd64_must_spill(*emitter, node_idx, neighbors_count)) {
       PG_ASSERT(stack.len < emitter->interference_graph.matrix.nodes_count);
 
       *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node_idx;
