@@ -1,20 +1,23 @@
-- generate dwarf debug information
-- ir: optimization: show diff output in each step, like git diff
-- control flow graph
-- data flow analysis
-- simple alias analysis (type-based, conservative)
-- codegen: aarch64
-- codegen: riscv
-- codegen: macho format
-- cli: choose target(s)
-- lang: else branch
-- lang: comments
-- lang: loops
-- lang: functions
-- lang: structs
-- lang: arrays
-- lang: types
-- typechecker, pass type information to codegen for sizes
-- lang: strings
-- spill registers
-- migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator)
+- [ ] generate dwarf debug information
+- [ ] ir: optimization: show diff output in each step, like git diff
+- [ ] control flow graph
+- [ ] data flow analysis
+- [ ] simple alias analysis (type-based, conservative)
+- [ ] codegen: aarch64
+- [ ] codegen: riscv
+- [ ] codegen: macho format
+- [ ] cli: choose target(s)
+- [ ] lang: boolean operators (==, <, etc)
+- [ ] lang: else branch
+- [ ] lang: comments
+- [ ] lang: loops
+- [ ] lang: functions
+- [ ] lang: structs
+- [ ] lang: arrays
+- [ ] lang: types
+- [ ] typechecker, pass type information to codegen for sizes
+- [ ] lang: strings
+- [x] spill registers
+- [ ] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator)
+- [ ] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
+- [ ] lang: builtin assert
