@@ -270,39 +270,6 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
   }
 }
 
-#if 0
-[[nodiscard]] static bool lir_memory_location_eq(MemoryLocation a,
-                                                 MemoryLocation b) {
-  if (a.kind != b.kind) {
-    return false;
-  }
-
-  switch (a.kind) {
-  case MEMORY_LOCATION_KIND_REGISTER:
-    return a.reg.value == b.reg.value;
-  case MEMORY_LOCATION_KIND_STACK:
-    return a.base_pointer_offset == b.base_pointer_offset;
-  case MEMORY_LOCATION_KIND_MEMORY:
-    return a.memory_address == b.memory_address;
-  case MEMORY_LOCATION_KIND_NONE:
-  default:
-    PG_ASSERT(0);
-  }
-}
-#endif
-
-[[maybe_unused]] [[nodiscard]]
-static VarVirtualRegisterIndex var_virtual_registers_find_by_virt_reg_idx(
-    VarVirtualRegisterDyn var_virtual_registers, VirtualRegisterIndex needle) {
-  for (u64 i = 0; i < var_virtual_registers.len; i++) {
-    VarVirtualRegister var_virt_reg = PG_SLICE_AT(var_virtual_registers, i);
-    if (needle.value == var_virt_reg.virt_reg_idx.value) {
-      return (VarVirtualRegisterIndex){(u32)i};
-    }
-  }
-  return (VarVirtualRegisterIndex){-1U};
-}
-
 [[nodiscard]]
 static VarVirtualRegisterIndex
 var_virtual_registers_find_by_var(VarVirtualRegisterDyn var_virtual_registers,

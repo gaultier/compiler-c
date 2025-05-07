@@ -157,14 +157,6 @@ static void asm_gpr_set_add(GprSet *set, u32 val) {
   set->set |= 1 << val;
 }
 
-[[maybe_unused]] [[nodiscard]]
-static bool asm_gpr_is_set(GprSet set, u32 i) {
-  PG_ASSERT(set.len > 0);
-  PG_ASSERT(i < set.len);
-
-  return (set.set & (1 << i)) != 0;
-}
-
 [[nodiscard]]
 static Register asm_gpr_pop_first_unset(GprSet *set) {
   PG_ASSERT(set->len > 0);

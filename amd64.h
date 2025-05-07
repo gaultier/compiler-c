@@ -1613,7 +1613,7 @@ amd64_color_assign_register(InterferenceGraph *graph,
   return res;
 }
 
-[[maybe_unused]] [[nodiscard]]
+[[nodiscard]]
 static u32 amd64_reserve_stack_slot(Amd64Emitter *emitter, u32 slot_size) {
   emitter->stack_base_pointer_offset += slot_size;
   emitter->stack_base_pointer_max_offset =
