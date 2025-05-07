@@ -5,7 +5,9 @@
 - [ ] simple alias analysis (type-based, conservative)
 - [ ] codegen: aarch64
 - [ ] codegen: riscv
+- [ ] codegen: model register clobbers
 - [ ] codegen: macho format
+- [ ] codegen: move graph coloring to LIR phase with the target data as input
 - [ ] cli: choose target(s)
 - [ ] lang: boolean operators (==, <, etc)
 - [ ] lang: deref
