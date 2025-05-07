@@ -114,7 +114,9 @@ typedef struct AsmEmitter AsmEmitter;
   void (*emit_lirs_to_asm)(AsmEmitter * asm_emitter,                           \
                            LirInstructionSlice lir_instructions, bool verbose, \
                            PgAllocator *allocator);                            \
-  PgString (*encode_code)(AsmProgram * program, PgAllocator * allocator);      \
+  void (*encode_instruction)(AsmEmitter * asm_emitter, Pgu8Dyn * sb,           \
+                             u64 instruction_idx, AsmProgram * program,        \
+                             PgAllocator * allocator);                         \
   void (*print_instructions)(AsmEmitter * asm_emitter);                        \
   void (*sanity_check_instructions)(AsmEmitter * asm_emitter);                 \
   PgAnySlice (*get_instructions_slice)(AsmEmitter * asm_emitter);              \
@@ -290,4 +292,55 @@ static u32 asm_reserve_stack_slot(AsmEmitter *emitter, u32 slot_size) {
 
   PG_ASSERT(emitter->stack_base_pointer_offset > 0);
   return emitter->stack_base_pointer_offset;
+}
+
+static void asm_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
+                               AsmCodeSection section, AsmProgram *program,
+                               PgAllocator *allocator) {
+  for (u64 i = 0; i < section.instructions.len; i++) {
+    asm_emitter->encode_instruction(asm_emitter, sb, i, program, allocator);
+  }
+
+  for (u64 i = 0; i < program->jumps_to_backpatch.len; i++) {
+    LabelAddress jump_to_backpatch =
+        PG_SLICE_AT(program->jumps_to_backpatch, i);
+    PG_ASSERT(jump_to_backpatch.label.value > 0);
+    PG_ASSERT(jump_to_backpatch.address_text > 0);
+    PG_ASSERT(jump_to_backpatch.address_text <= sb->len - 1);
+
+    LabelAddress label = {0};
+    for (u64 j = 0; j < program->label_addresses.len; j++) {
+      label = PG_SLICE_AT(program->label_addresses, j);
+      PG_ASSERT(label.label.value > 0);
+      PG_ASSERT(label.address_text <= sb->len - 1);
+
+      if (label.label.value == jump_to_backpatch.label.value) {
+        break;
+      }
+    }
+    PG_ASSERT(label.label.value > 0);
+    PG_ASSERT(label.label.value == jump_to_backpatch.label.value);
+
+    u8 *jump_displacement_encoded =
+        PG_SLICE_AT_PTR(sb, jump_to_backpatch.address_text);
+    i64 displacement = (i64)label.address_text -
+                       (i64)jump_to_backpatch.address_text - (i64)sizeof(i32);
+    PG_ASSERT(displacement <= INT32_MAX);
+
+    memcpy(jump_displacement_encoded, &displacement, sizeof(i32));
+  }
+}
+
+[[nodiscard]]
+static PgString asm_encode_code(AsmEmitter *asm_emitter, AsmProgram *program,
+                                PgAllocator *allocator) {
+  Pgu8Dyn sb = {0};
+  PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
+
+  for (u64 i = 0; i < program->text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(program->text, i);
+    asm_encode_section(asm_emitter, &sb, section, program, allocator);
+  }
+
+  return PG_DYN_SLICE(PgString, sb);
 }

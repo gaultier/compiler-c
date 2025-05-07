@@ -986,9 +986,13 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
   PG_ASSERT(0 && "todo");
 }
 
-static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
-                                     AsmProgram *program,
+static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
+                                     u64 instruction_idx, AsmProgram *program,
                                      PgAllocator *allocator) {
+  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+  Amd64Instruction instruction =
+      PG_SLICE_AT(amd64_emitter->instructions, instruction_idx);
+
   switch (instruction.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
     PG_ASSERT(0);
@@ -1038,57 +1042,6 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
   default:
     PG_ASSERT(0);
   }
-}
-
-static void amd64_encode_section(Pgu8Dyn *sb, AsmCodeSection section,
-                                 AsmProgram *program, PgAllocator *allocator) {
-  for (u64 i = 0; i < section.instructions.len; i++) {
-    Amd64Instruction instruction =
-        PG_SLICE_AT_CAST(Amd64Instruction, section.instructions, i);
-    amd64_encode_instruction(sb, instruction, program, allocator);
-  }
-
-  for (u64 i = 0; i < program->jumps_to_backpatch.len; i++) {
-    LabelAddress jump_to_backpatch =
-        PG_SLICE_AT(program->jumps_to_backpatch, i);
-    PG_ASSERT(jump_to_backpatch.label.value > 0);
-    PG_ASSERT(jump_to_backpatch.address_text > 0);
-    PG_ASSERT(jump_to_backpatch.address_text <= sb->len - 1);
-
-    LabelAddress label = {0};
-    for (u64 j = 0; j < program->label_addresses.len; j++) {
-      label = PG_SLICE_AT(program->label_addresses, j);
-      PG_ASSERT(label.label.value > 0);
-      PG_ASSERT(label.address_text <= sb->len - 1);
-
-      if (label.label.value == jump_to_backpatch.label.value) {
-        break;
-      }
-    }
-    PG_ASSERT(label.label.value > 0);
-    PG_ASSERT(label.label.value == jump_to_backpatch.label.value);
-
-    u8 *jump_displacement_encoded =
-        PG_SLICE_AT_PTR(sb, jump_to_backpatch.address_text);
-    i64 displacement = (i64)label.address_text -
-                       (i64)jump_to_backpatch.address_text - (i64)sizeof(i32);
-    PG_ASSERT(displacement <= INT32_MAX);
-
-    memcpy(jump_displacement_encoded, &displacement, sizeof(i32));
-  }
-}
-
-[[nodiscard]]
-static PgString amd64_encode_code(AsmProgram *program, PgAllocator *allocator) {
-  Pgu8Dyn sb = {0};
-  PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
-
-  for (u64 i = 0; i < program->text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(program->text, i);
-    amd64_encode_section(&sb, section, program, allocator);
-  }
-
-  return PG_DYN_SLICE(PgString, sb);
 }
 
 [[nodiscard]] static Amd64Operand
@@ -1912,7 +1865,7 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
   amd64_emitter->emit_prolog = amd64_emit_prolog;
   amd64_emitter->emit_epilog = amd64_emit_epilog;
   amd64_emitter->emit_lirs_to_asm = amd64_emit_lirs_to_asm;
-  amd64_emitter->encode_code = amd64_encode_code;
+  amd64_emitter->encode_instruction = amd64_encode_instruction;
   amd64_emitter->print_instructions = amd64_asm_print_instructions;
   amd64_emitter->sanity_check_instructions = amd64_sanity_check_instructions;
   amd64_emitter->get_instructions_slice = amd64_get_instructions_slice;
