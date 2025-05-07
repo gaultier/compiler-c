@@ -8,6 +8,7 @@
 - [ ] codegen: macho format
 - [ ] cli: choose target(s)
 - [ ] lang: boolean operators (==, <, etc)
+- [ ] lang: deref
 - [ ] lang: else branch
 - [ ] lang: comments
 - [ ] lang: loops
