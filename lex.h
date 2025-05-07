@@ -13,6 +13,8 @@ typedef enum {
   LEX_TOKEN_KIND_CURLY_RIGHT,
   LEX_TOKEN_KIND_COMMA,
   LEX_TOKEN_KIND_COLON_EQUAL,
+  LEX_TOKEN_KIND_EQUAL,
+  LEX_TOKEN_KIND_EQUAL_EQUAL,
   LEX_TOKEN_KIND_IDENTIFIER,
   LEX_TOKEN_KIND_AMPERSAND,
   LEX_TOKEN_KIND_KEYWORD_IF,
@@ -437,11 +439,46 @@ static void lex(PgString file_name, PgString src, LexTokenDyn *tokens,
         };
 
         err_mode = true;
+        break;
       }
       it = it_tmp;
 
       *PG_DYN_PUSH(tokens, allocator) = (LexToken){
           .kind = LEX_TOKEN_KIND_COLON_EQUAL,
+          .origin =
+              {
+                  .file_name = file_name,
+                  .line = line,
+                  .column = column,
+                  .file_offset = (u32)idx_prev,
+              },
+      };
+
+      column += 2;
+
+    } break;
+
+    case '=': {
+      PgUtf8Iterator it_tmp = it;
+      PgRuneResult rune_next_res = pg_utf8_iterator_next(&it_tmp);
+      if ('=' == rune_next_res.res) {
+        *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+            .kind = LEX_TOKEN_KIND_EQUAL_EQUAL,
+            .origin =
+                {
+                    .file_name = file_name,
+                    .line = line,
+                    .column = column,
+                    .file_offset = (u32)idx_prev,
+                },
+        };
+        column += 1;
+        break;
+      }
+      it = it_tmp;
+
+      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
+          .kind = LEX_TOKEN_KIND_EQUAL,
           .origin =
               {
                   .file_name = file_name,
@@ -535,6 +572,12 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       break;
     case LEX_TOKEN_KIND_COLON_EQUAL:
       printf(":=\n");
+      break;
+    case LEX_TOKEN_KIND_EQUAL_EQUAL:
+      printf("==\n");
+      break;
+    case LEX_TOKEN_KIND_EQUAL:
+      printf("=\n");
       break;
     case LEX_TOKEN_KIND_AMPERSAND:
       printf("&\n");

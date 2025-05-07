@@ -52,6 +52,7 @@ typedef enum {
   LIR_INSTRUCTION_KIND_LABEL,
   LIR_INSTRUCTION_KIND_CMP,
   LIR_INSTRUCTION_KIND_ADDRESS_OF,
+  LIR_INSTRUCTION_KIND_COMPARISON,
 #if 0
   LIR_INSTRUCTION_KIND_SYSCALL,
 #endif
@@ -79,6 +80,7 @@ typedef struct {
   LirInstructionKind kind;
   LirOperandDyn operands;
   Origin origin;
+  LexTokenKind token_kind;
 } LirInstruction;
 PG_SLICE(LirInstruction) LirInstructionSlice;
 PG_DYN(LirInstruction) LirInstructionDyn;
@@ -227,6 +229,10 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
     switch (ins.kind) {
     case LIR_INSTRUCTION_KIND_ADD:
       printf("add ");
+      break;
+    case LIR_INSTRUCTION_KIND_COMPARISON:
+      printf("cmp-%s ",
+             LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
       break;
     case LIR_INSTRUCTION_KIND_SUB:
       printf("sub ");
@@ -657,6 +663,10 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
   } break;
+
+  case IR_INSTRUCTION_KIND_COMPARISON: {
+    PG_ASSERT(0);
+  }
 
   case IR_INSTRUCTION_KIND_NONE:
   default:

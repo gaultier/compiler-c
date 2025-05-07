@@ -12,6 +12,7 @@ typedef enum {
   AST_NODE_KIND_VAR_DECL,
   AST_NODE_KIND_ADDRESS_OF,
   AST_NODE_KIND_IF,
+  AST_NODE_KIND_COMPARISON,
 #if 0
   AST_NODE_KIND_SYSCALL,
 #endif
@@ -27,6 +28,7 @@ struct AstNode {
   u64 n64;
   PgString identifier;
   Origin origin;
+  LexTokenKind token_kind;
 };
 
 static void ast_print(AstNode node, u32 left_width) {
@@ -57,6 +59,17 @@ static void ast_print(AstNode node, u32 left_width) {
     break;
   case AST_NODE_KIND_ADD:
     printf("Add(\n");
+    PG_ASSERT(2 == node.operands.len);
+    ast_print(PG_SLICE_AT(node.operands, 0), left_width + 2);
+    ast_print(PG_SLICE_AT(node.operands, 1), left_width + 2);
+
+    for (u64 i = 0; i < left_width; i++) {
+      putchar(' ');
+    }
+    printf(")\n");
+    break;
+  case AST_NODE_KIND_COMPARISON:
+    printf("Comparison(\n");
     PG_ASSERT(2 == node.operands.len);
     ast_print(PG_SLICE_AT(node.operands, 0), left_width + 2);
     ast_print(PG_SLICE_AT(node.operands, 1), left_width + 2);
@@ -299,6 +312,69 @@ static AstNode *ast_parse_term(LexTokenSlice tokens, ErrorDyn *errors,
   return res;
 }
 
+static AstNode *ast_parse_comparison(LexTokenSlice tokens, ErrorDyn *errors,
+                                     u64 *tokens_consumed,
+                                     PgAllocator *allocator) {
+  return ast_parse_term(tokens, errors, tokens_consumed, allocator);
+}
+
+static AstNode *ast_parse_equality(LexTokenSlice tokens, ErrorDyn *errors,
+                                   u64 *tokens_consumed,
+                                   PgAllocator *allocator) {
+  AstNode *lhs =
+      ast_parse_comparison(tokens, errors, tokens_consumed, allocator);
+  if (!lhs) {
+    return nullptr;
+  }
+
+  if (*tokens_consumed >= tokens.len) {
+    return lhs;
+  }
+
+  LexToken op = PG_SLICE_AT(tokens, *tokens_consumed);
+  // TODO: `!=`.
+  if (!(LEX_TOKEN_KIND_EQUAL_EQUAL == op.kind)) {
+    return lhs;
+  }
+
+  *tokens_consumed += 1;
+  AstNode *rhs = ast_parse_equality(tokens, errors, tokens_consumed, allocator);
+  if (!rhs) {
+    *PG_DYN_PUSH(errors, allocator) = (Error){
+        .kind = ERROR_KIND_PARSE_EQUALITY_MISSING_RHS,
+        .origin = op.origin,
+    };
+    return nullptr;
+  }
+
+  AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+  res->origin = lhs->origin;
+  res->kind = AST_NODE_KIND_COMPARISON;
+  res->token_kind = op.kind;
+  *PG_DYN_PUSH(&lhs->operands, allocator) = *lhs;
+  *PG_DYN_PUSH(&lhs->operands, allocator) = *rhs;
+
+  return res;
+}
+
+static AstNode *ast_parse_logic_and(LexTokenSlice tokens, ErrorDyn *errors,
+                                    u64 *tokens_consumed,
+                                    PgAllocator *allocator) {
+  return ast_parse_equality(tokens, errors, tokens_consumed, allocator);
+}
+
+static AstNode *ast_parse_logic_or(LexTokenSlice tokens, ErrorDyn *errors,
+                                   u64 *tokens_consumed,
+                                   PgAllocator *allocator) {
+  return ast_parse_logic_and(tokens, errors, tokens_consumed, allocator);
+}
+
+static AstNode *ast_parse_assignment(LexTokenSlice tokens, ErrorDyn *errors,
+                                     u64 *tokens_consumed,
+                                     PgAllocator *allocator) {
+  return ast_parse_logic_or(tokens, errors, tokens_consumed, allocator);
+}
+
 static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
                                u64 *tokens_consumed, PgAllocator *allocator) {
   AstNode *res = nullptr;
@@ -309,7 +385,8 @@ static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
   }
 #endif
 
-  if ((res = ast_parse_term(tokens, errors, tokens_consumed, allocator))) {
+  if ((res =
+           ast_parse_assignment(tokens, errors, tokens_consumed, allocator))) {
     return res;
   }
   return nullptr;

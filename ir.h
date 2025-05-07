@@ -10,6 +10,7 @@ typedef enum {
   IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
   IR_INSTRUCTION_KIND_JUMP,
   IR_INSTRUCTION_KIND_LABEL,
+  IR_INSTRUCTION_KIND_COMPARISON,
 #if 0
   IR_INSTRUCTION_KIND_SYSCALL,
 #endif
@@ -57,6 +58,7 @@ struct IrOperand {
 typedef struct {
   IrInstructionKind kind;
   IrOperandDyn operands;
+  LexTokenKind token_kind;
   Origin origin;
   // Result var. Not always present.
   IrVar res_var;
@@ -201,6 +203,38 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
     ins.origin = node.origin;
+    ins.res_var.id = ir_emitter_next_var_id(emitter);
+
+    *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
+    *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
+
+    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
+
+    if (IR_OPERAND_KIND_VAR == lhs.kind) {
+      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, lhs.var, ins_idx);
+    }
+    if (IR_OPERAND_KIND_VAR == rhs.kind) {
+      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, rhs.var, ins_idx);
+    }
+
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
+  }
+
+  case AST_NODE_KIND_COMPARISON: {
+    PG_ASSERT(2 == node.operands.len);
+    IrOperand lhs = ast_to_ir(PG_SLICE_AT(node.operands, 0), emitter, errors,
+                              true, allocator);
+    IrOperand rhs = ast_to_ir(PG_SLICE_AT(node.operands, 1), emitter, errors,
+                              true, allocator);
+    PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
+
+    IrInstruction ins = {0};
+    ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
+    ins.origin = node.origin;
+    ins.token_kind = node.token_kind;
     ins.res_var.id = ir_emitter_next_var_id(emitter);
 
     *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
@@ -440,6 +474,7 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
     }
 
     switch (ins.kind) {
+    case IR_INSTRUCTION_KIND_COMPARISON:
     case IR_INSTRUCTION_KIND_ADD:
     case IR_INSTRUCTION_KIND_LOAD:
 #if 0
@@ -836,6 +871,22 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" := ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0));
     printf(" + ");
+    ir_print_operand(PG_SLICE_AT(ins.operands, 1));
+
+    IrVarLifetime *lifetime =
+        ir_find_var_lifetime_by_var_id(emitter.lifetimes, ins.res_var.id);
+    PG_ASSERT(lifetime);
+    printf(" // ");
+    ir_emitter_print_var_lifetime(i, *lifetime);
+  } break;
+  case IR_INSTRUCTION_KIND_COMPARISON: {
+    PG_ASSERT(2 == ins.operands.len);
+    PG_ASSERT(0 != ins.res_var.id.value);
+
+    ir_print_var(ins.res_var);
+    printf(" := ");
+    ir_print_operand(PG_SLICE_AT(ins.operands, 0));
+    printf(" %s ", LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
     ir_print_operand(PG_SLICE_AT(ins.operands, 1));
 
     IrVarLifetime *lifetime =
