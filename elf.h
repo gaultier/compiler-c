@@ -1,5 +1,5 @@
 #pragma once
-#include "amd64.h"
+#include "asm.h"
 #include "submodules/cstd/lib.c"
 
 static const u32 ElfProgramHeaderTypeLoad = 1;
@@ -38,7 +38,7 @@ typedef struct {
 static_assert(64 == sizeof(ElfSectionHeader));
 
 [[nodiscard]]
-static PgError elf_write_exe(Amd64Program *program, PgAllocator *allocator) {
+static PgError elf_write_exe(AsmProgram *program, PgAllocator *allocator) {
   // The ELF header and program headers take less than a page size but are
   // padded with zeroes to occupy one page. Then comes the program text. This
   // page gets loaded as well as the program text in one swoop, but the
@@ -67,14 +67,14 @@ static PgError elf_write_exe(Amd64Program *program, PgAllocator *allocator) {
   u64 rodata_size = 0;
   {
     for (u64 i = 0; i < program->rodata.len; i++) {
-      Amd64Constant constant = PG_SLICE_AT(program->rodata, i);
+      AsmConstant constant = PG_SLICE_AT(program->rodata, i);
       switch (constant.kind) {
-      case AMD64_CONSTANT_KIND_NONE:
+      case ASM_CONSTANT_KIND_NONE:
         PG_ASSERT(0);
-      case AMD64_CONSTANT_KIND_U64:
+      case ASM_CONSTANT_KIND_U64:
         rodata_size += sizeof(u64);
         break;
-      case AMD64_CONSTANT_KIND_BYTES:
+      case ASM_CONSTANT_KIND_BYTES:
         rodata_size += constant.bytes.len;
         break;
       default:
@@ -249,14 +249,14 @@ static PgError elf_write_exe(Amd64Program *program, PgAllocator *allocator) {
 
   // Rodata.
   for (u64 i = 0; i < program->rodata.len; i++) {
-    Amd64Constant constant = PG_SLICE_AT(program->rodata, i);
+    AsmConstant constant = PG_SLICE_AT(program->rodata, i);
     switch (constant.kind) {
-    case AMD64_CONSTANT_KIND_NONE:
+    case ASM_CONSTANT_KIND_NONE:
       PG_ASSERT(0);
-    case AMD64_CONSTANT_KIND_U64:
+    case ASM_CONSTANT_KIND_U64:
       pg_byte_buffer_append_u64_within_capacity(&sb, constant.n64);
       break;
-    case AMD64_CONSTANT_KIND_BYTES:
+    case ASM_CONSTANT_KIND_BYTES:
       PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, constant.bytes);
       break;
     default:

@@ -237,10 +237,10 @@ int main(int argc, char *argv[]) {
   u64 vm_start = 1 << 22;
   u64 rodata_offset = 0x2000;
 
-  Amd64Constant rodata[] = {
+  AsmConstant rodata[] = {
       {
           .name = PG_S("hello_world"),
-          .kind = AMD64_CONSTANT_KIND_BYTES,
+          .kind = ASM_CONSTANT_KIND_BYTES,
           .bytes = PG_S("Hello, world!"),
           // TODO: Should it be backpatched?
           .address_absolute = vm_start + rodata_offset + 0x00,
@@ -248,11 +248,11 @@ int main(int argc, char *argv[]) {
   };
   AsmCodeSection section_start = {
       .name = PG_S("_start"),
-      .flags = AMD64_SECTION_FLAG_GLOBAL,
+      .flags = ASM_SECTION_FLAG_GLOBAL,
       .instructions = PG_DYN_SLICE(PgAnySlice, amd64_emitter.instructions),
   };
 
-  Amd64Program program = {
+  AsmProgram program = {
       .file_name = PG_S("asm.bin"),
       .vm_start = vm_start,
       .text =

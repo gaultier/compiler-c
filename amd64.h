@@ -413,7 +413,7 @@ static void amd64_print_instructions(PgAnySlice instructions) {
 
 [[maybe_unused]]
 static void amd64_print_section(AsmCodeSection section) {
-  if (AMD64_SECTION_FLAG_GLOBAL & section.flags) {
+  if (ASM_SECTION_FLAG_GLOBAL & section.flags) {
     printf("global ");
     printf("%.*s", (i32)section.name.len, section.name.data);
     printf(":\n");
@@ -610,7 +610,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
 static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
-                                         Amd64Program program,
+                                         AsmProgram program,
                                          PgAllocator *allocator) {
   (void)sb;
   (void)program;
@@ -873,7 +873,7 @@ static void amd64_encode_instruction_pop(Pgu8Dyn *sb,
 
 static void amd64_encode_instruction_je(Pgu8Dyn *sb,
                                         Amd64Instruction instruction,
-                                        Amd64Program *program,
+                                        AsmProgram *program,
                                         PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP_IF_EQ == instruction.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
@@ -896,7 +896,7 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
 
 static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
-                                         Amd64Program *program,
+                                         AsmProgram *program,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP == instruction.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
@@ -974,7 +974,7 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
 }
 
 static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
-                                     Amd64Program *program,
+                                     AsmProgram *program,
                                      PgAllocator *allocator) {
   switch (instruction.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
@@ -1028,8 +1028,7 @@ static void amd64_encode_instruction(Pgu8Dyn *sb, Amd64Instruction instruction,
 }
 
 static void amd64_encode_section(Pgu8Dyn *sb, AsmCodeSection section,
-                                 Amd64Program *program,
-                                 PgAllocator *allocator) {
+                                 AsmProgram *program, PgAllocator *allocator) {
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction instruction =
         PG_SLICE_AT_CAST(Amd64Instruction, section.instructions, i);
@@ -1067,7 +1066,7 @@ static void amd64_encode_section(Pgu8Dyn *sb, AsmCodeSection section,
 }
 
 [[nodiscard]]
-static PgString amd64_encode_program_text(Amd64Program *program,
+static PgString amd64_encode_program_text(AsmProgram *program,
                                           PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
