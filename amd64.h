@@ -178,20 +178,8 @@ PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
 
 typedef struct {
-  void (*emit_prolog)(AsmEmitter *asm_emitter, PgAllocator *allocator);
-  void (*emit_epilog)(AsmEmitter *asm_emitter, PgAllocator *allocator);
-  void (*emit_lirs_to_asm)(AsmEmitter *asm_emitter,
-                           LirInstructionSlice lir_instructions, bool verbose,
-                           PgAllocator *allocator);
-  PgString (*encode_code)(AsmProgram *program, PgAllocator *allocator);
-  void (*print_instructions)(AsmEmitter *asm_emitter);
-  void (*sanity_check_instructions)(AsmEmitter *asm_emitter);
-  PgAnySlice (*get_instructions_slice)(AsmEmitter *asm_emitter);
+  ASM_EMITTER_FIELDS
 
-  u32 stack_base_pointer_offset;
-  u32 stack_base_pointer_max_offset;
-  InterferenceGraph interference_graph;
-  LirEmitter *lir_emitter;
   Amd64InstructionDyn instructions;
 } Amd64Emitter;
 
