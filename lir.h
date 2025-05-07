@@ -177,19 +177,6 @@ typedef struct {
 } LirEmitter;
 
 [[nodiscard]]
-static MemoryLocationIndex memory_locations_find_by_virtual_register_index(
-    MemoryLocationDyn memory_locations, VirtualRegisterIndex virt_reg_idx) {
-  for (u64 i = 0; i < memory_locations.len; i++) {
-    MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
-
-    if (mem_loc.virt_reg_idx.value == virt_reg_idx.value) {
-      return (MemoryLocationIndex){(u32)i};
-    }
-  }
-  return (MemoryLocationIndex){-1U};
-}
-
-[[nodiscard]]
 static MemoryLocationIndex
 memory_locations_find_by_node_index(MemoryLocationDyn memory_locations,
                                     InterferenceNodeIndex node_idx) {
