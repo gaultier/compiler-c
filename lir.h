@@ -491,21 +491,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(-1U != res_virt_reg_idx.value);
 
-    if (IR_OPERAND_KIND_U64 == src_ir_val.kind) {
-      lir_emit_copy_immediate_to_virt_reg(emitter, src_ir_val, res_virt_reg_idx,
-                                          ir_ins.origin, allocator);
-    } else if (IR_OPERAND_KIND_VAR == src_ir_val.kind) {
-      VarVirtualRegisterIndex src_var_virt_reg_idx =
-          var_virtual_registers_find_by_var(emitter->var_virtual_registers,
-                                            src_ir_val.var);
-      PG_ASSERT(-1U != src_var_virt_reg_idx.value);
-      VarVirtualRegister src_var_virt_reg = PG_SLICE_AT(
-          emitter->var_virtual_registers, src_var_virt_reg_idx.value);
-
-      lir_emit_copy_virt_reg_to_virt_reg(emitter, src_var_virt_reg.virt_reg_idx,
-                                         res_virt_reg_idx, ir_ins.origin,
-                                         allocator);
-    }
+    lir_emit_copy_to_virt_reg(emitter, src_ir_val, res_virt_reg_idx,
+                              ir_ins.origin, allocator);
 
   } break;
 #if 0
