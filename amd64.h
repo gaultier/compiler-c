@@ -1489,6 +1489,9 @@ amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
     PG_ASSERT(res.value && "todo: spill");
     return res;
   }
+  case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
+    PG_ASSERT(0 && "todo");
+    break;
 #if 0
   case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER: {
     return amd64_arch.base_pointer;

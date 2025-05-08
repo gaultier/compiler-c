@@ -4,6 +4,7 @@
 
 typedef enum {
   LIR_VIRT_REG_CONSTRAINT_NONE,
+  LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS,
 #if 0
   LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
@@ -110,6 +111,8 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
   switch (constraint) {
   case LIR_VIRT_REG_CONSTRAINT_NONE:
     return "NONE";
+  case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
+    return "CONDITION_FLAGS";
 #if 0
   case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER:
     return "BASE_POINTER";
@@ -258,6 +261,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
       break;
     case LIR_INSTRUCTION_KIND_CMP:
       PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind);
+      PG_ASSERT(3 == ins.operands.len);
       printf("cmp%s ",
              LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
       break;
@@ -687,7 +691,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(ir_ins.res_var.id.value);
 
     VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
-        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
+        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS,
+        allocator);
     PG_ASSERT(-1U != res_virt_reg_idx.value);
 
     IrOperand ir_lhs = PG_SLICE_AT(ir_ins.operands, 0);
@@ -698,23 +703,16 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         .origin = ir_ins.origin,
         .token_kind = ir_ins.token_kind,
     };
-    PG_DYN_ENSURE_CAP(&ins_cmp.operands, 2, allocator);
+    PG_DYN_ENSURE_CAP(&ins_cmp.operands, 3, allocator);
 
-    LirOperand lhs_op = {0};
-    LirOperand rhs_op = {0};
-
-    if (IR_OPERAND_KIND_U64 == ir_lhs.kind) {
-      lhs_op.kind = LIR_OPERAND_KIND_IMMEDIATE;
-      lhs_op.immediate = ir_lhs.n64;
-    }
-
-    if (IR_OPERAND_KIND_U64 == ir_rhs.kind) {
-      rhs_op.kind = LIR_OPERAND_KIND_IMMEDIATE;
-      rhs_op.immediate = ir_rhs.n64;
-    }
-
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) = lhs_op;
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) = rhs_op;
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) = (LirOperand){
+        .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+        .virt_reg_idx = res_virt_reg_idx,
+    };
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) =
+        lir_ir_operand_to_lir_operand(*emitter, ir_lhs);
+    *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) =
+        lir_ir_operand_to_lir_operand(*emitter, ir_rhs);
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
 
   } break;
