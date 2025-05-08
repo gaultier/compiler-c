@@ -1,1 +1,1 @@
-add lir_emit_copy_ir_op_to_virt_reg: calling lir_emit_copy_virt_reg_to_virt_reg or lir_emit_copy_immediate_to_virt_reg
+amd64: implement lir cmp
