@@ -349,6 +349,7 @@ static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 }
 
+// We pass `IrOperand src` to be open to more immediate kinds in the future.
 static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
                                                 IrOperand src,
                                                 VirtualRegisterIndex dst_idx,
@@ -378,6 +379,65 @@ static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
   *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 }
 
+static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src,
+                                      VirtualRegisterIndex dst_idx,
+                                      Origin origin, PgAllocator *allocator) {
+  switch (src.kind) {
+  case IR_OPERAND_KIND_U64:
+    lir_emit_copy_immediate_to_virt_reg(emitter, src, dst_idx, origin,
+                                        allocator);
+    break;
+  case IR_OPERAND_KIND_VAR: {
+    VarVirtualRegisterIndex src_var_virt_reg_idx =
+        var_virtual_registers_find_by_var(emitter->var_virtual_registers,
+                                          src.var);
+    PG_ASSERT(-1U != src_var_virt_reg_idx.value);
+    VarVirtualRegister src_var_virt_reg =
+        PG_SLICE_AT(emitter->var_virtual_registers, src_var_virt_reg_idx.value);
+
+    lir_emit_copy_virt_reg_to_virt_reg(emitter, src_var_virt_reg.virt_reg_idx,
+                                       dst_idx, origin, allocator);
+  } break;
+  case IR_OPERAND_KIND_LABEL:
+  case IR_OPERAND_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+[[nodiscard]]
+static LirOperand lir_ir_operand_to_lir_operand(LirEmitter emitter,
+                                                IrOperand ir_op) {
+  switch (ir_op.kind) {
+  case IR_OPERAND_KIND_U64:
+    return (LirOperand){
+        .kind = LIR_OPERAND_KIND_IMMEDIATE,
+        .immediate = ir_op.n64,
+    };
+  case IR_OPERAND_KIND_VAR: {
+    VarVirtualRegisterIndex var_virt_reg_idx =
+        var_virtual_registers_find_by_var(emitter.var_virtual_registers,
+                                          ir_op.var);
+    PG_ASSERT(-1U != var_virt_reg_idx.value);
+    VarVirtualRegister var_virt_reg =
+        PG_SLICE_AT(emitter.var_virtual_registers, var_virt_reg_idx.value);
+
+    return (LirOperand){
+        .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
+        .virt_reg_idx = var_virt_reg.virt_reg_idx,
+    };
+  }
+  case IR_OPERAND_KIND_LABEL:
+    return (LirOperand){
+        .kind = LIR_OPERAND_KIND_LABEL,
+        .label = ir_op.label,
+    };
+  case IR_OPERAND_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
 static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
                                  PgAllocator *allocator) {
   PG_ASSERT(!ir_ins.tombstone);
@@ -393,46 +453,16 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(-1U != res_virt_reg_idx.value);
 
-    if (IR_OPERAND_KIND_VAR == lhs_ir_val.kind) {
-      VarVirtualRegisterIndex lhs_var_virt_reg_idx =
-          var_virtual_registers_find_by_var(emitter->var_virtual_registers,
-                                            lhs_ir_val.var);
-      PG_ASSERT(-1U != lhs_var_virt_reg_idx.value);
-      VarVirtualRegister lhs_var_virt_reg = PG_SLICE_AT(
-          emitter->var_virtual_registers, lhs_var_virt_reg_idx.value);
+    lir_emit_copy_to_virt_reg(emitter, lhs_ir_val, res_virt_reg_idx,
+                              ir_ins.origin, allocator);
 
-      lir_emit_copy_virt_reg_to_virt_reg(emitter, lhs_var_virt_reg.virt_reg_idx,
-                                         res_virt_reg_idx, ir_ins.origin,
-                                         allocator);
-    } else if (IR_OPERAND_KIND_U64 == lhs_ir_val.kind) {
-      lir_emit_copy_immediate_to_virt_reg(emitter, lhs_ir_val, res_virt_reg_idx,
-                                          ir_ins.origin, allocator);
-    }
     // We now need to add rhs to it.
 
     IrOperand rhs_ir_val = PG_SLICE_AT(ir_ins.operands, 1);
     PG_ASSERT(IR_OPERAND_KIND_VAR == rhs_ir_val.kind ||
               IR_OPERAND_KIND_U64 == rhs_ir_val.kind);
 
-    LirOperand rhs_op = {0};
-    // If both lhs and rhs are vars on the stack, we need to load rhs into an
-    // intermediate register. We cannot copy one stack slot to another stack
-    // slot directly.
-    if (IR_OPERAND_KIND_VAR == rhs_ir_val.kind) {
-      VarVirtualRegisterIndex rhs_var_virt_reg_idx =
-          var_virtual_registers_find_by_var(emitter->var_virtual_registers,
-                                            rhs_ir_val.var);
-      PG_ASSERT(-1U != rhs_var_virt_reg_idx.value);
-      VarVirtualRegister rhs_var_virt_reg = PG_SLICE_AT(
-          emitter->var_virtual_registers, rhs_var_virt_reg_idx.value);
-
-      rhs_op.kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER;
-      rhs_op.virt_reg_idx = rhs_var_virt_reg.virt_reg_idx;
-    } else if (IR_OPERAND_KIND_U64 == rhs_ir_val.kind) {
-      rhs_op.kind = LIR_OPERAND_KIND_IMMEDIATE;
-      rhs_op.immediate = rhs_ir_val.n64;
-    }
-
+    LirOperand rhs_op = lir_ir_operand_to_lir_operand(*emitter, rhs_ir_val);
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_ADD,
         .origin = ir_ins.origin,
