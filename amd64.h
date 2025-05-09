@@ -168,6 +168,7 @@ typedef enum {
   AMD64_INSTRUCTION_KIND_CMP,
   AMD64_INSTRUCTION_KIND_JMP,
   AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
+  AMD64_INSTRUCTION_KIND_SET_IF_EQ,
 } Amd64InstructionKind;
 
 typedef struct {
@@ -410,6 +411,9 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       break;
     case AMD64_INSTRUCTION_KIND_CMP:
       printf("cmp ");
+      break;
+    case AMD64_INSTRUCTION_KIND_SET_IF_EQ:
+      printf("sete ");
       break;
     default:
       PG_ASSERT(0);
@@ -1010,6 +1014,17 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
   PG_ASSERT(0 && "todo");
 }
 
+static void amd64_encode_instruction_sete(Pgu8Dyn *sb,
+                                          Amd64Instruction instruction,
+                                          PgAllocator *allocator) {
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_SET_IF_EQ == instruction.kind);
+
+  (void)sb;
+  (void)allocator;
+
+  // PG_ASSERT(0 && "todo");
+}
+
 static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
                                      u64 instruction_idx, AsmProgram *program,
                                      PgAllocator *allocator) {
@@ -1061,6 +1076,10 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     break;
   case AMD64_INSTRUCTION_KIND_CMP:
     amd64_encode_instruction_cmp(sb, instruction, allocator);
+    break;
+
+  case AMD64_INSTRUCTION_KIND_SET_IF_EQ:
+    amd64_encode_instruction_sete(sb, instruction, allocator);
     break;
 
   default:
@@ -1264,6 +1283,26 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
     PG_ASSERT(-1U != dst_mem_loc_idx.value);
     MemoryLocation dst_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, dst_mem_loc_idx.value);
+
+    // Easy case: `sete rax` or `sete [rbp-8]`
+    if (LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind) {
+      MemoryLocationIndex src_mem_loc_idx =
+          memory_locations_find_by_virtual_register_index(
+              emitter->interference_graph.memory_locations, src.virt_reg_idx);
+      PG_ASSERT(-1U != src_mem_loc_idx.value);
+      MemoryLocation src_mem_loc = PG_SLICE_AT(
+          emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
+
+      if (MEMORY_LOCATION_KIND_STATUS_REGISTER == src_mem_loc.kind) {
+        Amd64Instruction ins = {
+            .kind = AMD64_INSTRUCTION_KIND_SET_IF_EQ,
+            .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
+            .origin = lir.origin,
+        };
+        *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+        return;
+      }
+    }
 
     // Easy case: `mov rax, 123`.
     if (MEMORY_LOCATION_KIND_REGISTER == dst_mem_loc.kind &&
