@@ -45,6 +45,7 @@ static const Register amd64_r10 = {13};
 static const Register amd64_r11 = {14};
 static const Register amd64_rsp = {15};
 static const Register amd64_rbp = {16};
+static const Register amd64_rflags = {17};
 
 static const Register amd64_register_allocator_gprs[] = {
     amd64_rax,
@@ -66,13 +67,13 @@ static const RegisterSlice amd64_register_allocator_gprs_slice = {
     .len = PG_STATIC_ARRAY_LEN(amd64_register_allocator_gprs),
 };
 
-static const PgString amd64_register_to_string[16 + 1] = {
+static const PgString amd64_register_to_string[] = {
     [0] = PG_S("UNREACHABLE"), [1] = PG_S("rax"),  [2] = PG_S("rbx"),
     [3] = PG_S("rcx"),         [4] = PG_S("rdx"),  [5] = PG_S("rdi"),
     [6] = PG_S("rsi"),         [7] = PG_S("r8"),   [8] = PG_S("r9"),
     [9] = PG_S("r10"),         [10] = PG_S("r11"), [11] = PG_S("r12"),
     [12] = PG_S("r13"),        [13] = PG_S("r14"), [14] = PG_S("r15"),
-    [15] = PG_S("rsp"),        [16] = PG_S("rbp"),
+    [15] = PG_S("rsp"),        [16] = PG_S("rbp"), [17] = PG_S("rflags"),
 };
 
 static const PgStringSlice amd64_register_to_string_slice = {
@@ -182,6 +183,28 @@ typedef struct {
 
   Amd64InstructionDyn instructions;
 } Amd64Emitter;
+
+static MemoryLocation *
+amd64_get_memory_location_from_node_idx(Amd64Emitter *emitter,
+                                        InterferenceNodeIndex node_idx) {
+  MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
+      emitter->interference_graph.memory_locations, node_idx);
+  PG_ASSERT(-1U != mem_loc_idx.value);
+  MemoryLocation *mem_loc = PG_SLICE_AT_PTR(
+      &emitter->interference_graph.memory_locations, mem_loc_idx.value);
+  return mem_loc;
+}
+
+static VirtualRegister
+amd64_get_virtual_register_from_node_idx(Amd64Emitter emitter,
+                                         InterferenceNodeIndex node_idx) {
+  VirtualRegisterIndex virt_reg_idx =
+      amd64_get_memory_location_from_node_idx(&emitter, node_idx)->virt_reg_idx;
+  VirtualRegister virt_reg =
+      PG_SLICE_AT(emitter.lir_emitter->virtual_registers, virt_reg_idx.value);
+
+  return virt_reg;
+}
 
 static void amd64_print_register(Register reg) {
   PgString s = PG_SLICE_AT(amd64_register_to_string_slice, reg.value);
@@ -1479,33 +1502,17 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   }
 }
 
-static Register
-amd64_get_free_register(GprSet regs, LirVirtualRegisterConstraint constraint) {
-  switch (constraint) {
-  case LIR_VIRT_REG_CONSTRAINT_NONE: {
-    // TODO: Smarter free register selection.
-    // E.g. favor caller-saved registers, etc.
-    Register res = asm_gpr_pop_first_unset(&regs);
-    PG_ASSERT(res.value && "todo: spill");
-    return res;
-  }
-  case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
-    PG_ASSERT(0 && "todo");
-    break;
-#if 0
-  case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER: {
-    return amd64_arch.base_pointer;
-  }
-#endif
-  default:
-    PG_ASSERT(0);
-  }
+static Register amd64_get_free_register(GprSet regs) {
+  // TODO: Smarter free register selection.
+  // E.g. favor caller-saved registers, etc.
+  Register res = asm_gpr_pop_first_unset(&regs);
+  PG_ASSERT(res.value && "todo: spill");
+  return res;
 }
 
 [[nodiscard]] static Register
 amd64_color_assign_register(InterferenceGraph *graph,
-                            InterferenceNodeIndex node_idx,
-                            LirVirtualRegisterConstraint constraint) {
+                            InterferenceNodeIndex node_idx) {
   GprSet neighbor_colors = {
       .len = amd64_register_allocator_gprs_slice.len,
       .set = 0,
@@ -1542,7 +1549,7 @@ amd64_color_assign_register(InterferenceGraph *graph,
     }
   } while (neighbor.has_value);
 
-  Register res = amd64_get_free_register(neighbor_colors, constraint);
+  Register res = amd64_get_free_register(neighbor_colors);
   PG_ASSERT(res.value);
 
   // Update memory location.
@@ -1566,16 +1573,8 @@ amd64_color_assign_register(InterferenceGraph *graph,
 static bool amd64_must_spill(Amd64Emitter emitter,
                              InterferenceNodeIndex node_idx,
                              u64 neighbors_count) {
-  MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
-      emitter.interference_graph.memory_locations, node_idx);
-  PG_ASSERT(-1U != mem_loc_idx.value);
-  MemoryLocation mem_loc = PG_SLICE_AT(
-      emitter.interference_graph.memory_locations, mem_loc_idx.value);
-
   bool virt_reg_addressable =
-      PG_SLICE_AT(emitter.lir_emitter->virtual_registers,
-                  mem_loc.virt_reg_idx.value)
-          .addressable;
+      amd64_get_virtual_register_from_node_idx(emitter, node_idx).addressable;
 
   bool needs_spill =
       neighbors_count >= amd64_register_allocator_gprs_slice.len ||
@@ -1587,20 +1586,15 @@ static bool amd64_must_spill(Amd64Emitter emitter,
 static void amd64_spill_node(Amd64Emitter *emitter,
                              InterferenceNodeIndex node_idx) {
 
-  MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
-      emitter->interference_graph.memory_locations, node_idx);
-  PG_ASSERT(-1U != mem_loc_idx.value);
-  {
-    MemoryLocation *mem_loc = PG_SLICE_AT_PTR(
-        &emitter->interference_graph.memory_locations, mem_loc_idx.value);
-    PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
-    PG_ASSERT(node_idx.value == mem_loc->node_idx.value);
+  MemoryLocation *mem_loc =
+      amd64_get_memory_location_from_node_idx(emitter, node_idx);
+  PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
+  PG_ASSERT(node_idx.value == mem_loc->node_idx.value);
 
-    mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
-    u32 rbp_offset =
-        asm_reserve_stack_slot((AsmEmitter *)emitter, sizeof(u64) /*FIXME*/);
-    mem_loc->base_pointer_offset = (i32)rbp_offset;
-  }
+  mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
+  u32 rbp_offset =
+      asm_reserve_stack_slot((AsmEmitter *)emitter, sizeof(u64) /*FIXME*/);
+  mem_loc->base_pointer_offset = (i32)rbp_offset;
 }
 
 // TODO: Better strategy to pick which virtual registers to spill.
@@ -1634,30 +1628,73 @@ amd64_color_spill_remaining_nodes_in_graph(Amd64Emitter *emitter,
   }
 }
 
+static void amd64_color_do_pre_coloring(Amd64Emitter *emitter,
+                                        PgString tombstones_bitfield) {
+  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
+       row++) {
+    InterferenceNodeIndex node_idx = {(u32)row};
+    MemoryLocation *mem_loc =
+        amd64_get_memory_location_from_node_idx(emitter, node_idx);
+    VirtualRegister virt_reg = PG_SLICE_AT(
+        emitter->lir_emitter->virtual_registers, mem_loc->virt_reg_idx.value);
+    switch (virt_reg.constraint) {
+    case LIR_VIRT_REG_CONSTRAINT_NONE:
+      break;
+    case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
+      // FIXME: Need a new kind e.g. `KIND_REGISTER_HIDDEN`.
+      mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
+      mem_loc->reg = amd64_rflags;
+      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix,
+                                      node_idx.value);
+      pg_bitfield_set(tombstones_bitfield, row, true);
+      break;
+    default:
+      PG_ASSERT(0);
+    }
+  }
+}
+
 // Assign a color (i.e. unique physical register) to each node in the graph
 // so that no two adjacent nodes have the same color.
 // Meaning that if two variables interfere, they are assigned a different
 // physical register.
-
+// It uses Chatain's algorithm which is a bit conservative but also relatively
+// simple.
+// TODO: Consider using George's algorithm which is more optimistic to assign
+// registers.
+// TODO: Consider coalescing (see literature).
 static void amd64_color_interference_graph(Amd64Emitter *emitter,
                                            PgAllocator *allocator) {
   if (0 == emitter->interference_graph.matrix.nodes_count) {
     return;
   }
+  PgString node_tombstones_bitfield = pg_string_make(
+      pg_div_ceil(emitter->interference_graph.matrix.nodes_count, 8),
+      allocator);
+  printf("\n------------ Adjacency matrix of interference graph before "
+         "pre-coloring"
+         "------------\n\n");
+  pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+  amd64_color_do_pre_coloring(emitter, node_tombstones_bitfield);
+
+  printf(
+      "\n------------ Adjacency matrix of interference graph after pre-coloring"
+      "------------\n\n");
+  pg_adjacency_matrix_print(emitter->interference_graph.matrix);
 
   InterferenceNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,
                     allocator);
-
-  PgString nodes_tombstones_bitfield = pg_string_make(
-      pg_div_ceil(emitter->interference_graph.matrix.nodes_count, 8),
-      allocator);
 
   PgAdjacencyMatrix graph_clone =
       pg_adjacency_matrix_clone(emitter->interference_graph.matrix, allocator);
 
   for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
        row++) {
+    if (pg_bitfield_get(node_tombstones_bitfield, row)) {
+      continue;
+    }
+
     u64 neighbors_count = pg_adjacency_matrix_count_neighbors(
         emitter->interference_graph.matrix, row);
 
@@ -1669,13 +1706,13 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
       *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node_idx;
 
       pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, row);
-      pg_bitfield_set(nodes_tombstones_bitfield, row, true);
+      pg_bitfield_set(node_tombstones_bitfield, row, true);
     }
   }
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
 
   amd64_color_spill_remaining_nodes_in_graph(emitter, &stack,
-                                             nodes_tombstones_bitfield);
+                                             node_tombstones_bitfield);
 
   PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
 
@@ -1691,7 +1728,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
 
     // Add the node back to the graph.
     {
-      pg_bitfield_set(nodes_tombstones_bitfield, node_idx.value, false);
+      pg_bitfield_set(node_tombstones_bitfield, node_idx.value, false);
 
       PgAdjacencyMatrixNeighborIterator it =
           pg_adjacency_matrix_make_neighbor_iterator(graph_clone,
@@ -1708,7 +1745,7 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
         // The node was originally connected in the original graph to its
         // neighbor. When re-adding the node to the graph, we only connect it
         // to non-tombstoned neighbors.
-        if (pg_bitfield_get(nodes_tombstones_bitfield, neighbor.node)) {
+        if (pg_bitfield_get(node_tombstones_bitfield, neighbor.node)) {
           continue;
         }
 
@@ -1719,9 +1756,10 @@ static void amd64_color_interference_graph(Amd64Emitter *emitter,
       LirVirtualRegisterConstraint constraint =
           PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
               .constraint;
+      PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == constraint);
 
-      Register reg = amd64_color_assign_register(&emitter->interference_graph,
-                                                 node_idx, constraint);
+      Register reg =
+          amd64_color_assign_register(&emitter->interference_graph, node_idx);
       PG_ASSERT(reg.value);
     }
   }
