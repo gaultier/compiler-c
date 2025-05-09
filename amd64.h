@@ -334,6 +334,7 @@ static void amd64_print_memory_locations(MemoryLocationDyn memory_locations,
 
     switch (mem_loc.kind) {
     case MEMORY_LOCATION_KIND_REGISTER:
+    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
       amd64_print_register(mem_loc.reg);
       break;
     case MEMORY_LOCATION_KIND_STACK: {
@@ -1091,6 +1092,9 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
           .reg = mem_loc.reg,
       };
     }
+    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
+      PG_ASSERT(0 && "todo");
+      break;
     case MEMORY_LOCATION_KIND_STACK: {
       PG_ASSERT(mem_loc.base_pointer_offset);
       return (Amd64Operand){
@@ -1250,24 +1254,24 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   case LIR_INSTRUCTION_KIND_MOV: {
     PG_ASSERT(2 == lir.operands.len);
 
-    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
-    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
+    LirOperand dst = PG_SLICE_AT(lir.operands, 0);
+    LirOperand src = PG_SLICE_AT(lir.operands, 1);
 
-    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
-    MemoryLocationIndex lhs_mem_loc_idx =
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
+    MemoryLocationIndex dst_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
-    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
-    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
+            emitter->interference_graph.memory_locations, dst.virt_reg_idx);
+    PG_ASSERT(-1U != dst_mem_loc_idx.value);
+    MemoryLocation dst_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, dst_mem_loc_idx.value);
 
     // Easy case: `mov rax, 123`.
-    if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind &&
-        LIR_OPERAND_KIND_IMMEDIATE == rhs.kind) {
+    if (MEMORY_LOCATION_KIND_REGISTER == dst_mem_loc.kind &&
+        LIR_OPERAND_KIND_IMMEDIATE == src.kind) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
           .origin = lir.origin,
       };
 
@@ -1277,8 +1281,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 
     // Need to use a spill register: `mov [rbp-8], 123` is not allowed.
     // Need to transform it to a store: `mov r10, 123; mov [rbp-8], r10`.
-    if (MEMORY_LOCATION_KIND_REGISTER != lhs_mem_loc.kind &&
-        LIR_OPERAND_KIND_IMMEDIATE == rhs.kind) {
+    if (MEMORY_LOCATION_KIND_REGISTER != dst_mem_loc.kind &&
+        LIR_OPERAND_KIND_IMMEDIATE == src.kind) {
       Amd64Instruction ins_load = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .origin = {.synthetic = true},
@@ -1288,13 +1292,13 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
                   // TODO: pick one of the spill registers?
                   .reg = amd64_spill_registers[0], // TODO: mark it as used?
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
 
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
           .rhs = ins_load.lhs,
           .origin = lir.origin,
       };
@@ -1303,22 +1307,22 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
       return;
     }
 
-    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == rhs.kind);
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
 
-    MemoryLocationIndex rhs_mem_loc_idx =
+    MemoryLocationIndex src_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, rhs.virt_reg_idx);
-    PG_ASSERT(-1U != rhs_mem_loc_idx.value);
-    MemoryLocation rhs_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, rhs_mem_loc_idx.value);
+            emitter->interference_graph.memory_locations, src.virt_reg_idx);
+    PG_ASSERT(-1U != src_mem_loc_idx.value);
+    MemoryLocation src_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
 
     // Easy case: at least one memory location is a register.
-    if ((MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind ||
-         MEMORY_LOCATION_KIND_REGISTER == rhs_mem_loc.kind)) {
+    if ((MEMORY_LOCATION_KIND_REGISTER == dst_mem_loc.kind ||
+         MEMORY_LOCATION_KIND_REGISTER == src_mem_loc.kind)) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
           .origin = lir.origin,
       };
 
@@ -1328,7 +1332,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
 
     // Need to insert load/store instructions from/to stack/memory.
 
-    if (MEMORY_LOCATION_KIND_REGISTER != rhs_mem_loc.kind) {
+    if (MEMORY_LOCATION_KIND_REGISTER != src_mem_loc.kind) {
       Amd64Instruction ins_load = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .origin = {.synthetic = true},
@@ -1338,13 +1342,13 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
                   // TODO: pick one of the spill registers?
                   .reg = amd64_spill_registers[0], // TODO: mark it as used?
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
 
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
           .rhs = ins_load.lhs,
           .origin = lir.origin,
       };
@@ -1353,7 +1357,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
       return;
     }
 
-    else if (MEMORY_LOCATION_KIND_REGISTER != lhs_mem_loc.kind) {
+    else if (MEMORY_LOCATION_KIND_REGISTER != dst_mem_loc.kind) {
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .origin = {.synthetic = true},
@@ -1363,10 +1367,10 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
                   .effective_address =
                       {
                           .base = amd64_rbp,
-                          .displacement = -(i32)lhs_mem_loc.base_pointer_offset,
+                          .displacement = -(i32)dst_mem_loc.base_pointer_offset,
                       },
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_store;
     } else {
@@ -1449,25 +1453,25 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   case LIR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(2 == lir.operands.len);
 
-    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
-    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
+    LirOperand dst = PG_SLICE_AT(lir.operands, 0);
+    LirOperand src = PG_SLICE_AT(lir.operands, 1);
 
-    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
-    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == rhs.kind);
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
+    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
 
-    MemoryLocationIndex lhs_mem_loc_idx =
+    MemoryLocationIndex dst_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
-    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
+            emitter->interference_graph.memory_locations, dst.virt_reg_idx);
+    PG_ASSERT(-1U != dst_mem_loc_idx.value);
 
-    MemoryLocationIndex rhs_mem_loc_idx =
+    MemoryLocationIndex src_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, rhs.virt_reg_idx);
-    PG_ASSERT(-1U != rhs_mem_loc_idx.value);
-    MemoryLocation rhs_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, rhs_mem_loc_idx.value);
+            emitter->interference_graph.memory_locations, src.virt_reg_idx);
+    PG_ASSERT(-1U != src_mem_loc_idx.value);
+    MemoryLocation src_mem_loc = PG_SLICE_AT(
+        emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
 
-    PG_ASSERT(MEMORY_LOCATION_KIND_STACK == rhs_mem_loc.kind);
+    PG_ASSERT(MEMORY_LOCATION_KIND_STACK == src_mem_loc.kind);
 
     Amd64Instruction ins_load = {
         .kind = AMD64_INSTRUCTION_KIND_LEA,
@@ -1478,14 +1482,14 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
                 // TODO: pick one of the spill registers?
                 .reg = amd64_spill_registers[0], // TODO: mark it as used?
             },
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
     };
     PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins_load.rhs.kind);
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_load;
 
     Amd64Instruction ins_store = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
         .rhs = ins_load.lhs,
         .origin = lir.origin,
     };
@@ -1643,8 +1647,7 @@ static void amd64_color_do_pre_coloring(Amd64Emitter *emitter,
     case LIR_VIRT_REG_CONSTRAINT_NONE:
       break;
     case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
-      // FIXME: Need a new kind e.g. `KIND_REGISTER_HIDDEN`.
-      mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
+      mem_loc->kind = MEMORY_LOCATION_KIND_STATUS_REGISTER;
       mem_loc->reg = amd64_rflags;
       pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix,
                                       node_idx.value);

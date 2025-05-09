@@ -16,6 +16,7 @@ typedef enum {
   MEMORY_LOCATION_KIND_NONE,
   MEMORY_LOCATION_KIND_REGISTER,
   MEMORY_LOCATION_KIND_STACK,
+  MEMORY_LOCATION_KIND_STATUS_REGISTER,
 #if 0
   MEMORY_LOCATION_KIND_MEMORY,
 #endif
@@ -216,6 +217,7 @@ static void asm_sanity_check_interference_graph(InterferenceGraph graph,
     for (u64 i = 0; i < graph.memory_locations.len; i++) {
       MemoryLocation mem_loc = PG_SLICE_AT(graph.memory_locations, i);
       switch (mem_loc.kind) {
+      case MEMORY_LOCATION_KIND_STATUS_REGISTER:
       case MEMORY_LOCATION_KIND_REGISTER:
         PG_ASSERT(mem_loc.reg.value);
         break;
