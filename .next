@@ -1,1 +1,2 @@
 amd64: implement more cmp/test encodings
+asm: extract graph coloring
