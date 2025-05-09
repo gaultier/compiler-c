@@ -1430,10 +1430,12 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, LirInstruction lir,
   } break;
 
   case LIR_INSTRUCTION_KIND_CMP: {
-    PG_ASSERT(2 == lir.operands.len);
+    PG_ASSERT(3 == lir.operands.len);
 
-    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
-    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
+    LirOperand res = PG_SLICE_AT(lir.operands, 0);
+    (void)res; // TODO: Use?
+    LirOperand lhs = PG_SLICE_AT(lir.operands, 1);
+    LirOperand rhs = PG_SLICE_AT(lir.operands, 2);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_CMP,
