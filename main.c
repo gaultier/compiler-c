@@ -192,7 +192,9 @@ int main(int argc, char *argv[]) {
                             allocator);
 
   if (cli_opts.verbose) {
-    printf("\n------------ ASM ------------\n");
+    printf("\n------------ ASM %.*s ------------\n",
+           (i32)asm_emitter->program.file_path.len,
+           asm_emitter->program.file_path.data);
     asm_emitter->print_program(*asm_emitter);
   }
 
