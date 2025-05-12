@@ -168,7 +168,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   };
 
   Pgu8Dyn sb = {0};
-  PG_DYN_ENSURE_CAP(&sb, 32 * PG_KiB, allocator);
+  PG_DYN_ENSURE_CAP(&sb, 12 * PG_KiB, allocator);
   {
     // Magic.
     *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0x7f;
@@ -241,12 +241,12 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   }
 
   // Text.
-  PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, program_encoded);
+  PG_DYN_APPEND_SLICE(&sb, program_encoded, allocator);
 
   // Pad.
   for (u64 i = program_encoded.len;
        i < PG_ROUNDUP(program_encoded.len, page_size); i++) {
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0;
+    *PG_DYN_PUSH(&sb, allocator) = 0;
   }
 
   // Rodata.
@@ -259,7 +259,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
       pg_byte_buffer_append_u64_within_capacity(&sb, constant.n64);
       break;
     case ASM_CONSTANT_KIND_BYTES:
-      PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, constant.bytes);
+      PG_DYN_APPEND_SLICE(&sb, constant.bytes, allocator);
       break;
     default:
       PG_ASSERT(0);
@@ -267,17 +267,17 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   }
 
   // Strings.
-  *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0; // Null string.
+  *PG_DYN_PUSH(&sb, allocator) = 0; // Null string.
 
   for (u64 i = 0; i < PG_STATIC_ARRAY_LEN(elf_strings); i++) {
-    PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, elf_strings[i]);
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&sb) = 0; // Null terminator.
+    PG_DYN_APPEND_SLICE(&sb, elf_strings[i], allocator);
+    *PG_DYN_PUSH(&sb, allocator) = 0; // Null terminator.
   }
 
   for (u64 i = 0; i < PG_STATIC_ARRAY_LEN(section_headers); i++) {
     PgString s = {.data = (u8 *)&section_headers[i],
                   .len = sizeof(section_headers[i])};
-    PG_DYN_APPEND_SLICE_WITHIN_CAPACITY(&sb, s);
+    PG_DYN_APPEND_SLICE(&sb, s, allocator);
   }
 
   PgString sb_string = PG_DYN_SLICE(PgString, sb);

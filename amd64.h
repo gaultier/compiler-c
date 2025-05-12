@@ -1735,7 +1735,7 @@ static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
 static Pgu8Slice amd64_encode_program_text(AsmEmitter *asm_emitter,
                                            PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
-  PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
+  PG_DYN_ENSURE_CAP(&sb, 4 * PG_KiB, allocator);
 
   for (u64 i = 0; i < asm_emitter->program.text.len; i++) {
     AsmCodeSection section = PG_SLICE_AT(asm_emitter->program.text, i);
