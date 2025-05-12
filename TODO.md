@@ -7,7 +7,7 @@
 - [ ] codegen: riscv
 - [ ] codegen: model register clobbers
 - [ ] codegen: macho format
-- [x] codegen: move graph coloring to LIR//ASM phase with the target data as input
+- [x] codegen: move graph coloring to LIR/ASM phase with the target data as input
 - [ ] cli: choose target(s)
 - [ ] lang: boolean operators (==, <, etc)
 - [ ] lang: deref
