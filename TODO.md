@@ -7,7 +7,7 @@
 - [ ] codegen: riscv
 - [ ] codegen: model register clobbers
 - [ ] codegen: macho format
-- [ ] codegen: move graph coloring to LIR phase with the target data as input
+- [x] codegen: move graph coloring to LIR//ASM phase with the target data as input
 - [ ] cli: choose target(s)
 - [ ] lang: boolean operators (==, <, etc)
 - [ ] lang: deref
@@ -22,6 +22,6 @@
 - [ ] lang: strings
 - [x] spill registers
 - [ ] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
-- [ ] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
+- [x] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
 - [ ] lang: builtin assert
 - [ ] codegen: link with libc & call linker
