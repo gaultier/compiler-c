@@ -605,7 +605,6 @@ static AstNode *lex_to_ast(LexTokenSlice tokens, ErrorDyn *errors,
                            PgAllocator *allocator) {
   AstNode *root = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
   root->kind = AST_NODE_KIND_BLOCK;
-  root->origin.synthetic = true;
 
   for (u64 tokens_idx = 0; tokens_idx < tokens.len;) {
     LexTokenSlice remaining = PG_SLICE_RANGE_START(tokens, tokens_idx);

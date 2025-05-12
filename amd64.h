@@ -210,7 +210,6 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
 
   Amd64Instruction ins_push = {
       .kind = AMD64_INSTRUCTION_KIND_PUSH,
-      .origin = {.synthetic = true},
       .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -221,7 +220,6 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
 
   Amd64Instruction ins_mov = {
       .kind = AMD64_INSTRUCTION_KIND_MOV,
-      .origin = {.synthetic = true},
       .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -241,7 +239,6 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
 static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
   Amd64Instruction ins_pop = {
       .kind = AMD64_INSTRUCTION_KIND_POP,
-      .origin = {.synthetic = true},
       .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -1174,7 +1171,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     Amd64Instruction ins_load = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .origin = {.synthetic = true},
         .lhs =
             {
                 .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -1283,7 +1279,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
         LIR_OPERAND_KIND_IMMEDIATE == src.kind) {
       Amd64Instruction ins_load = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .origin = {.synthetic = true},
           .lhs =
               {
                   .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -1333,7 +1328,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     if (MEMORY_LOCATION_KIND_REGISTER != src_mem_loc.kind) {
       Amd64Instruction ins_load = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .origin = {.synthetic = true},
           .lhs =
               {
                   .kind = AMD64_OPERAND_KIND_REGISTER,
@@ -1358,7 +1352,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     else if (MEMORY_LOCATION_KIND_REGISTER != dst_mem_loc.kind) {
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .origin = {.synthetic = true},
           .lhs =
               {
                   .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
@@ -1539,7 +1532,6 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
               .kind = AMD64_OPERAND_KIND_IMMEDIATE,
               .immediate = 0, // Backpatched.
           },
-      .origin.synthetic = true,
   };
   amd64_add_instruction(&section->instructions, stack_sub, allocator);
   u64 stack_sub_instruction_idx = section->instructions.len - 1;
@@ -1586,7 +1578,6 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
                 .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                 .immediate = rsp_max_offset_aligned_16,
             },
-        .origin.synthetic = true,
     };
 
     amd64_add_instruction(&section->instructions, stack_add, allocator);
@@ -1631,7 +1622,6 @@ static void amd64_emit_program(AsmEmitter *asm_emitter,
                 //  Only on amd64.
                 .immediate = 60,
             },
-        .origin = {.synthetic = true},
     };
     amd64_add_instruction(&section_exit.instructions, ins_mov_0, allocator);
 
@@ -1647,13 +1637,11 @@ static void amd64_emit_program(AsmEmitter *asm_emitter,
                 .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                 .immediate = 0,
             },
-        .origin = {.synthetic = true},
     };
     amd64_add_instruction(&section_exit.instructions, ins_mov_1, allocator);
 
     Amd64Instruction ins_syscall = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-        .origin = {.synthetic = true},
     };
     amd64_add_instruction(&section_exit.instructions, ins_syscall, allocator);
     *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_exit;
@@ -1675,7 +1663,6 @@ static void amd64_emit_program(AsmEmitter *asm_emitter,
                 //  Only on amd64.
                 .immediate = 60,
             },
-        .origin = {.synthetic = true},
     };
     amd64_add_instruction(&section_die.instructions, ins_mov_0, allocator);
 
@@ -1691,13 +1678,11 @@ static void amd64_emit_program(AsmEmitter *asm_emitter,
                 .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                 .immediate = 1,
             },
-        .origin = {.synthetic = true},
     };
     amd64_add_instruction(&section_die.instructions, ins_mov_1, allocator);
 
     Amd64Instruction ins_syscall = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-        .origin = {.synthetic = true},
     };
     amd64_add_instruction(&section_die.instructions, ins_syscall, allocator);
     *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_die;
