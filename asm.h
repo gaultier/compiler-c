@@ -74,7 +74,7 @@ typedef enum {
 typedef struct {
   PgString name;
   AsmCodeSectionFlag flags;
-  PgAnySlice instructions;
+  PgAnyDyn instructions;
 } AsmCodeSection;
 PG_SLICE(AsmCodeSection) AsmCodeSectionSlice;
 PG_DYN(AsmCodeSection) AsmCodeSectionDyn;
@@ -98,8 +98,8 @@ PG_SLICE(AsmConstant) AsmConstantSlice;
 PG_DYN(AsmConstant) AsmConstantDyn;
 
 typedef struct {
-  AsmCodeSectionSlice text;
-  AsmConstantSlice rodata;
+  AsmCodeSectionDyn text;
+  AsmConstantDyn rodata;
   u64 vm_start;
   LabelAddressDyn label_addresses;
   LabelAddressDyn jumps_to_backpatch;
@@ -113,11 +113,10 @@ typedef struct AsmEmitter AsmEmitter;
   void (*emit_program)(AsmEmitter * asm_emitter,                               \
                        LirInstructionSlice lir_instructions, bool verbose,     \
                        PgAllocator *allocator);                                \
-  void (*encode_instruction)(AsmEmitter * asm_emitter, Pgu8Dyn * sb,           \
-                             u64 instruction_idx, PgAllocator * allocator);    \
+  Pgu8Slice (*encode_program_text)(AsmEmitter * asm_emitter,                   \
+                                   PgAllocator * allocator);                   \
   void (*print_instructions)(AsmEmitter * asm_emitter);                        \
   void (*sanity_check_instructions)(AsmEmitter * asm_emitter);                 \
-  PgAnySlice (*get_instructions_slice)(AsmEmitter * asm_emitter);              \
   Register (*map_constraint_to_register)(                                      \
       AsmEmitter * asm_emitter, LirVirtualRegisterConstraint constraint);      \
                                                                                \
@@ -300,7 +299,7 @@ static u32 asm_reserve_stack_slot(AsmEmitter *emitter, u32 slot_size) {
 static void asm_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
                                AsmCodeSection section, PgAllocator *allocator) {
   for (u64 i = 0; i < section.instructions.len; i++) {
-    asm_emitter->encode_instruction(asm_emitter, sb, i, allocator);
+    amd64_encode_instruction(asm_emitter, sb, i, allocator);
   }
 
   for (u64 i = 0; i < asm_emitter->program.jumps_to_backpatch.len; i++) {
