@@ -1763,6 +1763,7 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
   amd64_emitter->gprs_count = amd64_register_allocator_gprs_slice.len;
   amd64_emitter->program.file_path = exe_path;
   amd64_emitter->program.vm_start = 1 << 22;
+  // TODO: rodata.
   // u64 rodata_offset = 0x2000;
 
   return (AsmEmitter *)amd64_emitter;
