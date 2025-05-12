@@ -184,10 +184,6 @@ int main(int argc, char *argv[]) {
     mem_loc->var = var_virt_reg.var;
   }
 
-  // Amd64Emitter amd64_emitter = {
-  //     .interference_graph = interference_graph,
-  //     .lir_emitter = &lir_emitter,
-  // };
   AsmEmitter *asm_emitter =
       amd64_make_asm_emitter(interference_graph, &lir_emitter, allocator);
   asm_emitter->emit_epilog(asm_emitter, allocator);
