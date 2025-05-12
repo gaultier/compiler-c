@@ -186,10 +186,8 @@ int main(int argc, char *argv[]) {
 
   AsmEmitter *asm_emitter =
       amd64_make_asm_emitter(interference_graph, &lir_emitter, allocator);
-  asm_emitter->emit_epilog(asm_emitter, allocator);
-  asm_emitter->emit_lirs_to_asm(asm_emitter, lirs_slice, cli_opts.verbose,
-                                allocator);
-  asm_emitter->emit_prolog(asm_emitter, allocator);
+  asm_emitter->emit_program(asm_emitter, lirs_slice, cli_opts.verbose,
+                            allocator);
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM ------------\n");
@@ -197,43 +195,26 @@ int main(int argc, char *argv[]) {
   }
   asm_emitter->sanity_check_instructions(asm_emitter);
 
-  u64 vm_start = 1 << 22;
-  u64 rodata_offset = 0x2000;
+  // AsmConstant rodata[] = {
+  //     {
+  //         .name = PG_S("hello_world"),
+  //         .kind = ASM_CONSTANT_KIND_BYTES,
+  //         .bytes = PG_S("Hello, world!"),
+  //         // TODO: Should it be backpatched?
+  //         .address_absolute = vm_start + rodata_offset + 0x00,
+  //     },
+  // };
+  // AsmCodeSection section_start = {
+  //     .name = PG_S("_start"),
+  //     .flags = ASM_SECTION_FLAG_GLOBAL,
+  //     .instructions = asm_emitter->get_instructions_slice(asm_emitter),
+  // };
 
-  AsmConstant rodata[] = {
-      {
-          .name = PG_S("hello_world"),
-          .kind = ASM_CONSTANT_KIND_BYTES,
-          .bytes = PG_S("Hello, world!"),
-          // TODO: Should it be backpatched?
-          .address_absolute = vm_start + rodata_offset + 0x00,
-      },
-  };
-  AsmCodeSection section_start = {
-      .name = PG_S("_start"),
-      .flags = ASM_SECTION_FLAG_GLOBAL,
-      .instructions = asm_emitter->get_instructions_slice(asm_emitter),
-  };
-
-  AsmProgram program = {
-      .file_name = PG_S("asm.bin"),
-      .vm_start = vm_start,
-      .text =
-          {
-              .data = &section_start,
-              .len = 1,
-          },
-      .rodata =
-          {
-              .data = rodata,
-              .len = PG_STATIC_ARRAY_LEN(rodata),
-          },
-  };
-
-  PgError err_write = elf_write_exe(asm_emitter, &program, allocator);
+  PgError err_write = elf_write_exe(asm_emitter, allocator);
   if (err_write) {
     fprintf(stderr, "failed to write to file %.*s: %u\n",
-            (i32)program.file_name.len, program.file_name.data, err_write);
+            (i32)asm_emitter->program.file_name.len,
+            asm_emitter->program.file_name.data, err_write);
     return 1;
   }
 

@@ -629,12 +629,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
 static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
-                                         AsmProgram program,
                                          PgAllocator *allocator) {
-  (void)sb;
-  (void)program;
-  (void)allocator;
-
   PG_ASSERT(AMD64_INSTRUCTION_KIND_LEA == instruction.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind);
@@ -1004,7 +999,7 @@ static void amd64_encode_instruction_sete(Pgu8Dyn *sb,
 }
 
 static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
-                                     u64 instruction_idx, AsmProgram *program,
+                                     u64 instruction_idx,
                                      PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
   Amd64Instruction instruction =
@@ -1023,7 +1018,7 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     amd64_encode_instruction_sub(sb, instruction, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LEA:
-    amd64_encode_instruction_lea(sb, instruction, *program, allocator);
+    amd64_encode_instruction_lea(sb, instruction, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_RET:
     amd64_encode_instruction_ret(sb, instruction, allocator);
@@ -1040,17 +1035,20 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
 
   case AMD64_INSTRUCTION_KIND_LABEL:
     PG_ASSERT(instruction.lhs.label.value > 0);
-    *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
-        .label = instruction.lhs.label,
-        .address_text = sb->len,
-    };
+    *PG_DYN_PUSH(&asm_emitter->program.label_addresses, allocator) =
+        (LabelAddress){
+            .label = instruction.lhs.label,
+            .address_text = sb->len,
+        };
     break;
 
   case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
-    amd64_encode_instruction_je(sb, instruction, program, allocator);
+    amd64_encode_instruction_je(sb, instruction, &asm_emitter->program,
+                                allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP:
-    amd64_encode_instruction_jmp(sb, instruction, program, allocator);
+    amd64_encode_instruction_jmp(sb, instruction, &asm_emitter->program,
+                                 allocator);
     break;
   case AMD64_INSTRUCTION_KIND_CMP:
     amd64_encode_instruction_cmp(sb, instruction, allocator);
@@ -1612,6 +1610,14 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
   }
 }
 
+static void amd64_emit_program(AsmEmitter *asm_emitter,
+                               LirInstructionSlice lirs, bool verbose,
+                               PgAllocator *allocator) {
+  amd64_emit_prolog(asm_emitter, allocator);
+  amd64_emit_lirs_to_asm(asm_emitter, lirs, verbose, allocator);
+  amd64_emit_epilog(asm_emitter, allocator);
+}
+
 [[nodiscard]] static PgAnySlice
 amd64_get_instructions_slice(AsmEmitter *asm_emitter) {
   Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
@@ -1630,9 +1636,7 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
       pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
   amd64_emitter->interference_graph = interference_graph;
   amd64_emitter->lir_emitter = lir_emitter;
-  amd64_emitter->emit_prolog = amd64_emit_prolog;
-  amd64_emitter->emit_epilog = amd64_emit_epilog;
-  amd64_emitter->emit_lirs_to_asm = amd64_emit_lirs_to_asm;
+  amd64_emitter->emit_program = amd64_emit_program;
   amd64_emitter->encode_instruction = amd64_encode_instruction;
   amd64_emitter->print_instructions = amd64_asm_print_instructions;
   amd64_emitter->sanity_check_instructions = amd64_sanity_check_instructions;
@@ -1640,6 +1644,9 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
 
   amd64_emitter->gprs_count = amd64_register_allocator_gprs_slice.len;
+  amd64_emitter->program.file_name = PG_S("asm.bin"); // FIXME
+  amd64_emitter->program.vm_start = 1 << 22;
+  // u64 rodata_offset = 0x2000;
 
   return (AsmEmitter *)amd64_emitter;
 }

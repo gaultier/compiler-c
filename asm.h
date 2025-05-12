@@ -110,14 +110,11 @@ typedef struct {
 typedef struct AsmEmitter AsmEmitter;
 
 #define ASM_EMITTER_FIELDS                                                     \
-  void (*emit_prolog)(AsmEmitter * asm_emitter, PgAllocator * allocator);      \
-  void (*emit_epilog)(AsmEmitter * asm_emitter, PgAllocator * allocator);      \
-  void (*emit_lirs_to_asm)(AsmEmitter * asm_emitter,                           \
-                           LirInstructionSlice lir_instructions, bool verbose, \
-                           PgAllocator *allocator);                            \
+  void (*emit_program)(AsmEmitter * asm_emitter,                               \
+                       LirInstructionSlice lir_instructions, bool verbose,     \
+                       PgAllocator *allocator);                                \
   void (*encode_instruction)(AsmEmitter * asm_emitter, Pgu8Dyn * sb,           \
-                             u64 instruction_idx, AsmProgram * program,        \
-                             PgAllocator * allocator);                         \
+                             u64 instruction_idx, PgAllocator * allocator);    \
   void (*print_instructions)(AsmEmitter * asm_emitter);                        \
   void (*sanity_check_instructions)(AsmEmitter * asm_emitter);                 \
   PgAnySlice (*get_instructions_slice)(AsmEmitter * asm_emitter);              \
@@ -128,7 +125,8 @@ typedef struct AsmEmitter AsmEmitter;
   u32 stack_base_pointer_max_offset;                                           \
   InterferenceGraph interference_graph;                                        \
   LirEmitter *lir_emitter;                                                     \
-  u32 gprs_count;
+  u32 gprs_count;                                                              \
+  AsmProgram program;
 
 struct AsmEmitter {
   ASM_EMITTER_FIELDS
@@ -300,22 +298,21 @@ static u32 asm_reserve_stack_slot(AsmEmitter *emitter, u32 slot_size) {
 }
 
 static void asm_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
-                               AsmCodeSection section, AsmProgram *program,
-                               PgAllocator *allocator) {
+                               AsmCodeSection section, PgAllocator *allocator) {
   for (u64 i = 0; i < section.instructions.len; i++) {
-    asm_emitter->encode_instruction(asm_emitter, sb, i, program, allocator);
+    asm_emitter->encode_instruction(asm_emitter, sb, i, allocator);
   }
 
-  for (u64 i = 0; i < program->jumps_to_backpatch.len; i++) {
+  for (u64 i = 0; i < asm_emitter->program.jumps_to_backpatch.len; i++) {
     LabelAddress jump_to_backpatch =
-        PG_SLICE_AT(program->jumps_to_backpatch, i);
+        PG_SLICE_AT(asm_emitter->program.jumps_to_backpatch, i);
     PG_ASSERT(jump_to_backpatch.label.value > 0);
     PG_ASSERT(jump_to_backpatch.address_text > 0);
     PG_ASSERT(jump_to_backpatch.address_text <= sb->len - 1);
 
     LabelAddress label = {0};
-    for (u64 j = 0; j < program->label_addresses.len; j++) {
-      label = PG_SLICE_AT(program->label_addresses, j);
+    for (u64 j = 0; j < asm_emitter->program.label_addresses.len; j++) {
+      label = PG_SLICE_AT(asm_emitter->program.label_addresses, j);
       PG_ASSERT(label.label.value > 0);
       PG_ASSERT(label.address_text <= sb->len - 1);
 
@@ -337,14 +334,14 @@ static void asm_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
 }
 
 [[nodiscard]]
-static PgString asm_encode_code(AsmEmitter *asm_emitter, AsmProgram *program,
+static PgString asm_encode_code(AsmEmitter *asm_emitter,
                                 PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
 
-  for (u64 i = 0; i < program->text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(program->text, i);
-    asm_encode_section(asm_emitter, &sb, section, program, allocator);
+  for (u64 i = 0; i < asm_emitter->program.text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(asm_emitter->program.text, i);
+    asm_encode_section(asm_emitter, &sb, section, allocator);
   }
 
   return PG_DYN_SLICE(PgString, sb);
