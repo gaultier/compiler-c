@@ -175,7 +175,7 @@ typedef struct {
   Amd64InstructionKind kind;
   Amd64Operand lhs, rhs;
   Origin origin;
-  bool tombstone;
+  bool tombstone; // TODO: Consider if necessary.
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
