@@ -9,7 +9,7 @@
 typedef struct {
   bool verbose;
   bool optimize;
-  char *filename;
+  char *file_path;
 } CliOptions;
 
 static void cli_print_help(char *exe) {
@@ -48,7 +48,7 @@ static CliOptions cli_options_parse(int argc, char *argv[]) {
     exit(1);
   }
 
-  res.filename = argv[optind];
+  res.file_path = argv[optind];
 
   return res;
 }
@@ -60,18 +60,18 @@ int main(int argc, char *argv[]) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgString file_name = pg_cstr_to_string(cli_opts.filename);
+  PgString file_path = pg_cstr_to_string(cli_opts.file_path);
   PgStringResult file_read_res =
-      pg_file_read_full_from_path(file_name, allocator);
+      pg_file_read_full_from_path(file_path, allocator);
   if (file_read_res.err) {
-    fprintf(stderr, "Failed to read file %.*s: %u\n", (i32)file_name.len,
-            file_name.data, file_read_res.err);
+    fprintf(stderr, "Failed to read file %.*s: %u\n", (i32)file_path.len,
+            file_path.data, file_read_res.err);
     return 1;
   }
 
   LexTokenDyn tokens = {0};
   ErrorDyn errors = {0};
-  lex(file_name, file_read_res.res, &tokens, &errors, allocator);
+  lex(file_path, file_read_res.res, &tokens, &errors, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
@@ -184,8 +184,10 @@ int main(int argc, char *argv[]) {
     mem_loc->var = var_virt_reg.var;
   }
 
-  AsmEmitter *asm_emitter =
-      amd64_make_asm_emitter(interference_graph, &lir_emitter, allocator);
+  PgString base_path = pg_path_base_name(file_path);
+  PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
+  AsmEmitter *asm_emitter = amd64_make_asm_emitter(
+      interference_graph, &lir_emitter, exe_path, allocator);
   asm_emitter->emit_program(asm_emitter, lirs_slice, cli_opts.verbose,
                             allocator);
 
@@ -212,8 +214,8 @@ int main(int argc, char *argv[]) {
   PgError err_write = elf_write_exe(asm_emitter, allocator);
   if (err_write) {
     fprintf(stderr, "failed to write to file %.*s: %u\n",
-            (i32)asm_emitter->program.file_name.len,
-            asm_emitter->program.file_name.data, err_write);
+            (i32)asm_emitter->program.file_path.len,
+            asm_emitter->program.file_path.data, err_write);
     return 1;
   }
 

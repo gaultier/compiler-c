@@ -104,7 +104,7 @@ typedef struct {
   LabelAddressDyn label_addresses;
   LabelAddressDyn jumps_to_backpatch;
 
-  PgString file_name;
+  PgString file_path;
 } AsmProgram;
 
 typedef struct AsmEmitter AsmEmitter;

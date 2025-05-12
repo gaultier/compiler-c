@@ -1748,19 +1748,20 @@ static Pgu8Slice amd64_encode_program_text(AsmEmitter *asm_emitter,
 [[nodiscard]]
 static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
                                           LirEmitter *lir_emitter,
+                                          PgString exe_path,
                                           PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter =
       pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
-  amd64_emitter->interference_graph = interference_graph;
-  amd64_emitter->lir_emitter = lir_emitter;
-
   amd64_emitter->emit_program = amd64_emit_program;
   amd64_emitter->print_program = amd64_print_program;
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
   amd64_emitter->encode_program_text = amd64_encode_program_text;
 
+  amd64_emitter->interference_graph = interference_graph;
+  amd64_emitter->lir_emitter = lir_emitter;
+
   amd64_emitter->gprs_count = amd64_register_allocator_gprs_slice.len;
-  amd64_emitter->program.file_name = PG_S("asm.bin"); // FIXME
+  amd64_emitter->program.file_path = exe_path;
   amd64_emitter->program.vm_start = 1 << 22;
   // u64 rodata_offset = 0x2000;
 

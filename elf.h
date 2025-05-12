@@ -48,7 +48,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   // Afterwards comes the .rodata (not padded).
 
   PgFileDescriptorResult res_file =
-      pg_file_open(asm_emitter->program.file_name, PG_FILE_ACCESS_WRITE, 0700,
+      pg_file_open(asm_emitter->program.file_path, PG_FILE_ACCESS_WRITE, 0700,
                    true, allocator);
   if (res_file.err) {
     return res_file.err;
