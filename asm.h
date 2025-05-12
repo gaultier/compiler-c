@@ -476,7 +476,7 @@ asm_color_assign_register(InterferenceGraph *graph,
 // TODO: Consider using George's algorithm which is more optimistic to assign
 // registers.
 // TODO: Consider coalescing (see literature).
-static void asm_color_interference_graph(AsmEmitter *emitter,
+static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
                                          PgAllocator *allocator) {
   if (0 == emitter->interference_graph.matrix.nodes_count) {
     return;
@@ -484,16 +484,19 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
   PgString node_tombstones_bitfield = pg_string_make(
       pg_div_ceil(emitter->interference_graph.matrix.nodes_count, 8),
       allocator);
-  printf("\n------------ Adjacency matrix of interference graph before "
-         "pre-coloring"
-         "------------\n\n");
-  pg_adjacency_matrix_print(emitter->interference_graph.matrix);
-  asm_color_do_pre_coloring(emitter, node_tombstones_bitfield);
 
-  printf(
-      "\n------------ Adjacency matrix of interference graph after pre-coloring"
-      "------------\n\n");
-  pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+  if (verbose) {
+    printf("\n------------ Adjacency matrix of interference graph before "
+           "pre-coloring"
+           "------------\n\n");
+    pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+    asm_color_do_pre_coloring(emitter, node_tombstones_bitfield);
+
+    printf("\n------------ Adjacency matrix of interference graph after "
+           "pre-coloring"
+           "------------\n\n");
+    pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+  }
 
   InterferenceNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,

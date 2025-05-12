@@ -1536,7 +1536,7 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
   amd64_add_instruction(&section->instructions, stack_sub, allocator);
   u64 stack_sub_instruction_idx = section->instructions.len - 1;
 
-  asm_color_interference_graph(asm_emitter, allocator);
+  asm_color_interference_graph(asm_emitter, verbose, allocator);
 
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
