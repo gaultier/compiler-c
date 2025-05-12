@@ -63,7 +63,8 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;
 
-  PgString program_encoded = asm_encode_code(asm_emitter, allocator);
+  Pgu8Slice program_encoded =
+      asm_emitter->encode_program_text(asm_emitter, allocator);
 
   u64 rodata_size = 0;
   {

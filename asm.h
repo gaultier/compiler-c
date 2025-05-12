@@ -115,7 +115,7 @@ typedef struct AsmEmitter AsmEmitter;
                        PgAllocator *allocator);                                \
   Pgu8Slice (*encode_program_text)(AsmEmitter * asm_emitter,                   \
                                    PgAllocator * allocator);                   \
-  void (*print_program)(AsmEmitter asm_emitter, AsmProgram program);           \
+  void (*print_program)(AsmEmitter asm_emitter);                               \
   Register (*map_constraint_to_register)(                                      \
       AsmEmitter * asm_emitter, LirVirtualRegisterConstraint constraint);      \
                                                                                \
@@ -293,56 +293,6 @@ static u32 asm_reserve_stack_slot(AsmEmitter *emitter, u32 slot_size) {
 
   PG_ASSERT(emitter->stack_base_pointer_offset > 0);
   return emitter->stack_base_pointer_offset;
-}
-
-static void asm_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
-                               AsmCodeSection section, PgAllocator *allocator) {
-  for (u64 i = 0; i < section.instructions.len; i++) {
-    amd64_encode_instruction(asm_emitter, sb, i, allocator);
-  }
-
-  for (u64 i = 0; i < asm_emitter->program.jumps_to_backpatch.len; i++) {
-    LabelAddress jump_to_backpatch =
-        PG_SLICE_AT(asm_emitter->program.jumps_to_backpatch, i);
-    PG_ASSERT(jump_to_backpatch.label.value > 0);
-    PG_ASSERT(jump_to_backpatch.address_text > 0);
-    PG_ASSERT(jump_to_backpatch.address_text <= sb->len - 1);
-
-    LabelAddress label = {0};
-    for (u64 j = 0; j < asm_emitter->program.label_addresses.len; j++) {
-      label = PG_SLICE_AT(asm_emitter->program.label_addresses, j);
-      PG_ASSERT(label.label.value > 0);
-      PG_ASSERT(label.address_text <= sb->len - 1);
-
-      if (label.label.value == jump_to_backpatch.label.value) {
-        break;
-      }
-    }
-    PG_ASSERT(label.label.value > 0);
-    PG_ASSERT(label.label.value == jump_to_backpatch.label.value);
-
-    u8 *jump_displacement_encoded =
-        PG_SLICE_AT_PTR(sb, jump_to_backpatch.address_text);
-    i64 displacement = (i64)label.address_text -
-                       (i64)jump_to_backpatch.address_text - (i64)sizeof(i32);
-    PG_ASSERT(displacement <= INT32_MAX);
-
-    memcpy(jump_displacement_encoded, &displacement, sizeof(i32));
-  }
-}
-
-[[nodiscard]]
-static PgString asm_encode_code(AsmEmitter *asm_emitter,
-                                PgAllocator *allocator) {
-  Pgu8Dyn sb = {0};
-  PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
-
-  for (u64 i = 0; i < asm_emitter->program.text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(asm_emitter->program.text, i);
-    asm_encode_section(asm_emitter, &sb, section, allocator);
-  }
-
-  return PG_DYN_SLICE(PgString, sb);
 }
 
 static MemoryLocation *

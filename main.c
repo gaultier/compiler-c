@@ -191,9 +191,8 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM ------------\n");
-    asm_emitter->print_instructions(asm_emitter);
+    asm_emitter->print_program(*asm_emitter);
   }
-  asm_emitter->sanity_check_instructions(asm_emitter);
 
   // AsmConstant rodata[] = {
   //     {

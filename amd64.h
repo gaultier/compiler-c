@@ -412,11 +412,9 @@ static void amd64_print_section(AsmCodeSection section) {
   amd64_print_instructions(instructions);
 }
 
-static void amd64_print_program(AsmEmitter emitter, AsmProgram program) {
-  (void)emitter;
-
-  for (u64 i = 0; i < program.text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(program.text, i);
+static void amd64_print_program(AsmEmitter emitter) {
+  for (u64 i = 0; i < emitter.program.text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(emitter.program.text, i);
     amd64_print_section(section);
     printf("\n");
   }
@@ -977,14 +975,9 @@ static void amd64_encode_instruction_sete(Pgu8Dyn *sb,
 }
 
 static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
-                                     AsmCodeSection section,
-                                     u64 instruction_idx,
+                                     Amd64Instruction instruction,
                                      PgAllocator *allocator) {
   (void)asm_emitter;
-
-  Amd64Instruction instruction =
-      PG_C_ARRAY_AT((Amd64Instruction *)section.instructions.data,
-                    section.instructions.len, instruction_idx);
 
   switch (instruction.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
@@ -1662,6 +1655,60 @@ static void amd64_emit_program(AsmEmitter *asm_emitter,
   amd64_sanity_check_program((Amd64Emitter *)asm_emitter);
 }
 
+static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
+                                 AsmCodeSection section,
+                                 PgAllocator *allocator) {
+  for (u64 i = 0; i < section.instructions.len; i++) {
+    Amd64Instruction ins =
+        PG_C_ARRAY_AT((Amd64Instruction *)section.instructions.data,
+                      section.instructions.len, i);
+    amd64_encode_instruction(asm_emitter, sb, ins, allocator);
+  }
+
+  for (u64 i = 0; i < asm_emitter->program.jumps_to_backpatch.len; i++) {
+    LabelAddress jump_to_backpatch =
+        PG_SLICE_AT(asm_emitter->program.jumps_to_backpatch, i);
+    PG_ASSERT(jump_to_backpatch.label.value > 0);
+    PG_ASSERT(jump_to_backpatch.address_text > 0);
+    PG_ASSERT(jump_to_backpatch.address_text <= sb->len - 1);
+
+    LabelAddress label = {0};
+    for (u64 j = 0; j < asm_emitter->program.label_addresses.len; j++) {
+      label = PG_SLICE_AT(asm_emitter->program.label_addresses, j);
+      PG_ASSERT(label.label.value > 0);
+      PG_ASSERT(label.address_text <= sb->len - 1);
+
+      if (label.label.value == jump_to_backpatch.label.value) {
+        break;
+      }
+    }
+    PG_ASSERT(label.label.value > 0);
+    PG_ASSERT(label.label.value == jump_to_backpatch.label.value);
+
+    u8 *jump_displacement_encoded =
+        PG_SLICE_AT_PTR(sb, jump_to_backpatch.address_text);
+    i64 displacement = (i64)label.address_text -
+                       (i64)jump_to_backpatch.address_text - (i64)sizeof(i32);
+    PG_ASSERT(displacement <= INT32_MAX);
+
+    memcpy(jump_displacement_encoded, &displacement, sizeof(i32));
+  }
+}
+
+[[nodiscard]]
+static Pgu8Slice amd64_encode_program_text(AsmEmitter *asm_emitter,
+                                           PgAllocator *allocator) {
+  Pgu8Dyn sb = {0};
+  PG_DYN_ENSURE_CAP(&sb, 16 * PG_KiB, allocator);
+
+  for (u64 i = 0; i < asm_emitter->program.text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(asm_emitter->program.text, i);
+    amd64_encode_section(asm_emitter, &sb, section, allocator);
+  }
+
+  return PG_DYN_SLICE(Pgu8Slice, sb);
+}
+
 [[nodiscard]]
 static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
                                           LirEmitter *lir_emitter,
@@ -1674,6 +1721,7 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
   amd64_emitter->emit_program = amd64_emit_program;
   amd64_emitter->print_program = amd64_print_program;
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
+  amd64_emitter->encode_program_text = amd64_encode_program_text;
 
   amd64_emitter->gprs_count = amd64_register_allocator_gprs_slice.len;
   amd64_emitter->program.file_name = PG_S("asm.bin"); // FIXME
