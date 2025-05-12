@@ -4,3 +4,5 @@
 a.out
 test*
 !test.s
+!test.sh
+!.next

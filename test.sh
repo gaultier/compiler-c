@@ -5,5 +5,5 @@ set -e
 for f in *.unicorn; do
   echo "$f"
   ./main.bin "$f"
-  ./asm.bin
+  ./"$(basename $f)".bin
 done
