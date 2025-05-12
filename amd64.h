@@ -197,7 +197,7 @@ static void amd64_add_instruction(PgAnyDyn *instructions_any,
       .len = instructions_any->len,
       .cap = instructions_any->cap,
   };
-  *PG_DYN_PUSH(&instructions, allocator);
+  *PG_DYN_PUSH(&instructions, allocator) = ins;
 
   instructions_any->data = instructions.data;
   instructions_any->len = instructions.len;
@@ -395,26 +395,6 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
   }
 }
 
-static void amd64_print_instructions_any(PgAnyDyn instructions_any) {
-  Amd64InstructionSlice instructions = {
-      .data = instructions_any.data,
-      .len = instructions_any.len,
-  };
-  amd64_print_instructions(instructions);
-}
-
-static void amd64_asm_print_section(AsmEmitter *asm_emitter,
-                                    AsmCodeSection section) {
-  (void)asm_emitter;
-
-  Amd64InstructionSlice instructions = {
-      .data = section.instructions.data,
-      .len = section.instructions.len,
-  };
-  amd64_print_instructions(instructions);
-}
-
-[[maybe_unused]]
 static void amd64_print_section(AsmCodeSection section) {
   if (ASM_SECTION_FLAG_GLOBAL & section.flags) {
     printf("global ");
@@ -425,7 +405,21 @@ static void amd64_print_section(AsmCodeSection section) {
   printf("%.*s", (i32)section.name.len, section.name.data);
   printf(":\n");
 
-  amd64_print_instructions_any(section.instructions);
+  Amd64InstructionSlice instructions = {
+      .data = section.instructions.data,
+      .len = section.instructions.len,
+  };
+  amd64_print_instructions(instructions);
+}
+
+static void amd64_print_program(AsmEmitter emitter, AsmProgram program) {
+  (void)emitter;
+
+  for (u64 i = 0; i < program.text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(program.text, i);
+    amd64_print_section(section);
+    printf("\n");
+  }
 }
 
 [[nodiscard]]
@@ -1127,9 +1121,9 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
   }
 }
 
-static void amd64_sanity_check_section(AsmEmitter *asm_emitter,
+static void amd64_sanity_check_section(Amd64Emitter *emitter,
                                        AsmCodeSection section) {
-  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+  (void)emitter;
 
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction ins =
@@ -1145,6 +1139,13 @@ static void amd64_sanity_check_section(AsmEmitter *asm_emitter,
 
     PG_ASSERT(!(AMD64_OPERAND_KIND_IMMEDIATE == ins.lhs.kind &&
                 AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind));
+  }
+}
+
+static void amd64_sanity_check_program(Amd64Emitter *emitter) {
+  for (u64 i = 0; i < emitter->program.text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(emitter->program.text, i);
+    amd64_sanity_check_section(emitter, section);
   }
 }
 
@@ -1576,8 +1577,8 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
     u32 rsp_max_offset_aligned_16 =
         (u32)PG_ROUNDUP(amd64_emitter->stack_base_pointer_max_offset, 16);
 
-    PG_C_ARRAY_AT_PTR((Amd64Instruction *)section.instructions.data,
-                      section.instructions.len, stack_sub_instruction_idx)
+    PG_C_ARRAY_AT_PTR((Amd64Instruction *)section->instructions.data,
+                      section->instructions.len, stack_sub_instruction_idx)
         ->rhs.immediate = rsp_max_offset_aligned_16;
 
     Amd64Instruction stack_add = {
@@ -1657,6 +1658,8 @@ static void amd64_emit_program(AsmEmitter *asm_emitter,
   amd64_emit_epilog(&section_start, allocator);
 
   *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_start;
+
+  amd64_sanity_check_program((Amd64Emitter *)asm_emitter);
 }
 
 [[nodiscard]]
@@ -1667,9 +1670,9 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
       pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
   amd64_emitter->interference_graph = interference_graph;
   amd64_emitter->lir_emitter = lir_emitter;
+
   amd64_emitter->emit_program = amd64_emit_program;
-  amd64_emitter->print_instructions = amd64_asm_print_section;
-  amd64_emitter->sanity_check_instructions = amd64_sanity_check_section;
+  amd64_emitter->print_program = amd64_print_program;
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
 
   amd64_emitter->gprs_count = amd64_register_allocator_gprs_slice.len;

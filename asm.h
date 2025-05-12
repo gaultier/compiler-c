@@ -115,8 +115,7 @@ typedef struct AsmEmitter AsmEmitter;
                        PgAllocator *allocator);                                \
   Pgu8Slice (*encode_program_text)(AsmEmitter * asm_emitter,                   \
                                    PgAllocator * allocator);                   \
-  void (*print_instructions)(AsmEmitter * asm_emitter);                        \
-  void (*sanity_check_instructions)(AsmEmitter * asm_emitter);                 \
+  void (*print_program)(AsmEmitter asm_emitter, AsmProgram program);           \
   Register (*map_constraint_to_register)(                                      \
       AsmEmitter * asm_emitter, LirVirtualRegisterConstraint constraint);      \
                                                                                \
