@@ -450,13 +450,13 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       break;
 #endif
     case LEX_TOKEN_KIND_KEYWORD_IF:
-      printf("if\n");
+      printf("Keyword if\n");
       break;
     case LEX_TOKEN_KIND_KEYWORD_ELSE:
-      printf("else\n");
+      printf("Keyword else\n");
       break;
     case LEX_TOKEN_KIND_KEYWORD_ASSERT:
-      printf("assert\n");
+      printf("Keyword assert\n");
       break;
     case LEX_TOKEN_KIND_COLON_EQUAL:
       printf(":=\n");
