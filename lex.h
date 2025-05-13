@@ -34,11 +34,6 @@ PG_SLICE(LexToken) LexTokenSlice;
 PG_DYN(LexToken) LexTokenDyn;
 
 typedef struct {
-  PgRune rune;
-  bool ok;
-} LexMatch;
-
-typedef struct {
   PgString file_path;
   PgString src;
   u32 line, column;
@@ -76,10 +71,9 @@ static void lex_add_token(Lexer *lexer, LexTokenKind token_kind,
 static bool lex_match_rune_1(Lexer *lexer, PgRune rune1,
                              LexTokenKind token_kind1, PgAllocator *allocator) {
 
-  PgUtf8Iterator it_tmp = lexer->it;
-  PgRuneResult rune_next_res = pg_utf8_iterator_next(&it_tmp);
+  PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
   if (rune1 == rune_next_res.res) {
-    lexer->it = it_tmp;
+    lexer->it.idx += pg_utf8_rune_bytes_count(rune1);
     lex_add_token(lexer, token_kind1, allocator);
     lex_advance(lexer, rune1);
 
@@ -90,21 +84,59 @@ static bool lex_match_rune_1(Lexer *lexer, PgRune rune1,
 }
 
 [[nodiscard]]
-static bool lex_match_rune_2(Lexer *lexer, PgRune rune1, PgRune rune2,
-                             LexTokenKind token_kind1, LexTokenKind token_kind2,
-                             PgAllocator *allocator) {
+static bool lex_match_rune_1_and_2(Lexer *lexer, PgRune rune1, PgRune rune2,
+                                   LexTokenKind token_kind,
+                                   PgAllocator *allocator) {
 
-  PgUtf8Iterator it_tmp = lexer->it;
-  PgRuneResult rune_next_res = pg_utf8_iterator_next(&it_tmp);
-  if (rune1 == rune_next_res.res) {
-    lexer->it = it_tmp;
-    lex_add_token(lexer, token_kind1, allocator);
-    lex_advance(lexer, rune1);
-
-    return true;
+  {
+    PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune1 != rune_next_res.res) {
+      return false;
+    }
   }
 
-  return false;
+  PgUtf8Iterator it_tmp = lexer->it;
+  lex_advance(lexer, rune1);
+
+  {
+    PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune2 != rune_next_res.res) {
+      lexer->it = it_tmp;
+      return false;
+    }
+  }
+
+  lex_add_token(lexer, token_kind, allocator);
+  lex_advance(lexer, rune2);
+
+  return true;
+}
+
+[[nodiscard]]
+static bool lex_match_rune_1_or_2(Lexer *lexer, PgRune rune1, PgRune rune2,
+                                  LexTokenKind token_kind1,
+                                  LexTokenKind token_kind2,
+                                  PgAllocator *allocator) {
+
+  {
+    PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune1 != rune_next_res.res) {
+      return false;
+    }
+
+    lexer->it.idx += pg_utf8_rune_bytes_count(rune1);
+    lex_advance(lexer, rune1);
+  }
+
+  PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+  if (rune2 != rune_next_res.res) {
+    lex_add_token(lexer, token_kind1, allocator);
+    return true;
+  } else {
+    lex_add_token(lexer, token_kind2, allocator);
+    lex_advance(lexer, rune2);
+    return true;
+  }
 }
 
 static void lex_add_error(Lexer *lexer, ErrorKind error_kind,
@@ -372,7 +404,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     }
     u64 idx_prev = lexer->it.idx;
 
-    PgRuneResult rune_res = pg_utf8_iterator_next(&lexer->it);
+    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
     if (rune_res.err || 0 == rune_res.res) {
       lex_add_error(lexer, ERROR_KIND_LEX_INVALID_UTF8, allocator);
       return;
@@ -382,7 +414,9 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     PG_ASSERT(0 != rune);
 
     // Skip to the next newline if in error mode.
+    // TODO: memchr?
     if ('\n' != rune && lexer->err_mode) {
+      lex_advance(lexer, rune);
       continue;
     }
 
@@ -406,96 +440,46 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     } break;
 
     case '+': {
-      lex_add_token(lexer, LEX_TOKEN_KIND_PLUS, allocator);
-      lex_advance(lexer, rune);
+      lex_match_rune_1(lexer, LEX_TOKEN_KIND_PLUS, allocator);
     } break;
 
     case '&': {
-      lex_add_token(lexer, LEX_TOKEN_KIND_AMPERSAND, allocator);
-      lex_advance(lexer, rune);
+      lex_match_rune_1(lexer, LEX_TOKEN_KIND_AMPERSAND, allocator);
     } break;
 
     case '(': {
-      lex_add_token(lexer, LEX_TOKEN_KIND_PAREN_LEFT, allocator);
-      lex_advance(lexer, rune);
+      lex_match_rune_1(lexer, LEX_TOKEN_KIND_PAREN_LEFT, allocator);
     } break;
 
     case ')': {
-      lex_add_token(lexer, LEX_TOKEN_KIND_PAREN_RIGHT, allocator);
-      lex_advance(lexer, rune);
+      lex_match_rune_1(lexer, LEX_TOKEN_KIND_PAREN_RIGHT, allocator);
     } break;
 
     case '{': {
-      lex_add_token(lexer, LEX_TOKEN_KIND_CURLY_LEFT, allocator);
-      lex_advance(lexer, rune);
+      lex_match_rune_1(lexer, LEX_TOKEN_KIND_CURLY_LEFT, allocator);
     } break;
 
     case '}': {
-      lex_add_token(lexer, LEX_TOKEN_KIND_CURLY_RIGHT, allocator);
-      lex_advance(lexer, rune);
+      lex_match_rune_1(lexer, LEX_TOKEN_KIND_CURLY_RIGHT, allocator);
     } break;
 
     case ',': {
-      lex_add_token(lexer, LEX_TOKEN_KIND_COMMA, allocator);
-      lex_advance(lexer, rune);
+      lex_match_rune_1(lexer, LEX_TOKEN_KIND_COMMA, allocator);
     } break;
 
     case ':': {
-      PgUtf8Iterator it_tmp = it;
-      PgRuneResult rune_next_res = pg_utf8_iterator_next(&it_tmp);
-      if ('=' != rune_next_res.res) {
+      if (!lex_match_rune_1_and_2(lexer, ':', '=', LEX_TOKEN_KIND_COLON_EQUAL,
+                                  allocator)) {
         lex_add_error(lexer, ERROR_KIND_LEX_UNKNOWN_TOKEN, allocator);
-        break;
       }
-      it = it_tmp;
-
-      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
-          .kind = LEX_TOKEN_KIND_COLON_EQUAL,
-          .origin =
-              {
-                  .file_path = file_path,
-                  .line = line,
-                  .column = column,
-                  .file_offset = (u32)idx_prev,
-              },
-      };
-
-      column += 2;
 
     } break;
 
     case '=': {
-      PgUtf8Iterator it_tmp = it;
-      PgRuneResult rune_next_res = pg_utf8_iterator_next(&it_tmp);
-      if ('=' == rune_next_res.res) {
-        it = it_tmp;
-        *PG_DYN_PUSH(tokens, allocator) = (LexToken){
-            .kind = LEX_TOKEN_KIND_EQUAL_EQUAL,
-            .origin =
-                {
-                    .file_path = file_path,
-                    .line = line,
-                    .column = column,
-                    .file_offset = (u32)idx_prev,
-                },
-        };
-        column += 2;
-        break;
+      if (!lex_match_rune_1_or_2(lexer, '=', '=', LEX_TOKEN_KIND_EQUAL,
+                                 LEX_TOKEN_KIND_EQUAL_EQUAL, allocator)) {
+        lex_add_error(lexer, ERROR_KIND_LEX_UNKNOWN_TOKEN, allocator);
       }
-
-      *PG_DYN_PUSH(tokens, allocator) = (LexToken){
-          .kind = LEX_TOKEN_KIND_EQUAL,
-          .origin =
-              {
-                  .file_path = file_path,
-                  .line = line,
-                  .column = column,
-                  .file_offset = (u32)idx_prev,
-              },
-      };
-
-      column += 1;
-
     } break;
 
     case ' ': {
@@ -504,10 +488,6 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     }
 
     default: {
-      // Unconsume the first rune.
-      PG_ASSERT(it.idx > 0);
-      it.idx -= 1;
-
       if (lex_keyword(&it, tokens, errors, file_path, line, &column,
                       allocator)) {
         break;
@@ -518,18 +498,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
         break;
       }
 
-      *PG_DYN_PUSH(errors, allocator) = (Error){
-          .kind = ERROR_KIND_LEX_UNKNOWN_TOKEN,
-          .origin =
-              {
-                  .file_path = file_path,
-                  .line = line,
-                  .column = column,
-                  .file_offset = (u32)it.idx,
-              },
-      };
-
-      err_mode = true;
+      lex_add_error(lexer, ERROR_KIND_LEX_UNKNOWN_TOKEN, allocator);
     } break;
     }
   }
