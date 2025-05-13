@@ -69,25 +69,24 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  LexTokenDyn tokens = {0};
-  ErrorDyn errors = {0};
   Lexer lexer = lex_make_lexer(file_path, file_read_res.res);
   lex(&lexer, allocator);
-  if (errors.len) {
-    for (u64 i = 0; i < errors.len; i++) {
-      Error err = PG_SLICE_AT(errors, i);
+  if (lexer.errors.len) {
+    for (u64 i = 0; i < lexer.errors.len; i++) {
+      Error err = PG_SLICE_AT(lexer.errors, i);
       origin_print(err.origin);
       printf(" Error: ");
       error_print(err);
     }
     return 1;
   }
-  LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, tokens);
+  LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, lexer.tokens);
   if (cli_opts.verbose) {
     printf("\n------------ Lex tokens ------------\n");
     lex_tokens_print(tokens_slice);
   }
 
+  ErrorDyn errors = {0};
   AstNode *root = lex_to_ast(tokens_slice, &errors, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
@@ -198,21 +197,6 @@ int main(int argc, char *argv[]) {
            asm_emitter->program.file_path.data);
     asm_emitter->print_program(*asm_emitter);
   }
-
-  // AsmConstant rodata[] = {
-  //     {
-  //         .name = PG_S("hello_world"),
-  //         .kind = ASM_CONSTANT_KIND_BYTES,
-  //         .bytes = PG_S("Hello, world!"),
-  //         // TODO: Should it be backpatched?
-  //         .address_absolute = vm_start + rodata_offset + 0x00,
-  //     },
-  // };
-  // AsmCodeSection section_start = {
-  //     .name = PG_S("_start"),
-  //     .flags = ASM_SECTION_FLAG_GLOBAL,
-  //     .instructions = asm_emitter->get_instructions_slice(asm_emitter),
-  // };
 
   PgError err_write = elf_write_exe(asm_emitter, allocator);
   if (err_write) {
