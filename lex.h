@@ -19,6 +19,7 @@ typedef enum {
   LEX_TOKEN_KIND_AMPERSAND,
   LEX_TOKEN_KIND_KEYWORD_IF,
   LEX_TOKEN_KIND_KEYWORD_ELSE,
+  LEX_TOKEN_KIND_KEYWORD_ASSERT,
 #if 0
   LEX_TOKEN_KIND_KEYWORD_SYSCALL,
 #endif
@@ -569,6 +570,9 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       break;
     case LEX_TOKEN_KIND_KEYWORD_ELSE:
       printf("else\n");
+      break;
+    case LEX_TOKEN_KIND_KEYWORD_ASSERT:
+      printf("assert\n");
       break;
     case LEX_TOKEN_KIND_COLON_EQUAL:
       printf(":=\n");
