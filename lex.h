@@ -165,9 +165,8 @@ static bool lex_identifier(Lexer *lexer, PgAllocator *allocator) {
     if (lexer->it.idx >= lexer->it.s.len) {
       return false;
     }
-    u64 idx_prev = lexer->it.idx;
 
-    PgRuneResult rune_res = pg_utf8_iterator_next(&lexer->it);
+    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
     if (rune_res.err || 0 == rune_res.res) {
       lex_add_error(lexer, ERROR_KIND_LEX_INVALID_UTF8, allocator);
       return false;
@@ -177,7 +176,6 @@ static bool lex_identifier(Lexer *lexer, PgAllocator *allocator) {
     PG_ASSERT(0 != rune);
 
     if (!('_' == rune || pg_rune_is_alphanumeric(rune))) {
-      lexer->it.idx = idx_prev;
       break;
     }
 
@@ -205,9 +203,8 @@ static bool lex_keyword(Lexer *lexer, PgAllocator *allocator) {
     if (lexer->it.idx >= lexer->it.s.len) {
       return false;
     }
-    u64 idx_prev = lexer->it.idx;
 
-    PgRuneResult rune_res = pg_utf8_iterator_next(&lexer->it);
+    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
     if (rune_res.err || 0 == rune_res.res) {
       lex_add_error(lexer, ERROR_KIND_LEX_INVALID_UTF8, allocator);
       return false;
@@ -217,7 +214,6 @@ static bool lex_keyword(Lexer *lexer, PgAllocator *allocator) {
     PG_ASSERT(0 != rune);
 
     if (!('_' == rune || pg_rune_is_alphanumeric(rune))) {
-      lexer->it.idx = idx_prev;
       break;
     }
 
@@ -268,9 +264,8 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
     if (lexer->it.idx >= lexer->it.s.len) {
       return;
     }
-    u64 idx_prev = lexer->it.idx;
 
-    PgRuneResult rune_res = pg_utf8_iterator_next(&lexer->it);
+    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
     if (rune_res.err || 0 == rune_res.res) {
       lex_add_error(lexer, ERROR_KIND_LEX_INVALID_UTF8, allocator);
       return;
@@ -280,7 +275,6 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
     PG_ASSERT(0 != rune);
 
     if (!pg_rune_is_numeric(rune)) {
-      lexer->it.idx = idx_prev;
       break;
     }
 
