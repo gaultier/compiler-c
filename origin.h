@@ -2,14 +2,14 @@
 #include "submodules/cstd/lib.c"
 
 typedef struct {
-  PgString file_name;
+  PgString file_path;
   u32 line, column, file_offset;
 } Origin;
 
 static void origin_print(Origin origin) {
   if (origin.line) {
-    printf("%.*s:%" PRIu32 ":%" PRIu32 ":%" PRIu32, (i32)origin.file_name.len,
-           origin.file_name.data, origin.line, origin.column,
+    printf("%.*s:%" PRIu32 ":%" PRIu32 ":%" PRIu32, (i32)origin.file_path.len,
+           origin.file_path.data, origin.line, origin.column,
            origin.file_offset);
   } else {
     printf("(synth)");
