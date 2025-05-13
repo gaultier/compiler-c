@@ -155,31 +155,19 @@ static void lex_add_error(Lexer *lexer, ErrorKind error_kind,
   lexer->err_mode = true;
 }
 
-static bool lex_identifier(PgUtf8Iterator *it, LexTokenDyn *tokens,
-                           ErrorDyn *errors, PgString file_path, u32 line,
-                           u32 *column, PgAllocator *allocator) {
-  u32 column_start = *column;
+static bool lex_identifier(Lexer *lexer, PgAllocator *allocator) {
+  u32 col_start = lexer->column;
+  u64 idx_start = lexer->it.idx;
 
-  u64 idx_start = it->idx;
-
-  for (u64 _i = 0; _i < it->s.len; _i++) {
-    if (it->idx >= it->s.len) {
+  for (u64 _i = 0; _i < lexer->it.s.len; _i++) {
+    if (lexer->it.idx >= lexer->it.s.len) {
       return false;
     }
-    u64 idx_prev = it->idx;
+    u64 idx_prev = lexer->it.idx;
 
-    PgRuneResult rune_res = pg_utf8_iterator_next(it);
+    PgRuneResult rune_res = pg_utf8_iterator_next(&lexer->it);
     if (rune_res.err || 0 == rune_res.res) {
-      *PG_DYN_PUSH(errors, allocator) = (Error){
-          .kind = ERROR_KIND_LEX_INVALID_UTF8,
-          .origin =
-              {
-                  .file_path = file_path,
-                  .line = line,
-                  .column = *column,
-                  .file_offset = (u32)it->idx,
-              },
-      };
+      lex_add_error(lexer, ERROR_KIND_LEX_INVALID_UTF8, allocator);
       return false;
     }
 
@@ -187,31 +175,22 @@ static bool lex_identifier(PgUtf8Iterator *it, LexTokenDyn *tokens,
     PG_ASSERT(0 != rune);
 
     if (!('_' == rune || pg_rune_is_alphanumeric(rune))) {
-      it->idx = idx_prev;
+      lexer->it.idx = idx_prev;
       break;
     }
 
-    *column += 1;
+    lex_advance(lexer, rune);
   }
 
-  PgString lit = PG_SLICE_RANGE(it->s, idx_start, it->idx);
+  PgString lit = PG_SLICE_RANGE(lexer->it.s, idx_start, lexer->it.idx);
   if (0 == lit.len) {
-    it->idx = idx_start;
-    *column = column_start;
+    lexer->it.idx = idx_start;
+    lexer->column = col_start;
     return false;
   }
 
-  *PG_DYN_PUSH(tokens, allocator) = (LexToken){
-      .kind = LEX_TOKEN_KIND_IDENTIFIER,
-      .s = lit,
-      .origin =
-          {
-              .file_path = file_path,
-              .line = line,
-              .column = column_start,
-              .file_offset = (u32)idx_start,
-          },
-  };
+  lex_add_token(lexer, LEX_TOKEN_KIND_IDENTIFIER, allocator);
+  PG_DYN_LAST_PTR(&lexer->tokens)->s = lit;
 
   return true;
 }
@@ -335,7 +314,6 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     if (lexer->it.idx >= lexer->src.len) {
       return;
     }
-    u64 idx_prev = lexer->it.idx;
 
     PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
     if (rune_res.err || 0 == rune_res.res) {

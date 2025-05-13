@@ -71,7 +71,8 @@ int main(int argc, char *argv[]) {
 
   LexTokenDyn tokens = {0};
   ErrorDyn errors = {0};
-  lex(file_path, file_read_res.res, &tokens, &errors, allocator);
+  Lexer lexer = lex_make_lexer(file_path, file_read_res.res);
+  lex(&lexer, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
