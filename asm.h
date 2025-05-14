@@ -402,6 +402,22 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
       break;
+
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
+    case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
+      mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
+      mem_loc->reg =
+          emitter->map_constraint_to_register(emitter, virt_reg.constraint);
+      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix,
+                                      node_idx.value);
+      pg_bitfield_set(tombstones_bitfield, row, true);
+      break;
     default:
       PG_ASSERT(0);
     }

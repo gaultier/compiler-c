@@ -5,8 +5,6 @@
 typedef enum {
   LIR_VIRT_REG_CONSTRAINT_NONE,
   LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS,
-#if 0
-  LIR_VIRT_REG_CONSTRAINT_BASE_POINTER,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
@@ -15,7 +13,6 @@ typedef enum {
   LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
-#endif
 } LirVirtualRegisterConstraint;
 
 typedef struct {
@@ -111,9 +108,6 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
     return "NONE";
   case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
     return "CONDITION_FLAGS";
-#if 0
-  case LIR_VIRT_REG_CONSTRAINT_BASE_POINTER:
-    return "BASE_POINTER";
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
     return "SYSCALL_NUM";
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
@@ -130,7 +124,6 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
     return "SYSCALL5";
   case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
     return "SYSCALL_RET";
-#endif
 
   default:
     PG_ASSERT(0);
@@ -500,7 +493,6 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     //           1 /* syscall num */ + lir_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
 
-#if 0
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
       IrOperand val = PG_SLICE_AT(ir_ins.operands, j);
       LirVirtualRegisterConstraint virt_reg_constraint =
@@ -508,8 +500,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
               ? LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM
               : (LirVirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 +
                                                j - 1);
-      VirtualRegisterIndex virt_reg_idx = lir_make_virtual_register(
-          emitter, virt_reg_constraint, 0, true, allocator);
+      VirtualRegisterIndex virt_reg_idx =
+          lir_make_virtual_register(emitter, virt_reg_constraint, allocator);
 
       if (IR_OPERAND_KIND_U64 == val.kind) {
         lir_emit_copy_immediate_to_virt_reg(emitter, val, virt_reg_idx,
@@ -529,7 +521,6 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         PG_ASSERT(0);
       }
     }
-#endif
 
     LirInstruction lir_ins = {
         .kind = LIR_INSTRUCTION_KIND_SYSCALL,

@@ -1510,6 +1510,17 @@ amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
     return (Register){0};
   case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
     return amd64_rflags;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
+    return amd64_rax;
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
+    return PG_SLICE_AT(amd64_arch.syscall_calling_convention,
+                       constraint - LIR_VIRT_REG_CONSTRAINT_SYSCALL0);
   default:
     PG_ASSERT(0);
   }
