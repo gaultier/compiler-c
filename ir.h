@@ -489,7 +489,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   }
 }
 
-static void ir_emit_program_epilog(IrEmitter *emitter) {
+static void ir_init_program_epilog_labels(IrEmitter *emitter) {
   PG_ASSERT(!emitter->label_program_epilog_die.value);
   PG_ASSERT(!emitter->label_program_epilog_exit.value);
 
@@ -500,13 +500,37 @@ static void ir_emit_program_epilog(IrEmitter *emitter) {
   PG_ASSERT(emitter->label_program_epilog_exit.value);
 }
 
+static void ir_emit_program_epilog(IrEmitter *emitter, PgAllocator *allocator) {
+  PG_ASSERT(emitter->label_program_epilog_die.value);
+  PG_ASSERT(emitter->label_program_epilog_exit.value);
+
+  {
+    IrInstruction ins_exit_label = {.kind = IR_INSTRUCTION_KIND_LABEL};
+    *PG_DYN_PUSH(&ins_exit_label.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_LABEL,
+        .label = emitter->label_program_epilog_exit,
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_exit_label;
+  }
+  {
+    IrInstruction ins_die_label = {.kind = IR_INSTRUCTION_KIND_LABEL};
+    *PG_DYN_PUSH(&ins_die_label.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_LABEL,
+        .label = emitter->label_program_epilog_die,
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_die_label;
+  }
+}
+
 static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
                             PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_BLOCK == node.kind);
 
-  ir_emit_program_epilog(emitter);
+  ir_init_program_epilog_labels(emitter);
 
   (void)ir_emit_ast_node(node, emitter, errors, true, allocator);
+
+  ir_emit_program_epilog(emitter, allocator);
 }
 
 static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
