@@ -511,6 +511,8 @@ static void ir_emit_program_epilog(IrEmitter *emitter, PgAllocator *allocator) {
         .label = emitter->label_program_epilog_exit,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_exit_label;
+
+    // TODO: syscall.
   }
   {
     IrInstruction ins_die_label = {.kind = IR_INSTRUCTION_KIND_LABEL};
@@ -519,6 +521,8 @@ static void ir_emit_program_epilog(IrEmitter *emitter, PgAllocator *allocator) {
         .label = emitter->label_program_epilog_die,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_die_label;
+
+    // TODO: syscall.
   }
 }
 
