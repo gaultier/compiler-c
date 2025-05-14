@@ -249,6 +249,10 @@ static bool lex_keyword(Lexer *lexer, PgAllocator *allocator) {
     lex_add_token(lexer, LEX_TOKEN_KIND_KEYWORD_ELSE, origin, allocator);
     return true;
   }
+  if (pg_string_eq(lit, PG_S("assert"))) {
+    lex_add_token(lexer, LEX_TOKEN_KIND_KEYWORD_ASSERT, origin, allocator);
+    return true;
+  }
 
 end:
   // Reset .

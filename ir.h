@@ -349,6 +349,9 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
         .var = lifetime->var,
     };
   }
+  case AST_NODE_KIND_BUILTIN_ASSERT: {
+    PG_ASSERT(0);
+  } break;
 
   case AST_NODE_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == node.operands.len);

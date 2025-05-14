@@ -7,8 +7,8 @@ typedef enum {
   ERROR_KIND_LEX_INVALID_UTF8,
   ERROR_KIND_LEX_INVALID_LITERAL_NUMBER,
   ERROR_KIND_LEX_INVALID_KEYWORD,
-  ERROR_KIND_PARSE_SYSCALL_MISSING_LEFT_PAREN,
-  ERROR_KIND_PARSE_SYSCALL_MISSING_RIGHT_PAREN,
+  ERROR_KIND_PARSE_MISSING_PAREN_LEFT,
+  ERROR_KIND_PARSE_MISSING_PAREN_RIGHT,
   ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA,
   ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND,
   ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS,
@@ -25,6 +25,7 @@ typedef enum {
   ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_LEFT,
   ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT,
   ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT,
+  ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION,
 } ErrorKind;
 
 typedef struct {
@@ -50,11 +51,11 @@ static void error_print(Error err) {
   case ERROR_KIND_LEX_INVALID_KEYWORD:
     printf("invalid keyword\n");
     break;
-  case ERROR_KIND_PARSE_SYSCALL_MISSING_LEFT_PAREN:
-    printf("missing left parenthesis for syscall\n");
+  case ERROR_KIND_PARSE_MISSING_PAREN_LEFT:
+    printf("missing left parenthesis\n");
     break;
-  case ERROR_KIND_PARSE_SYSCALL_MISSING_RIGHT_PAREN:
-    printf("missing right parenthesis for syscall\n");
+  case ERROR_KIND_PARSE_MISSING_PAREN_RIGHT:
+    printf("missing right parenthesis\n");
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA:
     printf("missing comma in syscall arguments\n");
@@ -104,7 +105,18 @@ static void error_print(Error err) {
   case ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT:
     printf("missing statement in block\n");
     break;
+  case ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION:
+    printf("missing assert expression\n");
+    break;
   default:
     PG_ASSERT(0);
   }
+}
+
+static void error_add(ErrorDyn *errors, ErrorKind error_kind, Origin origin,
+                      PgAllocator *allocator) {
+  *PG_DYN_PUSH(errors, allocator) = (Error){
+      .kind = error_kind,
+      .origin = origin,
+  };
 }

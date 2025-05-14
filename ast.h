@@ -1,4 +1,5 @@
 #pragma once
+#include "error.h"
 #include "lex.h"
 #include "origin.h"
 #include "submodules/cstd/lib.c"
@@ -13,6 +14,7 @@ typedef enum {
   AST_NODE_KIND_ADDRESS_OF,
   AST_NODE_KIND_IF,
   AST_NODE_KIND_COMPARISON,
+  AST_NODE_KIND_BUILTIN_ASSERT,
 #if 0
   AST_NODE_KIND_SYSCALL,
 #endif
@@ -50,6 +52,15 @@ static void ast_print(AstNode node, u32 left_width) {
     break;
   case AST_NODE_KIND_ADDRESS_OF:
     printf("AddressOf(\n");
+    PG_ASSERT(1 == node.operands.len);
+    ast_print(PG_SLICE_AT(node.operands, 0), left_width + 2);
+    for (u64 i = 0; i < left_width; i++) {
+      putchar(' ');
+    }
+    printf(")\n");
+    break;
+  case AST_NODE_KIND_BUILTIN_ASSERT:
+    printf("Assert(\n");
     PG_ASSERT(1 == node.operands.len);
     ast_print(PG_SLICE_AT(node.operands, 0), left_width + 2);
     for (u64 i = 0; i < left_width; i++) {
@@ -573,6 +584,54 @@ static AstNode *ast_parse_statement_if(LexTokenSlice tokens, ErrorDyn *errors,
   return res;
 }
 
+static AstNode *ast_parse_statement_assert(LexTokenSlice tokens,
+                                           ErrorDyn *errors,
+                                           u64 *tokens_consumed,
+                                           PgAllocator *allocator) {
+  if (*tokens_consumed >= tokens.len) {
+    return nullptr;
+  }
+
+  LexToken token_first = PG_SLICE_AT(tokens, *tokens_consumed);
+  if (LEX_TOKEN_KIND_KEYWORD_ASSERT != token_first.kind) {
+    return nullptr;
+  }
+  *tokens_consumed += 1;
+
+  LexToken token_paren_left = PG_SLICE_AT(tokens, *tokens_consumed);
+  if (LEX_TOKEN_KIND_PAREN_LEFT != token_paren_left.kind) {
+    error_add(errors, ERROR_KIND_PARSE_MISSING_PAREN_LEFT, token_first.origin,
+              allocator);
+    return nullptr;
+  }
+  *tokens_consumed += 1;
+
+  AstNodeDyn operands = {0};
+
+  AstNode *expr = ast_parse_expr(tokens, errors, tokens_consumed, allocator);
+  if (!expr) {
+    error_add(errors, ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION,
+              token_paren_left.origin, allocator);
+    return nullptr;
+  }
+  *PG_DYN_PUSH(&operands, allocator) = *expr;
+
+  LexToken token_paren_right = PG_SLICE_AT(tokens, *tokens_consumed);
+  if (LEX_TOKEN_KIND_PAREN_RIGHT != token_paren_right.kind) {
+    error_add(errors, ERROR_KIND_PARSE_MISSING_PAREN_RIGHT, token_first.origin,
+              allocator);
+    return nullptr;
+  }
+  *tokens_consumed += 1;
+
+  AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+  res->origin = token_first.origin;
+  res->kind = AST_NODE_KIND_BUILTIN_ASSERT;
+  res->operands = operands;
+
+  return res;
+}
+
 static AstNode *ast_parse_statement(LexTokenSlice tokens, ErrorDyn *errors,
                                     u64 *tokens_consumed,
                                     PgAllocator *allocator) {
@@ -580,6 +639,11 @@ static AstNode *ast_parse_statement(LexTokenSlice tokens, ErrorDyn *errors,
 
   if ((res = ast_parse_statement_if(tokens, errors, tokens_consumed,
                                     allocator))) {
+    return res;
+  }
+
+  if ((res = ast_parse_statement_assert(tokens, errors, tokens_consumed,
+                                        allocator))) {
     return res;
   }
 
