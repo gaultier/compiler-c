@@ -1,2 +1,2 @@
-amd64: implement more cmp/test encodings
-lang: impl builtin assert to test codegen
+[ ] amd64: implement more cmp/test encodings
+[.] lang: impl builtin assert to test codegen
