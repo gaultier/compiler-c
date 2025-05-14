@@ -54,9 +54,7 @@ typedef enum {
   LIR_INSTRUCTION_KIND_CMP,
   LIR_INSTRUCTION_KIND_ADDRESS_OF,
   LIR_INSTRUCTION_KIND_COMPARISON,
-#if 0
   LIR_INSTRUCTION_KIND_SYSCALL,
-#endif
 } LirInstructionKind;
 
 typedef enum {
@@ -243,11 +241,9 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
     case LIR_INSTRUCTION_KIND_MOV:
       printf("mov ");
       break;
-#if 0
     case LIR_INSTRUCTION_KIND_SYSCALL:
       printf("syscall ");
       break;
-#endif
     case LIR_INSTRUCTION_KIND_JUMP_IF_EQ:
       printf("je ");
       break;
@@ -499,12 +495,12 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
                               ir_ins.origin, allocator);
 
   } break;
-#if 0
   case IR_INSTRUCTION_KIND_SYSCALL: {
-    PG_ASSERT(ir_ins.operands.len <=
-              1 /* syscall num */ + lir_syscall_args_count);
+    // PG_ASSERT(ir_ins.operands.len <=
+    //           1 /* syscall num */ + lir_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
 
+#if 0
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
       IrOperand val = PG_SLICE_AT(ir_ins.operands, j);
       LirVirtualRegisterConstraint virt_reg_constraint =
@@ -533,6 +529,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         PG_ASSERT(0);
       }
     }
+#endif
 
     LirInstruction lir_ins = {
         .kind = LIR_INSTRUCTION_KIND_SYSCALL,
@@ -540,6 +537,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
+#if 0
     if (ir_ins.res_var.id.value) {
       VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
           emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
@@ -552,8 +550,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
       PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value)
           ->virt_reg_idx = res_virt_reg_idx;
     }
-  } break;
 #endif
+  } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.res_var.id.value);

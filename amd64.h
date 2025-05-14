@@ -1369,16 +1369,14 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     }
 
   } break;
-#if 0
   case LIR_INSTRUCTION_KIND_SYSCALL: {
     PG_ASSERT(0 == lir.operands.len);
     Amd64Instruction ins = {
         .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
         .origin = lir.origin,
     };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    amd64_add_instruction(&section->instructions, ins, allocator);
   } break;
-#endif
 
   case LIR_INSTRUCTION_KIND_JUMP_IF_EQ: {
     PG_ASSERT(1 == lir.operands.len);

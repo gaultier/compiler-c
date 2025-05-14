@@ -11,9 +11,7 @@ typedef enum {
   IR_INSTRUCTION_KIND_JUMP,
   IR_INSTRUCTION_KIND_LABEL,
   IR_INSTRUCTION_KIND_COMPARISON,
-#if 0
   IR_INSTRUCTION_KIND_SYSCALL,
-#endif
 } IrInstructionKind;
 
 typedef struct {
@@ -512,7 +510,16 @@ static void ir_emit_program_epilog(IrEmitter *emitter, PgAllocator *allocator) {
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_exit_label;
 
-    // TODO: syscall.
+    IrInstruction ins_syscall = {.kind = IR_INSTRUCTION_KIND_SYSCALL};
+    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_U64,
+        .n64 = 60, // FIXME: Only on amd64!
+    };
+    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_U64,
+        .n64 = 0,
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_syscall;
   }
   {
     IrInstruction ins_die_label = {.kind = IR_INSTRUCTION_KIND_LABEL};
@@ -522,7 +529,16 @@ static void ir_emit_program_epilog(IrEmitter *emitter, PgAllocator *allocator) {
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_die_label;
 
-    // TODO: syscall.
+    IrInstruction ins_syscall = {.kind = IR_INSTRUCTION_KIND_SYSCALL};
+    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_U64,
+        .n64 = 60, // FIXME: Only on amd64!
+    };
+    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_U64,
+        .n64 = 1,
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_syscall;
   }
 }
 
@@ -555,9 +571,7 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
     case IR_INSTRUCTION_KIND_COMPARISON:
     case IR_INSTRUCTION_KIND_ADD:
     case IR_INSTRUCTION_KIND_LOAD:
-#if 0
     case IR_INSTRUCTION_KIND_SYSCALL:
-#endif
     case IR_INSTRUCTION_KIND_ADDRESS_OF:
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
       for (u64 j = 0; j < ins.operands.len; j++) {
@@ -617,13 +631,11 @@ static bool irs_optimize_remove_unused_vars(IrInstructionDyn *instructions,
 
     lifetime->tombstone = true;
 
-#if 0
     // Possible side-effects: keep this IR but erase the variable.
     if (IR_INSTRUCTION_KIND_SYSCALL == ins->kind) {
       ins->res_var.id.value = 0;
       continue;
     }
-#endif
 
     ins->tombstone = true;
     changed = true;
@@ -719,9 +731,7 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
 
     if (!(IR_INSTRUCTION_KIND_LOAD == ins->kind ||
           IR_INSTRUCTION_KIND_ADD == ins->kind ||
-#if 0
           IR_INSTRUCTION_KIND_SYSCALL == ins->kind ||
-#endif
           IR_INSTRUCTION_KIND_JUMP_IF_FALSE == ins->kind)) {
       continue;
     }
@@ -1001,7 +1011,6 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" // ");
     ir_emitter_print_var_lifetime(i, *lifetime);
   } break;
-#if 0
   case IR_INSTRUCTION_KIND_SYSCALL: {
     ir_print_var(ins.res_var);
     printf("%ssyscall(", 0 == ins.res_var.id.value ? "" : " := ");
@@ -1026,7 +1035,6 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     }
     printf("\n");
   } break;
-#endif
   case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ins.operands.len);
     PG_ASSERT(0 == ins.res_var.id.value);
