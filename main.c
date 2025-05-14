@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
   }
 
   IrEmitter ir_emitter = {0};
-  ast_to_ir(*root, &ir_emitter, &errors, false, allocator);
+  ir_emit_program(&ir_emitter, *root, &errors, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
@@ -120,8 +120,8 @@ int main(int argc, char *argv[]) {
     ir_emitter_print_instructions(ir_emitter);
   }
   if (cli_opts.optimize) {
-    irs_optimize(&ir_emitter.instructions, &ir_emitter.lifetimes,
-                 cli_opts.verbose);
+    ir_optimize(&ir_emitter.instructions, &ir_emitter.lifetimes,
+                cli_opts.verbose);
     if (cli_opts.verbose) {
       printf("\n------------ IR simplified ------------\n");
       ir_emitter_print_instructions(ir_emitter);
