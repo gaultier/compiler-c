@@ -511,6 +511,8 @@ static void ir_emit_program_epilog(IrEmitter *emitter, PgAllocator *allocator) {
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_exit_label;
 
     IrInstruction ins_syscall = {.kind = IR_INSTRUCTION_KIND_SYSCALL};
+    // FIXME: Create variables so that it works with the interference graph.
+
     *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
         .kind = IR_OPERAND_KIND_U64,
         .n64 = 60, // FIXME: Only on amd64!
