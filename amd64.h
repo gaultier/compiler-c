@@ -357,8 +357,7 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       printf("pop ");
       break;
     case AMD64_INSTRUCTION_KIND_LABEL:
-      PG_ASSERT(instruction.lhs.label.value > 0);
-      printf(".%u:", instruction.lhs.label.value);
+      // The operand carries the actual label.
       break;
     case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
       printf("je ");
@@ -386,6 +385,10 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
 
       printf(", ");
       amd64_print_operand(instruction.rhs);
+    }
+
+    if (AMD64_INSTRUCTION_KIND_LABEL == instruction.kind) {
+      printf(":");
     }
 
     printf("\n");
