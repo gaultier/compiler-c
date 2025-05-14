@@ -350,6 +350,22 @@ static IrOperand ast_to_ir(AstNode node, IrEmitter *emitter, ErrorDyn *errors,
     };
   }
   case AST_NODE_KIND_BUILTIN_ASSERT: {
+    PG_ASSERT(1 == node.operands.len);
+    AstNode operand = PG_SLICE_AT(node.operands, 0);
+
+    IrInstruction ins = {0};
+    ins.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
+    ins.origin = node.origin;
+    ins.res_var.id = ir_emitter_next_var_id(emitter);
+
+    IrOperand cond = ast_to_ir(operand, emitter, errors, true, allocator);
+    *PG_DYN_PUSH(&ins.operands, allocator) = cond;
+
+    IrOperand jump_target = {0}; // FIXME
+    *PG_DYN_PUSH(&ins.operands, allocator) = jump_target;
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+
     PG_ASSERT(0);
   } break;
 

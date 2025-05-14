@@ -665,8 +665,9 @@ static AstNode *ast_parse_declaration(LexTokenSlice tokens, ErrorDyn *errors,
   return ast_parse_statement(tokens, errors, tokens_consumed, allocator);
 }
 
-static AstNode *lex_to_ast(LexTokenSlice tokens, ErrorDyn *errors,
-                           PgAllocator *allocator) {
+static AstNode *ast_emit(LexTokenSlice tokens, ErrorDyn *errors,
+                         PgAllocator *allocator) {
+
   AstNode *root = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
   root->kind = AST_NODE_KIND_BLOCK;
 

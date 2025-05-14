@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   }
 
   ErrorDyn errors = {0};
-  AstNode *root = lex_to_ast(tokens_slice, &errors, allocator);
+  AstNode *root = ast_emit(tokens_slice, &errors, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
