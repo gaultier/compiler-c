@@ -47,6 +47,7 @@ typedef struct {
   // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
   // between i and j), stored as a bitfield of the right-upper half (without the
   // diagonal).
+  // Each row is a memory location (see above field).
   PgAdjacencyMatrix matrix;
 } InterferenceGraph;
 
@@ -235,7 +236,7 @@ static void asm_sanity_check_interference_graph(InterferenceGraph graph,
 
 [[nodiscard]]
 static InterferenceGraph
-asm_build_var_interference_graph(IrVarLifetimeDyn lifetimes,
+asm_build_interference_graph(IrVarLifetimeDyn lifetimes,
                                  PgAllocator *allocator) {
   InterferenceGraph graph = {0};
 

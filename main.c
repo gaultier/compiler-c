@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
   InterferenceGraph interference_graph = {0};
   if (ir_emitter.lifetimes.len > 0) {
     interference_graph =
-        asm_build_var_interference_graph(ir_emitter.lifetimes, allocator);
+        asm_build_interference_graph(ir_emitter.lifetimes, allocator);
   }
 
   if (cli_opts.verbose) {
