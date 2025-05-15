@@ -220,21 +220,6 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
   }
 }
 
-static VirtualRegisterIndex
-lir_make_virtual_register_for_var(LirEmitter *emitter, IrVar var,
-                                  LirVirtualRegisterConstraint constraint,
-                                  PgAllocator *allocator) {
-  IrMetadata meta = ir_make_metadata(&emitter->metadata, );
-
-  *PG_DYN_PUSH(&emitter->var_virtual_registers, allocator) =
-      (VarVirtualRegister){
-          .var = var,
-          .virt_reg_idx = virt_reg_idx,
-      };
-
-  return virt_reg_idx;
-}
-
 static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
                                                VirtualRegisterIndex src_idx,
                                                VirtualRegisterIndex dst_idx,
@@ -300,15 +285,12 @@ static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src,
                                         allocator);
     break;
   case IR_OPERAND_KIND_VAR: {
-    VarVirtualRegisterIndex src_var_virt_reg_idx =
-        var_virtual_registers_find_by_var(emitter->var_virtual_registers,
-                                          src.var);
-    PG_ASSERT(-1U != src_var_virt_reg_idx.value);
-    VarVirtualRegister src_var_virt_reg =
-        PG_SLICE_AT(emitter->var_virtual_registers, src_var_virt_reg_idx.value);
+    IrMetadata src_meta = ir_make_metadata(&emitter->metadata, allocator);
+    PG_DYN_LAST_PTR(&emitter->metadata)->var = src_meta.identifier = src.var;
+    VirtualRegisterIndex src_virt_reg_idx = {(u32)emitter->metadata.len - 1};
 
-    lir_emit_copy_virt_reg_to_virt_reg(emitter, src_var_virt_reg.virt_reg_idx,
-                                       dst_idx, origin, allocator);
+    lir_emit_copy_virt_reg_to_virt_reg(emitter, src_virt_reg_idx, dst_idx,
+                                       origin, allocator);
   } break;
   case IR_OPERAND_KIND_LABEL:
   case IR_OPERAND_KIND_NONE:

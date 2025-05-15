@@ -131,6 +131,7 @@ typedef struct {
 #endif
   VirtualRegister virtual_register;
   MemoryLocation memory_location;
+  PgString identifier;
 #if 0
   bool tombstone;
 #endif
@@ -157,7 +158,7 @@ static IrLabelId ir_emitter_next_label_id(IrEmitter *emitter) {
 }
 
 [[nodiscard]]
-static IrMetadata ir_make_metadata(IrMetadataDyn *metadata, PgString identifier,
+static IrMetadata ir_make_metadata(IrMetadataDyn *metadata,
                                    PgAllocator *allocator) {
   IrMetadata res = {0};
 #if 0
@@ -165,7 +166,6 @@ static IrMetadata ir_make_metadata(IrMetadataDyn *metadata, PgString identifier,
   res.lifetime_end = ins_idx;
 #endif
   res.var.id.value = (u32)metadata->len;
-  res.var.identifier = identifier;
   res.virtual_register.value = res.var.id.value;
 
   *PG_DYN_PUSH(metadata, allocator) = res;
@@ -232,7 +232,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
-    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
 
     IrInstruction ins = {
         .kind = IR_INSTRUCTION_KIND_LOAD,
@@ -263,7 +263,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
                                      errors, allocator);
 
-    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
@@ -296,7 +296,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
                                      errors, allocator);
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
-    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
@@ -331,7 +331,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       *PG_DYN_PUSH(&operands, allocator) = operand;
     }
 
-    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
@@ -390,8 +390,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     AstNode rhs_node = PG_SLICE_AT(node.operands, 0);
     IrOperand rhs = ir_emit_ast_node(rhs_node, emitter, errors, allocator);
 
-    IrMetadata meta =
-        ir_make_metadata(&emitter->metadata, node.identifier, allocator);
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
+    PG_DYN_LAST_PTR(&emitter->metadata)->identifier = meta.identifier =
+        node.identifier;
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_LOAD;
@@ -464,7 +465,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
 
     IrOperand rhs = ir_emit_ast_node(operand, emitter, errors, allocator);
-    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;
     ins.origin = node.origin;
