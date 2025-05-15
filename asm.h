@@ -2,46 +2,9 @@
 #include "lir.h"
 
 typedef struct {
-  u32 value;
-} Register;
-PG_SLICE(Register) RegisterSlice;
-PG_DYN(Register) RegisterDyn;
-
-typedef struct {
   u32 set;
   u32 len;
 } GprSet;
-
-typedef enum {
-  MEMORY_LOCATION_KIND_NONE,
-  MEMORY_LOCATION_KIND_REGISTER,
-  MEMORY_LOCATION_KIND_STACK,
-  MEMORY_LOCATION_KIND_STATUS_REGISTER,
-#if 0
-  MEMORY_LOCATION_KIND_MEMORY,
-#endif
-} MemoryLocationKind;
-
-typedef struct {
-  MemoryLocationKind kind;
-  union {
-    Register reg;
-    i32 base_pointer_offset;
-#if 0
-     u64 memory_address;
-#endif
-  };
-  VirtualRegisterIndex virt_reg_idx;
-  InterferenceNodeIndex node_idx;
-  IrVar var;
-} MemoryLocation;
-PG_SLICE(MemoryLocation) MemoryLocationSlice;
-PG_DYN(MemoryLocation) MemoryLocationDyn;
-
-typedef struct {
-  u32 value;
-} MemoryLocationIndex;
-
 typedef struct {
   MemoryLocationDyn memory_locations;
   // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
@@ -182,7 +145,7 @@ static Register asm_gpr_pop_first_unset(GprSet *set) {
 }
 
 static void asm_print_interference_graph(InterferenceGraph graph,
-                                         IrVarLifetimeDyn lifetimes) {
+                                         IrMetadataDyn metadata) {
 
   for (u64 row = 0; row < graph.matrix.nodes_count; row++) {
     for (u64 col = 0; col < row; col++) {
@@ -191,8 +154,8 @@ static void asm_print_interference_graph(InterferenceGraph graph,
         continue;
       }
 
-      IrVar a_var = PG_SLICE_AT(lifetimes, row).var;
-      IrVar b_var = PG_SLICE_AT(lifetimes, col).var;
+      IrVar a_var = PG_SLICE_AT(metadata, row).var;
+      IrVar b_var = PG_SLICE_AT(metadata, col).var;
       ir_print_var(a_var);
       printf(" -> ");
       ir_print_var(b_var);
@@ -235,39 +198,38 @@ static void asm_sanity_check_interference_graph(InterferenceGraph graph,
 }
 
 [[nodiscard]]
-static InterferenceGraph
-asm_build_interference_graph(IrVarLifetimeDyn lifetimes,
-                                 PgAllocator *allocator) {
+static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
+                                                      PgAllocator *allocator) {
   InterferenceGraph graph = {0};
 
-  if (0 == lifetimes.len) {
+  if (0 == metadata.len) {
     return graph;
   }
 
-  graph.matrix = pg_adjacency_matrix_make(lifetimes.len, allocator);
+  graph.matrix = pg_adjacency_matrix_make(metadata.len, allocator);
   PG_DYN_ENSURE_CAP(&graph.memory_locations, graph.matrix.nodes_count,
                     allocator);
 
-  for (u64 i = 0; i < lifetimes.len; i++) {
-    IrVarLifetime lifetime = PG_SLICE_AT(lifetimes, i);
-    PG_ASSERT(!lifetime.tombstone);
-    PG_ASSERT(lifetime.start.value <= lifetime.end.value);
-    PG_ASSERT(lifetime.var.id.value);
+  for (u64 i = 0; i < metadata.len; i++) {
+    IrMetadata meta = PG_SLICE_AT(metadata, i);
+    PG_ASSERT(!meta.tombstone);
+    PG_ASSERT(meta.lifetime_start.value <= meta.lifetime_end.value);
+    PG_ASSERT(meta.var.id.value);
 
-    for (u64 j = i + 1; j < lifetimes.len; j++) {
-      IrVarLifetime it = PG_SLICE_AT(lifetimes, j);
-      PG_ASSERT(it.start.value <= it.end.value);
+    for (u64 j = i + 1; j < metadata.len; j++) {
+      IrMetadata it = PG_SLICE_AT(metadata, j);
+      PG_ASSERT(it.lifetime_start.value <= it.lifetime_end.value);
       PG_ASSERT(!it.tombstone);
 
-      PG_ASSERT(lifetime.var.id.value != it.var.id.value);
+      PG_ASSERT(meta.var.id.value != it.var.id.value);
 
-      // `it` strictly before `lifetime`.
-      if (it.end.value < lifetime.start.value) {
+      // `it` strictly before `meta`.
+      if (it.lifetime_end.value < meta.lifetime_start.value) {
         continue;
       }
 
-      // `it` strictly after `lifetime`.
-      if (lifetime.end.value < it.start.value) {
+      // `it` strictly after `meta`.
+      if (meta.lifetime_end.value < it.lifetime_start.value) {
         continue;
       }
 

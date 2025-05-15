@@ -119,8 +119,9 @@ int main(int argc, char *argv[]) {
     printf("\n------------ IR ------------\n");
     ir_emitter_print_instructions(ir_emitter);
   }
+#if 0
   if (cli_opts.optimize) {
-    ir_optimize(&ir_emitter.instructions, &ir_emitter.lifetimes,
+    ir_optimize(&ir_emitter.instructions, &ir_emitter.metadata,
                 cli_opts.verbose);
     if (cli_opts.verbose) {
       printf("\n------------ IR simplified ------------\n");
@@ -128,28 +129,29 @@ int main(int argc, char *argv[]) {
     }
     ir_emitter_trim_tombstone_items(&ir_emitter);
   }
+#endif
   if (cli_opts.verbose) {
-    printf("\n------------ IR var lifetimes ------------\n");
-    ir_emitter_print_var_lifetimes(ir_emitter);
+    printf("\n------------ IR metadata ------------\n");
+    ir_emitter_print_metadata(ir_emitter.metadata);
   }
 
   IrInstructionSlice irs_slice =
       PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
   InterferenceGraph interference_graph = {0};
-  if (ir_emitter.lifetimes.len > 0) {
+  if (ir_emitter.metadata.len > 0) {
     interference_graph =
-        asm_build_interference_graph(ir_emitter.lifetimes, allocator);
+        asm_build_interference_graph(ir_emitter.metadata, allocator);
   }
 
   if (cli_opts.verbose) {
     printf("\n------------ Interference graph ------------\n");
-    asm_print_interference_graph(interference_graph, ir_emitter.lifetimes);
+    asm_print_interference_graph(interference_graph, ir_emitter.metadata);
   }
   asm_sanity_check_interference_graph(interference_graph, false);
 
   LirEmitter lir_emitter = {
-      .lifetimes = ir_emitter.lifetimes,
+      .metadata = ir_emitter.metadata,
   };
   lir_emit_instructions(&lir_emitter, irs_slice, allocator);
   if (cli_opts.verbose) {
@@ -157,32 +159,10 @@ int main(int argc, char *argv[]) {
     lir_emitter_print_instructions(lir_emitter);
 
     printf("\n------------ LIR var virtual registers ------------\n");
-    lir_print_var_virtual_registers(lir_emitter);
+    ir_emitter_print_metadata(lir_emitter.metadata);
   }
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
-
-  // Fill Memory locations will all of the required information.
-  for (u64 i = 0; i < lir_emitter.lifetimes.len; i++) {
-    IrVarLifetime lifetime = PG_SLICE_AT(lir_emitter.lifetimes, i);
-
-    MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
-        interference_graph.memory_locations, (InterferenceNodeIndex){(u32)i});
-    PG_ASSERT(-1U != mem_loc_idx.value);
-
-    VarVirtualRegisterIndex var_virt_reg_idx =
-        var_virtual_registers_find_by_var(lir_emitter.var_virtual_registers,
-                                          lifetime.var);
-    PG_ASSERT(-1U != var_virt_reg_idx.value);
-
-    VarVirtualRegister var_virt_reg =
-        PG_SLICE_AT(lir_emitter.var_virtual_registers, var_virt_reg_idx.value);
-
-    MemoryLocation *mem_loc = PG_SLICE_AT_PTR(
-        &interference_graph.memory_locations, mem_loc_idx.value);
-    mem_loc->virt_reg_idx = var_virt_reg.virt_reg_idx;
-    mem_loc->var = var_virt_reg.var;
-  }
 
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);

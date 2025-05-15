@@ -67,20 +67,75 @@ typedef struct {
 PG_SLICE(IrInstruction) IrInstructionSlice;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
+typedef enum {
+  LIR_VIRT_REG_CONSTRAINT_NONE,
+  LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL2,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL3,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
+  LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
+} LirVirtualRegisterConstraint;
+
+typedef struct {
+  u32 value;
+  LirVirtualRegisterConstraint constraint;
+  bool addressable;
+} VirtualRegister;
+PG_SLICE(VirtualRegister) VirtualRegisterSlice;
+PG_DYN(VirtualRegister) VirtualRegisterDyn;
+
+typedef struct {
+  u32 value;
+} Register;
+PG_SLICE(Register) RegisterSlice;
+PG_DYN(Register) RegisterDyn;
+
+typedef enum {
+  MEMORY_LOCATION_KIND_NONE,
+  MEMORY_LOCATION_KIND_REGISTER,
+  MEMORY_LOCATION_KIND_STACK,
+  MEMORY_LOCATION_KIND_STATUS_REGISTER,
+#if 0
+  MEMORY_LOCATION_KIND_MEMORY,
+#endif
+} MemoryLocationKind;
+
+typedef struct {
+  MemoryLocationKind kind;
+  union {
+    Register reg;
+    i32 base_pointer_offset;
+#if 0
+     u64 memory_address;
+#endif
+  };
+} MemoryLocation;
+PG_SLICE(MemoryLocation) MemoryLocationSlice;
+PG_DYN(MemoryLocation) MemoryLocationDyn;
+
+typedef struct {
+  u32 value;
+} MemoryLocationIndex;
+
+typedef struct {
+  u32 value;
+} VirtualRegisterIndex;
 typedef struct {
   IrVar var;
-  // Inclusive, inclusive.
-  // TODO: Revamp when lifetime splitting is implemented.
-  IrInstructionIndex start, end;
-
-  // TODO: Probably remove and replace with a proper dataflow analysis (i.e.
-  // what var uses which var including pointer aliases to the same var).
-  IrVar ref; // In case of `IR_INSTRUCTION_KIND_ADDRESS_OF` or `x1 := x2`.
-  // When optimizing, lifetimes are not directly removed but instead tombstoned.
+#if 0
+  IrInstructionIndex lifetime_start, lifetime_end;
+#endif
+  VirtualRegister virtual_register;
+  MemoryLocation memory_location;
+#if 0
   bool tombstone;
-} IrVarLifetime;
-PG_SLICE(IrVarLifetime) IrVarLifetimeSlice;
-PG_DYN(IrVarLifetime) IrVarLifetimeDyn;
+#endif
+} IrMetadata;
+PG_DYN(IrMetadata) IrMetadataDyn;
 
 typedef struct {
   IrInstructionDyn instructions;
@@ -88,7 +143,8 @@ typedef struct {
   IrLabelId label_id;
   // Gets incremented.
   IrVarId var_id;
-  IrVarLifetimeDyn lifetimes;
+
+  IrMetadataDyn metadata;
 
   IrLabelId label_program_epilog_die;
   IrLabelId label_program_epilog_exit;
@@ -101,64 +157,73 @@ static IrLabelId ir_emitter_next_label_id(IrEmitter *emitter) {
 }
 
 [[nodiscard]]
-static IrVarId ir_emitter_next_var_id(IrEmitter *emitter) {
-  IrVarId id = {.value = ++emitter->var_id.value};
-  return id;
+static IrMetadata ir_make_metadata(IrMetadataDyn *metadata, PgString identifier,
+                                   PgAllocator *allocator) {
+  IrMetadata res = {0};
+#if 0
+  res.lifetime_start = ins_idx;
+  res.lifetime_end = ins_idx;
+#endif
+  res.var.id.value = (u32)metadata->len;
+  res.var.identifier = identifier;
+  res.virtual_register.value = res.var.id.value;
+
+  *PG_DYN_PUSH(metadata, allocator) = res;
+
+  return res;
 }
 
-static IrVarLifetime *ir_find_var_lifetime_by_var_id(IrVarLifetimeDyn lifetimes,
-                                                     IrVarId var_id) {
+static IrMetadata *ir_find_metadata_by_var_id(IrMetadataDyn metadata,
+                                              IrVarId var_id) {
   if (0 == var_id.value) {
     return nullptr;
   }
 
-  for (u64 i = 0; i < lifetimes.len; i++) {
-    IrVarLifetime *lifetime = PG_SLICE_AT_PTR(&lifetimes, i);
-    if (lifetime->var.id.value == var_id.value) {
-      return lifetime;
+  for (u64 i = 0; i < metadata.len; i++) {
+    IrMetadata *meta = PG_SLICE_AT_PTR(&metadata, i);
+    if (meta->var.id.value == var_id.value) {
+      return meta;
     }
   }
   return nullptr;
 }
 
-static IrVarLifetime *
-ir_find_var_lifetime_by_identifier(IrVarLifetimeDyn lifetimes,
-                                   PgString identifier) {
-  for (u64 i = 0; i < lifetimes.len; i++) {
-    IrVarLifetime *lifetime = PG_SLICE_AT_PTR(&lifetimes, i);
-    if (pg_string_eq(lifetime->var.identifier, identifier)) {
-      return lifetime;
+static IrMetadata *ir_find_metadata_by_virtual_register(
+    IrMetadataDyn metadata, VirtualRegisterIndex virtual_register_idx) {
+  for (u64 i = 0; i < metadata.len; i++) {
+    IrMetadata *meta = PG_SLICE_AT_PTR(&metadata, i);
+    if (meta->virtual_register.value == virtual_register_idx.value) {
+      return meta;
     }
   }
   return nullptr;
 }
 
-static void ir_var_extend_lifetime_on_var_use(IrVarLifetimeDyn lifetimes,
-                                              IrVar var,
-                                              IrInstructionIndex ins_idx) {
-  IrVarLifetime *lifetime_var =
-      ir_find_var_lifetime_by_var_id(lifetimes, var.id);
-  PG_ASSERT(lifetime_var);
-  lifetime_var->end = ins_idx;
-
-  // Variable pointed to needs to live at least as long as the pointer to it.
-  if (lifetime_var->ref.id.value != 0) {
-    ir_var_extend_lifetime_on_var_use(lifetimes, lifetime_var->ref, ins_idx);
-    // FIXME: If there are multiple aliases to the same pointer, all aliases
-    // should have their lifetime extended to this point!
-    // TODO: Dataflow.
+static IrMetadata *ir_find_metadata_by_identifier(IrMetadataDyn metadata,
+                                                  PgString identifier) {
+  for (u64 i = 0; i < metadata.len; i++) {
+    IrMetadata *meta = PG_SLICE_AT_PTR(&metadata, i);
+    if (pg_string_eq(meta->var.identifier, identifier)) {
+      return meta;
+    }
   }
+  return nullptr;
 }
 
-static void ir_var_lifetime_add(IrVarLifetimeDyn *lifetimes, IrVar var,
-                                IrInstructionIndex ir_ins_idx,
-                                PgAllocator *allocator) {
-  *PG_DYN_PUSH(lifetimes, allocator) = (IrVarLifetime){
-      .var = var,
-      .start = ir_ins_idx,
-      .end = ir_ins_idx,
-  };
+#if 0
+static void ir_var_extend_lifetime_on_use(IrMetadataDyn metadata, IrVar var,
+                                          IrInstructionIndex ins_idx) {
+  IrMetadata *meta = ir_find_metadata_by_var_id(metadata, var.id);
+  PG_ASSERT(meta);
+  meta->lifetime_end = ins_idx;
+
+  // TODO: Variable pointed to needs to live at least as long as the pointer to
+  // it.
+  // TODO: If there are multiple aliases to the same pointer, all aliases
+  // should have their meta extended to this point!
+  // TODO: Dataflow.
 }
+#endif
 
 [[nodiscard]]
 static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
@@ -167,10 +232,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+
     IrInstruction ins = {
         .kind = IR_INSTRUCTION_KIND_LOAD,
         .origin = node.origin,
-        .res_var.id = ir_emitter_next_var_id(emitter),
+        .res_var.id = meta.var.id,
     };
     *PG_DYN_PUSH(&ins.operands, allocator) = (IrOperand){
         .kind = IR_OPERAND_KIND_U64,
@@ -178,9 +245,6 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     };
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
-
-    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
   case AST_NODE_KIND_ADD: {
@@ -199,25 +263,27 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
                                      errors, allocator);
 
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
     ins.origin = node.origin;
-    ins.res_var.id = ir_emitter_next_var_id(emitter);
+    ins.res_var.id = meta.var.id;
 
     *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
-
-    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
+#if 0
+    IrInstructionIndex ins_idx = meta.lifetime_start;
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, lhs.var, ins_idx);
+      ir_var_extend_lifetime_on_use(emitter->metadata, lhs.var, ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, rhs.var, ins_idx);
+      ir_var_extend_lifetime_on_use(emitter->metadata, rhs.var, ins_idx);
     }
+#endif
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
@@ -230,26 +296,28 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
                                      errors, allocator);
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
     ins.origin = node.origin;
     ins.token_kind = node.token_kind;
-    ins.res_var.id = ir_emitter_next_var_id(emitter);
+    ins.res_var.id = meta.var.id;
 
     *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+#if 0
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
-    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
-
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, lhs.var, ins_idx);
+      ir_var_extend_lifetime_on_use(emitter->metadata, lhs.var, ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, rhs.var, ins_idx);
+      ir_var_extend_lifetime_on_use(emitter->metadata, rhs.var, ins_idx);
     }
+#endif
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
@@ -263,27 +331,25 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       *PG_DYN_PUSH(&operands, allocator) = operand;
     }
 
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
+
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
     ins.origin = node.origin;
     ins.operands = operands;
-    ins.res_var.id = ir_emitter_next_var_id(emitter);
+    ins.res_var.id = meta.var.id;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
+#if 0
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
     for (u64 i = 0; i < node.operands.len; i++) {
       IrOperand val = PG_SLICE_AT(ins.operands, i);
       if (IR_OPERAND_KIND_VAR == val.kind) {
         IrVar var = val.var;
-        ir_var_extend_lifetime_on_var_use(emitter->lifetimes, var, ins_idx);
+        ir_var_extend_lifetime_on_use(emitter->metadata, var, ins_idx);
       }
     }
-
-    *PG_DYN_PUSH(&emitter->lifetimes, allocator) = (IrVarLifetime){
-        .var = ins.res_var,
-        .start = ins_idx,
-        .end = ins_idx,
-    };
+#endif
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
@@ -324,34 +390,34 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     AstNode rhs_node = PG_SLICE_AT(node.operands, 0);
     IrOperand rhs = ir_emit_ast_node(rhs_node, emitter, errors, allocator);
 
+    IrMetadata meta =
+        ir_make_metadata(&emitter->metadata, node.identifier, allocator);
+
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_LOAD;
     ins.origin = node.origin;
-    ins.res_var.id = ir_emitter_next_var_id(emitter);
+    ins.res_var.id = meta.var.id;
     ins.res_var.identifier = node.identifier;
 
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+
+#if 0
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
-
-    IrVarLifetime *rhs_lifetime = nullptr;
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, rhs.var, ins_idx);
-      rhs_lifetime =
-          ir_find_var_lifetime_by_var_id(emitter->lifetimes, rhs.var.id);
-      PG_ASSERT(rhs_lifetime);
+      ir_var_extend_lifetime_on_use(emitter->metadata, rhs.var, ins_idx);
+      PG_ASSERT(ir_find_metadata_by_var_id(emitter->metadata, rhs.var.id));
     }
-
-    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
+#endif
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
 
   case AST_NODE_KIND_IDENTIFIER: {
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_identifier(emitter->lifetimes, node.identifier);
+    IrMetadata *meta =
+        ir_find_metadata_by_identifier(emitter->metadata, node.identifier);
 
-    if (!lifetime) {
+    if (!meta) {
       *PG_DYN_PUSH(errors, allocator) = (Error){
           .kind = ERROR_KIND_UNDEFINED_VAR,
           .origin = node.origin,
@@ -359,13 +425,14 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       return (IrOperand){0};
     }
 
+#if 0
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
-    ir_var_extend_lifetime_on_var_use(emitter->lifetimes, lifetime->var,
-                                      ins_idx);
+    ir_var_extend_lifetime_on_use(emitter->metadata, meta->var, ins_idx);
+#endif
 
     return (IrOperand){
         .kind = IR_OPERAND_KIND_VAR,
-        .var = lifetime->var,
+        .var = meta->var,
     };
   }
   case AST_NODE_KIND_BUILTIN_ASSERT: {
@@ -397,17 +464,20 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
 
     IrOperand rhs = ir_emit_ast_node(operand, emitter, errors, allocator);
+    IrMetadata meta = ir_make_metadata(&emitter->metadata, PG_S(""), allocator);
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;
     ins.origin = node.origin;
-    ins.res_var.id = ir_emitter_next_var_id(emitter);
+    ins.res_var.id = meta.var.id;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, rhs.var, ins_idx);
+#if 0
+    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
+      ir_var_extend_lifetime_on_use(emitter->metadata, rhs.var, ins_idx);
+#endif
     } else {
       *PG_DYN_PUSH(errors, allocator) = (Error){
           .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
@@ -415,8 +485,6 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       };
       return (IrOperand){0};
     }
-
-    ir_var_lifetime_add(&emitter->lifetimes, ins.res_var, ins_idx, allocator);
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
@@ -436,10 +504,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrInstructionIndex ir_cond_jump_idx = {
         (u32)(emitter->instructions.len - 1)};
 
+#if 0
     if (IR_OPERAND_KIND_VAR == cond.kind) {
-      ir_var_extend_lifetime_on_var_use(emitter->lifetimes, cond.var,
-                                        ir_cond_jump_idx);
+      ir_var_extend_lifetime_on_use(emitter->metadata, cond.var,
+                                    ir_cond_jump_idx);
     }
+#endif
 
     IrLabelId branch_if_cont_label = ir_emitter_next_label_id(emitter);
     IrLabelId branch_else_label = ir_emitter_next_label_id(emitter);
@@ -507,12 +577,13 @@ static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
   (void)ir_emit_ast_node(node, emitter, errors, allocator);
 }
 
-static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
-                                        IrVarLifetimeDyn lifetimes) {
-  for (u64 i = 0; i < lifetimes.len; i++) {
-    IrVarLifetime *lifetime = PG_SLICE_AT_PTR(&lifetimes, i);
-    lifetime->tombstone = true;
-    lifetime->end = lifetime->start;
+#if 0
+static void irs_recompute_var_metadata(IrInstructionDyn instructions,
+                                       IrMetadataDyn metadata) {
+  for (u64 i = 0; i < metadata.len; i++) {
+    IrMetadata *meta = PG_SLICE_AT_PTR(&metadata, i);
+    meta->tombstone = true;
+    meta->lifetime_end = meta->lifetime_start;
   }
 
   for (u64 i = 0; i < instructions.len; i++) {
@@ -534,11 +605,10 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
           continue;
         }
 
-        IrVarLifetime *lifetime =
-            ir_find_var_lifetime_by_var_id(lifetimes, val.var.id);
-        PG_ASSERT(lifetime);
-        lifetime->end = (IrInstructionIndex){(u32)i};
-        lifetime->tombstone = false;
+        IrMetadata *meta = ir_find_metadata_by_var_id(metadata, val.var.id);
+        PG_ASSERT(meta);
+        meta->lifetime_end = (IrInstructionIndex){(u32)i};
+        meta->tombstone = false;
       }
     } break;
     case IR_INSTRUCTION_KIND_JUMP:
@@ -550,10 +620,12 @@ static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
     }
   }
 }
+#endif
 
+#if 0
 [[nodiscard]]
 static bool irs_optimize_remove_unused_vars(IrInstructionDyn *instructions,
-                                            IrVarLifetimeDyn *lifetimes) {
+                                            IrMetadataDyn *metadata) {
   bool changed = false;
 
   for (u64 i = 0; i < instructions->len; i++) {
@@ -567,15 +639,14 @@ static bool irs_optimize_remove_unused_vars(IrInstructionDyn *instructions,
       continue;
     }
 
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(*lifetimes, ins->res_var.id);
-    PG_ASSERT(lifetime);
-    if (lifetime->tombstone) {
+    IrMetadata *meta = ir_find_metadata_by_var_id(*metadata, ins->res_var.id);
+    PG_ASSERT(meta);
+    if (meta->tombstone) {
       goto do_rm;
     }
 
-    PG_ASSERT(lifetime->start.value <= lifetime->end.value);
-    u64 duration = lifetime->end.value - lifetime->start.value;
+    PG_ASSERT(meta->lifetime_start.value <= meta->lifetime_end.value);
+    u64 duration = meta->lifetime_end.value - meta->lifetime_start.value;
     if (duration > 0) {
       // Used: no-op.
       continue;
@@ -583,7 +654,7 @@ static bool irs_optimize_remove_unused_vars(IrInstructionDyn *instructions,
 
   do_rm:
 
-    lifetime->tombstone = true;
+    meta->tombstone = true;
 
     // Possible side-effects: keep this IR but erase the variable.
     if (IR_INSTRUCTION_KIND_SYSCALL == ins->kind) {
@@ -602,7 +673,7 @@ static bool irs_optimize_remove_unused_vars(IrInstructionDyn *instructions,
 [[nodiscard]]
 static bool
 irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *instructions,
-                                           IrVarLifetimeDyn *lifetimes) {
+                                           IrMetadataDyn *metadata) {
   bool changed = false;
 
   for (u64 i = 0; i < instructions->len; i++) {
@@ -651,10 +722,9 @@ irs_optimize_remove_trivially_aliased_vars(IrInstructionDyn *instructions,
       }
     }
     ins->tombstone = true;
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(*lifetimes, ins->res_var.id);
-    PG_ASSERT(!lifetime->tombstone);
-    lifetime->tombstone = true;
+    IrMetadata *meta = ir_find_metadata_by_var_id(*metadata, ins->res_var.id);
+    PG_ASSERT(!meta->tombstone);
+    meta->tombstone = true;
     changed = true;
   }
   return changed;
@@ -675,7 +745,7 @@ irs_find_ir_by_id(IrInstructionDyn instructions, IrInstructionIndex ins_idx) {
 // and another optimization pass may then constant fold into `x3 := 3`.
 [[nodiscard]]
 static bool irs_optimize_replace_immediate_vars_by_immediate_value(
-    IrInstructionDyn *instructions, IrVarLifetimeDyn *lifetimes) {
+    IrInstructionDyn *instructions, IrMetadataDyn *metadata) {
   bool changed = false;
   for (u64 i = 0; i < instructions->len; i++) {
     IrInstruction *ins = PG_SLICE_AT_PTR(instructions, i);
@@ -699,11 +769,10 @@ static bool irs_optimize_replace_immediate_vars_by_immediate_value(
       IrVar var = val->var;
       PG_ASSERT(var.id.value != 0);
 
-      IrVarLifetime *lifetime =
-          ir_find_var_lifetime_by_var_id(*lifetimes, var.id);
-      PG_ASSERT(lifetime);
+      IrMetadata *meta = ir_find_metadata_by_var_id(*metadata, var.id);
+      PG_ASSERT(meta);
 
-      IrInstructionIndex var_def_ins_idx = lifetime->start;
+      IrInstructionIndex var_def_ins_idx = meta->lifetime_start;
       IrInstruction *var_def_ins =
           irs_find_ir_by_id(*instructions, var_def_ins_idx);
       PG_ASSERT(var_def_ins);
@@ -795,39 +864,39 @@ static bool irs_optimize_remove_trivial_falsy_or_truthy_branches(
   return changed;
 }
 
-static void ir_optimize(IrInstructionDyn *instructions,
-                        IrVarLifetimeDyn *lifetimes, bool verbose) {
+static void ir_optimize(IrInstructionDyn *instructions, IrMetadataDyn *metadata,
+                        bool verbose) {
   bool changed = false;
 
   u64 optimization_rounds = 0;
   do {
     changed = false;
-    changed |= irs_optimize_remove_unused_vars(instructions, lifetimes);
+    changed |= irs_optimize_remove_unused_vars(instructions, metadata);
     if (changed) {
-      irs_recompute_var_lifetimes(*instructions, *lifetimes);
+      irs_recompute_var_metadata(*instructions, *metadata);
     }
 
     changed |=
-        irs_optimize_remove_trivially_aliased_vars(instructions, lifetimes);
+        irs_optimize_remove_trivially_aliased_vars(instructions, metadata);
     if (changed) {
-      irs_recompute_var_lifetimes(*instructions, *lifetimes);
+      irs_recompute_var_metadata(*instructions, *metadata);
     }
 
     changed |= irs_optimize_replace_immediate_vars_by_immediate_value(
-        instructions, lifetimes);
+        instructions, metadata);
     if (changed) {
-      irs_recompute_var_lifetimes(*instructions, *lifetimes);
+      irs_recompute_var_metadata(*instructions, *metadata);
     }
 
     changed |= irs_optimize_fold_constants(instructions);
     if (changed) {
-      irs_recompute_var_lifetimes(*instructions, *lifetimes);
+      irs_recompute_var_metadata(*instructions, *metadata);
     }
 
     changed |=
         irs_optimize_remove_trivial_falsy_or_truthy_branches(instructions);
     if (changed) {
-      irs_recompute_var_lifetimes(*instructions, *lifetimes);
+      irs_recompute_var_metadata(*instructions, *metadata);
     }
 
     optimization_rounds += 1;
@@ -842,6 +911,7 @@ static void ir_optimize(IrInstructionDyn *instructions,
     printf("[D010] optimization_rounds=%lu\n", optimization_rounds);
   }
 }
+#endif
 
 static void ir_print_var(IrVar var) {
   if (0 == var.id.value) {
@@ -874,22 +944,25 @@ static void ir_print_operand(IrOperand value) {
   }
 }
 
-static void ir_emitter_print_var_lifetime(u64 i, IrVarLifetime lifetime) {
-  if (lifetime.tombstone) {
+static void ir_emitter_print_meta(u64 i, IrMetadata meta) {
+#if 0
+  if (meta.tombstone) {
     printf("\x1B[9m"); // Strikethrough.
   }
+#endif
 
   printf("[%lu] ", i);
-  ir_print_var(lifetime.var);
-  printf(" lifetime: [%u:%u]", lifetime.start.value, lifetime.end.value);
-  if (lifetime.ref.id.value) {
-    printf(" ref=%u", lifetime.ref.id.value);
-  }
+  ir_print_var(meta.var);
+#if 0
+  printf(" meta: [%u:%u]", meta.lifetime_start.value, meta.lifetime_end.value);
+#endif
 
   printf("\n");
-  if (lifetime.tombstone) {
+#if 0
+  if (meta.tombstone) {
     printf("\x1B[0m"); // Strikethrough.
   }
+#endif
 }
 
 static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
@@ -915,11 +988,11 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" + ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 1));
 
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(emitter.lifetimes, ins.res_var.id);
-    PG_ASSERT(lifetime);
+    IrMetadata *meta =
+        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
+    PG_ASSERT(meta);
     printf(" // ");
-    ir_emitter_print_var_lifetime(i, *lifetime);
+    ir_emitter_print_meta(i, *meta);
   } break;
   case IR_INSTRUCTION_KIND_COMPARISON: {
     PG_ASSERT(2 == ins.operands.len);
@@ -931,11 +1004,11 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" %s ", LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
     ir_print_operand(PG_SLICE_AT(ins.operands, 1));
 
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(emitter.lifetimes, ins.res_var.id);
-    PG_ASSERT(lifetime);
+    IrMetadata *meta =
+        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
+    PG_ASSERT(meta);
     printf(" // ");
-    ir_emitter_print_var_lifetime(i, *lifetime);
+    ir_emitter_print_meta(i, *meta);
   } break;
   case IR_INSTRUCTION_KIND_LOAD: {
     PG_ASSERT(1 == ins.operands.len);
@@ -946,11 +1019,11 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" := ");
     ir_print_operand(rhs);
 
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(emitter.lifetimes, ins.res_var.id);
-    PG_ASSERT(lifetime);
+    IrMetadata *meta =
+        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
+    PG_ASSERT(meta);
     printf(" // ");
-    ir_emitter_print_var_lifetime(i, *lifetime);
+    ir_emitter_print_meta(i, *meta);
   } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ins.operands.len);
@@ -960,10 +1033,10 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" := &");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0));
 
-    IrVarLifetime *lifetime =
-        ir_find_var_lifetime_by_var_id(emitter.lifetimes, ins.res_var.id);
+    IrMetadata *meta =
+        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
     printf(" // ");
-    ir_emitter_print_var_lifetime(i, *lifetime);
+    ir_emitter_print_meta(i, *meta);
   } break;
   case IR_INSTRUCTION_KIND_SYSCALL: {
     ir_print_var(ins.res_var);
@@ -981,11 +1054,11 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(")");
 
     if (0 != ins.res_var.id.value) {
-      IrVarLifetime *lifetime =
-          ir_find_var_lifetime_by_var_id(emitter.lifetimes, ins.res_var.id);
-      PG_ASSERT(lifetime);
+      IrMetadata *meta =
+          ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
+      PG_ASSERT(meta);
       printf(" // ");
-      ir_emitter_print_var_lifetime(i, *lifetime);
+      ir_emitter_print_meta(i, *meta);
     }
     printf("\n");
   } break;
@@ -1038,13 +1111,14 @@ static void ir_emitter_print_instructions(IrEmitter emitter) {
   }
 }
 
-static void ir_emitter_print_var_lifetimes(IrEmitter emitter) {
-  for (u64 i = 0; i < emitter.lifetimes.len; i++) {
-    IrVarLifetime lifetime = PG_SLICE_AT(emitter.lifetimes, i);
-    ir_emitter_print_var_lifetime(i, lifetime);
+static void ir_emitter_print_metadata(IrMetadataDyn metadata) {
+  for (u64 i = 0; i < metadata.len; i++) {
+    IrMetadata meta = PG_SLICE_AT(metadata, i);
+    ir_emitter_print_meta(i, meta);
   }
 }
 
+#if 0
 static void ir_emitter_trim_tombstone_items(IrEmitter *emitter) {
   for (u64 i = 0; i < emitter->instructions.len;) {
     IrInstruction ins = PG_SLICE_AT(emitter->instructions, i);
@@ -1055,12 +1129,13 @@ static void ir_emitter_trim_tombstone_items(IrEmitter *emitter) {
     i++;
   }
 
-  for (u64 i = 0; i < emitter->lifetimes.len;) {
-    IrVarLifetime lifetime = PG_SLICE_AT(emitter->lifetimes, i);
-    if (lifetime.tombstone) {
-      PG_DYN_REMOVE_AT(&emitter->lifetimes, i);
+  for (u64 i = 0; i < emitter->metadata.len;) {
+    IrMetadata meta = PG_SLICE_AT(emitter->metadata, i);
+    if (meta.tombstone) {
+      PG_DYN_REMOVE_AT(&emitter->metadata, i);
       continue;
     }
     i++;
   }
 }
+#endif

@@ -2,31 +2,6 @@
 #include "ir.h"
 #include "submodules/cstd/lib.c"
 
-typedef enum {
-  LIR_VIRT_REG_CONSTRAINT_NONE,
-  LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL0,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL1,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL2,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL3,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
-  LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
-} LirVirtualRegisterConstraint;
-
-typedef struct {
-  u32 value;
-  LirVirtualRegisterConstraint constraint;
-  bool addressable;
-} VirtualRegister;
-PG_SLICE(VirtualRegister) VirtualRegisterSlice;
-PG_DYN(VirtualRegister) VirtualRegisterDyn;
-
-typedef struct {
-  u32 value;
-} VirtualRegisterIndex;
-
 typedef struct {
   u32 value;
 } InterferenceNodeIndex;
@@ -82,22 +57,8 @@ PG_SLICE(LirInstruction) LirInstructionSlice;
 PG_DYN(LirInstruction) LirInstructionDyn;
 
 typedef struct {
-  IrVar var;
-  VirtualRegisterIndex virt_reg_idx;
-} VarVirtualRegister;
-PG_SLICE(VarVirtualRegister) VarVirtualRegisterSlice;
-PG_DYN(VarVirtualRegister) VarVirtualRegisterDyn;
-
-typedef struct {
-  u32 value;
-} VarVirtualRegisterIndex;
-
-typedef struct {
   LirInstructionDyn instructions;
-  VirtualRegisterDyn virtual_registers;
-  VarVirtualRegisterDyn var_virtual_registers;
-
-  IrVarLifetimeDyn lifetimes;
+  IrMetadataDyn metadata;
 } LirEmitter;
 
 [[nodiscard]]
@@ -131,25 +92,14 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
 }
 
 static void lir_print_virtual_register(VirtualRegisterIndex virt_reg_idx,
-                                       VirtualRegisterDyn virtual_registers) {
-  VirtualRegister virt_reg = PG_SLICE_AT(virtual_registers, virt_reg_idx.value);
+                                       IrMetadataDyn metadata) {
+  IrMetadata *meta =
+      ir_find_metadata_by_virtual_register(metadata, virt_reg_idx);
+  PG_ASSERT(meta);
 
-  printf("v%u{constraint=%s, addressable=%s}", virt_reg.value,
-         lir_register_constraint_to_cstr(virt_reg.constraint),
-         virt_reg.addressable ? "true" : "false");
-}
-
-static void lir_print_var_virtual_registers(LirEmitter emitter) {
-  for (u64 i = 0; i < emitter.var_virtual_registers.len; i++) {
-    VarVirtualRegister var_virt_reg =
-        PG_SLICE_AT(emitter.var_virtual_registers, i);
-
-    ir_print_var(var_virt_reg.var);
-    printf(": ");
-    lir_print_virtual_register(var_virt_reg.virt_reg_idx,
-                               emitter.virtual_registers);
-    printf("\n");
-  }
+  printf("v%u{constraint=%s, addressable=%s}", meta->virtual_register.value,
+         lir_register_constraint_to_cstr(meta->virtual_register.constraint),
+         meta->virtual_register.addressable ? "true" : "false");
 }
 
 #if 0
@@ -193,13 +143,12 @@ static void lir_print_var_to_memory_location(
 }
 #endif
 
-static void lir_print_operand(LirOperand operand,
-                              VirtualRegisterDyn virtual_registers) {
+static void lir_print_operand(LirOperand operand, IrMetadataDyn metadata) {
   switch (operand.kind) {
   case LIR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
-    lir_print_virtual_register(operand.virt_reg_idx, virtual_registers);
+    lir_print_virtual_register(operand.virt_reg_idx, metadata);
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, operand.immediate);
@@ -261,7 +210,7 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
 
     for (u64 j = 0; j < ins.operands.len; j++) {
       LirOperand op = PG_SLICE_AT(ins.operands, j);
-      lir_print_operand(op, emitter.virtual_registers);
+      lir_print_operand(op, emitter.metadata);
 
       if (j + 1 < ins.operands.len) {
         printf(", ");
@@ -271,41 +220,11 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
   }
 }
 
-[[nodiscard]]
-static VarVirtualRegisterIndex
-var_virtual_registers_find_by_var(VarVirtualRegisterDyn var_virtual_registers,
-                                  IrVar needle) {
-  for (u64 i = 0; i < var_virtual_registers.len; i++) {
-    VarVirtualRegister var_virt_reg = PG_SLICE_AT(var_virtual_registers, i);
-    if (needle.id.value == var_virt_reg.var.id.value) {
-      return (VarVirtualRegisterIndex){(u32)i};
-    }
-  }
-  return (VarVirtualRegisterIndex){-1U};
-}
-
-[[nodiscard]]
 static VirtualRegisterIndex
-lir_make_virtual_register(LirEmitter *emitter,
-                          LirVirtualRegisterConstraint constraint,
-                          PgAllocator *allocator) {
-
-  VirtualRegister virt_reg = {
-      .value = 1 + (u32)emitter->virtual_registers.len,
-      .constraint = constraint,
-  };
-  *PG_DYN_PUSH(&emitter->virtual_registers, allocator) = virt_reg;
-  VirtualRegisterIndex res = {(u32)(emitter->virtual_registers.len - 1)};
-
-  return res;
-}
-
-static VirtualRegisterIndex
-lir_reserve_virt_reg_for_var(LirEmitter *emitter, IrVar var,
-                             LirVirtualRegisterConstraint constraint,
-                             PgAllocator *allocator) {
-  VirtualRegisterIndex virt_reg_idx =
-      lir_make_virtual_register(emitter, constraint, allocator);
+lir_make_virtual_register_for_var(LirEmitter *emitter, IrVar var,
+                                  LirVirtualRegisterConstraint constraint,
+                                  PgAllocator *allocator) {
+  IrMetadata meta = ir_make_metadata(&emitter->metadata, );
 
   *PG_DYN_PUSH(&emitter->var_virtual_registers, allocator) =
       (VarVirtualRegister){
@@ -442,7 +361,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     IrOperand lhs_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
 
-    VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
+    VirtualRegisterIndex res_virt_reg_idx = lir_make_virtual_register_for_var(
         emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(-1U != res_virt_reg_idx.value);
 
@@ -480,7 +399,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(IR_OPERAND_KIND_VAR == src_ir_val.kind ||
               IR_OPERAND_KIND_U64 == src_ir_val.kind);
 
-    VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
+    VirtualRegisterIndex res_virt_reg_idx = lir_make_virtual_register_for_var(
         emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(-1U != res_virt_reg_idx.value);
 
@@ -529,7 +448,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
     if (ir_ins.res_var.id.value) {
-      VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
+      VirtualRegisterIndex res_virt_reg_idx = lir_make_virtual_register_for_var(
           emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
           allocator);
       PG_ASSERT(res_virt_reg_idx.value != 0);
@@ -542,7 +461,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     IrOperand lhs_ir_op = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_VAR == lhs_ir_op.kind);
 
-    VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
+    VirtualRegisterIndex res_virt_reg_idx = lir_make_virtual_register_for_var(
         emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
     PG_ASSERT(res_virt_reg_idx.value != 0);
 
@@ -671,7 +590,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(2 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.res_var.id.value);
 
-    VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
+    VirtualRegisterIndex res_virt_reg_idx = lir_make_virtual_register_for_var(
         emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS,
         allocator);
     PG_ASSERT(-1U != res_virt_reg_idx.value);
