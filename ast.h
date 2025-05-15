@@ -15,9 +15,7 @@ typedef enum {
   AST_NODE_KIND_IF,
   AST_NODE_KIND_COMPARISON,
   AST_NODE_KIND_BUILTIN_ASSERT,
-#if 0
   AST_NODE_KIND_SYSCALL,
-#endif
 } AstNodeKind;
 
 typedef struct AstNode AstNode;
@@ -90,8 +88,8 @@ static void ast_print(AstNode node, u32 left_width) {
     }
     printf(")\n");
     break;
-#if 0
   case AST_NODE_KIND_SYSCALL: {
+    PG_ASSERT(node.operands.len > 0);
     printf("Syscall(\n");
     for (u64 i = 0; i < node.operands.len; i++) {
       ast_print(PG_SLICE_AT(node.operands, i), left_width + 2);
@@ -102,7 +100,6 @@ static void ast_print(AstNode node, u32 left_width) {
     }
     printf(")\n");
   } break;
-#endif
   case AST_NODE_KIND_BLOCK: {
     printf("Block\n");
     for (u64 i = 0; i < node.operands.len; i++) {
@@ -665,11 +662,66 @@ static AstNode *ast_parse_declaration(LexTokenSlice tokens, ErrorDyn *errors,
   return ast_parse_statement(tokens, errors, tokens_consumed, allocator);
 }
 
+static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
+
+  {
+    AstNode *block_exit =
+        pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    block_exit->kind = AST_NODE_KIND_BLOCK;
+    block_exit->identifier = PG_S("__builtin_exit");
+
+    AstNode *syscall =
+        pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    syscall->kind = AST_NODE_KIND_SYSCALL;
+
+    AstNode *op0 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    op0->kind = AST_NODE_KIND_U64;
+    op0->n64 = 60; // FIXME: Only on Linux amd64.
+    *PG_DYN_PUSH(&syscall->operands, allocator) = *op0;
+
+    AstNode *op1 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    op1->kind = AST_NODE_KIND_U64;
+    op1->n64 = 0;
+    *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
+
+    *PG_DYN_PUSH(&block_exit->operands, allocator) = *syscall;
+
+    *PG_DYN_PUSH(&parent->operands, allocator) = *block_exit;
+  }
+  {
+    AstNode *block_die =
+        pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    block_die->kind = AST_NODE_KIND_BLOCK;
+    block_die->identifier = PG_S("__builtin_die");
+
+    AstNode *syscall =
+        pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    syscall->kind = AST_NODE_KIND_SYSCALL;
+
+    AstNode *op0 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    op0->kind = AST_NODE_KIND_U64;
+    op0->n64 = 60; // FIXME: Only on Linux amd64.
+    *PG_DYN_PUSH(&syscall->operands, allocator) = *op0;
+
+    AstNode *op1 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+    op1->kind = AST_NODE_KIND_U64;
+    op1->n64 = 1;
+    *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
+
+    *PG_DYN_PUSH(&block_die->operands, allocator) = *syscall;
+
+    *PG_DYN_PUSH(&parent->operands, allocator) = *block_die;
+  }
+}
+
 static AstNode *ast_emit(LexTokenSlice tokens, ErrorDyn *errors,
                          PgAllocator *allocator) {
 
   AstNode *root = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
   root->kind = AST_NODE_KIND_BLOCK;
+
+  AstNode *main = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+  main->kind = AST_NODE_KIND_BLOCK;
 
   for (u64 tokens_idx = 0; tokens_idx < tokens.len;) {
     LexTokenSlice remaining = PG_SLICE_RANGE_START(tokens, tokens_idx);
@@ -691,10 +743,14 @@ static AstNode *ast_emit(LexTokenSlice tokens, ErrorDyn *errors,
 
     PG_ASSERT(statement);
 
-    *PG_DYN_PUSH(&root->operands, allocator) = *statement;
+    *PG_DYN_PUSH(&main->operands, allocator) = *statement;
 
     tokens_idx += tokens_consumed;
   }
+
+  *PG_DYN_PUSH(&root->operands, allocator) = *main;
+
+  ast_emit_program_epilog(root, allocator);
 
   return root;
 }

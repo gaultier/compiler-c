@@ -162,15 +162,11 @@ static void ir_var_lifetime_add(IrVarLifetimeDyn *lifetimes, IrVar var,
 
 [[nodiscard]]
 static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
-                                  ErrorDyn *errors, bool is_immediate_ok,
-                                  PgAllocator *allocator) {
+                                  ErrorDyn *errors, PgAllocator *allocator) {
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
-    if (is_immediate_ok) {
-      return (IrOperand){.kind = IR_OPERAND_KIND_U64, .n64 = node.n64};
-    }
     IrInstruction ins = {
         .kind = IR_INSTRUCTION_KIND_LOAD,
         .origin = node.origin,
@@ -199,9 +195,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     // %3 = %2 + %1
     PG_ASSERT(2 == node.operands.len);
     IrOperand lhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
-                                     errors, true, allocator);
+                                     errors, allocator);
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
-                                     errors, true, allocator);
+                                     errors, allocator);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
@@ -229,9 +225,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_COMPARISON: {
     PG_ASSERT(2 == node.operands.len);
     IrOperand lhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
-                                     errors, true, allocator);
+                                     errors, allocator);
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
-                                     errors, true, allocator);
+                                     errors, allocator);
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
     IrInstruction ins = {0};
@@ -258,12 +254,11 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
 
-#if 0
   case AST_NODE_KIND_SYSCALL: {
     IrOperandDyn operands = {0};
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      IrOperand operand = ast_to_ir(child, emitter, errors, true, allocator);
+      IrOperand operand = ir_emit_ast_node(child, emitter, errors, allocator);
 
       *PG_DYN_PUSH(&operands, allocator) = operand;
     }
@@ -292,11 +287,32 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
   }
-#endif
   case AST_NODE_KIND_BLOCK: {
+    if (!pg_string_is_empty(node.identifier)) {
+      // FIXME: The actual label from the source gets lost.
+
+      IrLabelId label_id = ir_emitter_next_label_id(emitter);
+
+      IrInstruction ir_label = {
+          .kind = IR_INSTRUCTION_KIND_LABEL,
+          .origin = node.origin,
+      };
+      *PG_DYN_PUSH(&ir_label.operands, allocator) = (IrOperand){
+          .kind = IR_OPERAND_KIND_LABEL,
+          .label = label_id,
+      };
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label;
+
+      if (pg_string_eq(node.identifier, PG_S("__builtin_exit"))) {
+        emitter->label_program_epilog_exit = label_id;
+      } else if (pg_string_eq(node.identifier, PG_S("__builtin_die"))) {
+        emitter->label_program_epilog_die = label_id;
+      }
+    }
+
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      (void)ir_emit_ast_node(child, emitter, errors, false, allocator);
+      (void)ir_emit_ast_node(child, emitter, errors, allocator);
     }
     // TODO: Label?
     return (IrOperand){0};
@@ -306,8 +322,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
     AstNode rhs_node = PG_SLICE_AT(node.operands, 0);
-    IrOperand rhs =
-        ir_emit_ast_node(rhs_node, emitter, errors, true, allocator);
+    IrOperand rhs = ir_emit_ast_node(rhs_node, emitter, errors, allocator);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_LOAD;
@@ -362,8 +377,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
         .origin = node.origin,
     };
 
-    IrOperand cond =
-        ir_emit_ast_node(operand, emitter, errors, true, allocator);
+    IrOperand cond = ir_emit_ast_node(operand, emitter, errors, allocator);
     *PG_DYN_PUSH(&ins.operands, allocator) = cond;
 
     IrOperand jump_target = {
@@ -382,8 +396,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     AstNode operand = PG_SLICE_AT(node.operands, 0);
     PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
 
-    IrOperand rhs =
-        ir_emit_ast_node(operand, emitter, errors, false, allocator);
+    IrOperand rhs = ir_emit_ast_node(operand, emitter, errors, allocator);
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;
     ins.origin = node.origin;
@@ -411,7 +424,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_IF: {
     PG_ASSERT(2 == node.operands.len);
     IrOperand cond = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
-                                      errors, false, allocator);
+                                      errors, allocator);
     // TODO: else.
 
     IrInstruction ir_cond_jump = {
@@ -434,7 +447,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     // 'then' branch.
     {
       (void)ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter, errors,
-                             false, allocator);
+                             allocator);
       IrInstruction ir_jump = {
           .kind = IR_INSTRUCTION_KIND_JUMP,
           .origin = node.origin,
@@ -459,7 +472,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label_else;
       if (3 == node.operands.len) {
         (void)ir_emit_ast_node(PG_SLICE_AT(node.operands, 2), emitter, errors,
-                               false, allocator);
+                               allocator);
       }
     }
     IrInstruction ir_label_if_cont = {
@@ -487,72 +500,11 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   }
 }
 
-static void ir_init_program_epilog_labels(IrEmitter *emitter) {
-  PG_ASSERT(!emitter->label_program_epilog_die.value);
-  PG_ASSERT(!emitter->label_program_epilog_exit.value);
-
-  emitter->label_program_epilog_exit = ir_emitter_next_label_id(emitter);
-  emitter->label_program_epilog_die = ir_emitter_next_label_id(emitter);
-
-  PG_ASSERT(emitter->label_program_epilog_die.value);
-  PG_ASSERT(emitter->label_program_epilog_exit.value);
-}
-
-static void ir_emit_program_epilog(IrEmitter *emitter, PgAllocator *allocator) {
-  PG_ASSERT(emitter->label_program_epilog_die.value);
-  PG_ASSERT(emitter->label_program_epilog_exit.value);
-
-  {
-    IrInstruction ins_exit_label = {.kind = IR_INSTRUCTION_KIND_LABEL};
-    *PG_DYN_PUSH(&ins_exit_label.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_LABEL,
-        .label = emitter->label_program_epilog_exit,
-    };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_exit_label;
-
-    IrInstruction ins_syscall = {.kind = IR_INSTRUCTION_KIND_SYSCALL};
-    // FIXME: Create variables so that it works with the interference graph.
-
-    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_U64,
-        .n64 = 60, // FIXME: Only on amd64!
-    };
-    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_U64,
-        .n64 = 0,
-    };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_syscall;
-  }
-  {
-    IrInstruction ins_die_label = {.kind = IR_INSTRUCTION_KIND_LABEL};
-    *PG_DYN_PUSH(&ins_die_label.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_LABEL,
-        .label = emitter->label_program_epilog_die,
-    };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_die_label;
-
-    IrInstruction ins_syscall = {.kind = IR_INSTRUCTION_KIND_SYSCALL};
-    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_U64,
-        .n64 = 60, // FIXME: Only on amd64!
-    };
-    *PG_DYN_PUSH(&ins_syscall.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_U64,
-        .n64 = 1,
-    };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_syscall;
-  }
-}
-
 static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
                             PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_BLOCK == node.kind);
 
-  ir_init_program_epilog_labels(emitter);
-
-  (void)ir_emit_ast_node(node, emitter, errors, true, allocator);
-
-  ir_emit_program_epilog(emitter, allocator);
+  (void)ir_emit_ast_node(node, emitter, errors, allocator);
 }
 
 static void irs_recompute_var_lifetimes(IrInstructionDyn instructions,
