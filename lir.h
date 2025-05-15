@@ -528,20 +528,12 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = lir_ins;
 
-#if 0
     if (ir_ins.res_var.id.value) {
       VirtualRegisterIndex res_virt_reg_idx = lir_reserve_virt_reg_for_var(
           emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
           allocator);
       PG_ASSERT(res_virt_reg_idx.value != 0);
-      InterferenceNodeIndex node_idx = lir_interference_nodes_find_by_var(
-          PG_DYN_SLICE(InterferenceNodeSlice, emitter->interference_nodes),
-          ir_ins.res_var);
-      PG_ASSERT(-1U != node_idx.value);
-      PG_SLICE_AT_PTR(&emitter->interference_nodes, node_idx.value)
-          ->virt_reg_idx = res_virt_reg_idx;
     }
-#endif
   } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ir_ins.operands.len);
