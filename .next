@@ -1,2 +1,3 @@
+[ ] do graph coloring on virtual registers, not variables
 [ ] amd64: implement more cmp/test encodings
 [.] codegen: impl builtin assert to test codegen
