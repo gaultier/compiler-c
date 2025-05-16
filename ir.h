@@ -190,22 +190,6 @@ static IrMetadataIndex ir_metadata_ptr_to_idx(IrMetadataDyn metadata,
 }
 
 [[nodiscard]]
-static IrMetadata *ir_find_metadata_by_var_id(IrMetadataDyn metadata,
-                                              IrVarId var_id) {
-  if (0 == var_id.value) {
-    return nullptr;
-  }
-
-  for (u64 i = 0; i < metadata.len; i++) {
-    IrMetadata *meta = PG_SLICE_AT_PTR(&metadata, i);
-    if (meta->var.id.value == var_id.value) {
-      return meta;
-    }
-  }
-  return nullptr;
-}
-
-[[nodiscard]]
 static IrMetadata *ir_find_metadata_by_identifier(IrMetadataDyn metadata,
                                                   PgString identifier) {
   for (u64 i = 0; i < metadata.len; i++) {
