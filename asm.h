@@ -124,11 +124,11 @@ static void asm_print_interference_graph(InterferenceGraph graph,
         continue;
       }
 
-      IrVar a_var = PG_SLICE_AT(metadata, row).var;
-      IrVar b_var = PG_SLICE_AT(metadata, col).var;
-      ir_print_var(a_var);
+      IrMetadata a_meta = PG_SLICE_AT(metadata, row);
+      IrMetadata b_meta = PG_SLICE_AT(metadata, col);
+      ir_print_var(a_meta.var, a_meta.identifier);
       printf(" -> ");
-      ir_print_var(b_var);
+      ir_print_var(b_meta.var, b_meta.identifier);
       printf("\n");
     }
   }

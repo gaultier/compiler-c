@@ -24,7 +24,6 @@ typedef struct {
 
 typedef struct {
   IrVarId id;
-  PgString identifier;
 } IrVar;
 PG_SLICE(IrVar) IrVarSlice;
 PG_DYN(IrVar) IrVarDyn;
@@ -194,7 +193,7 @@ static IrMetadata *ir_find_metadata_by_identifier(IrMetadataDyn metadata,
                                                   PgString identifier) {
   for (u64 i = 0; i < metadata.len; i++) {
     IrMetadata *meta = PG_SLICE_AT_PTR(&metadata, i);
-    if (pg_string_eq(meta->var.identifier, identifier)) {
+    if (pg_string_eq(meta->identifier, identifier)) {
       return meta;
     }
   }
@@ -921,13 +920,13 @@ static void ir_optimize(IrInstructionDyn *instructions, IrMetadataDyn *metadata,
 }
 #endif
 
-static void ir_print_var(IrVar var) {
+static void ir_print_var(IrVar var, PgString identifier) {
   if (0 == var.id.value) {
     return;
   }
 
-  if (!pg_string_is_empty(var.identifier)) {
-    printf("%.*s%%%" PRIu32, (i32)var.identifier.len, var.identifier.data,
+  if (!pg_string_is_empty(identifier)) {
+    printf("%.*s%%%" PRIu32, (i32)identifier.len, identifier.data,
            var.id.value);
   } else {
     printf("%%%" PRIu32, var.id.value);
@@ -942,8 +941,8 @@ static void ir_print_operand(IrOperand value, IrMetadataDyn metadata) {
     printf("%" PRIu64, value.n64);
     break;
   case IR_OPERAND_KIND_VAR: {
-    IrVar var = PG_SLICE_AT(metadata, value.meta_idx.value).var;
-    ir_print_var(var);
+    IrMetadata meta = PG_SLICE_AT(metadata, value.meta_idx.value);
+    ir_print_var(meta.var, meta.identifier);
   } break;
   case IR_OPERAND_KIND_LABEL:
     printf(".%" PRIu32 "", value.label.value);
@@ -990,7 +989,7 @@ static void ir_emitter_print_meta(IrMetadata meta) {
   }
 #endif
 
-  ir_print_var(meta.var);
+  ir_print_var(meta.var, meta.identifier);
 #if 0
   printf(" meta: [%u:%u]", meta.lifetime_start.value, meta.lifetime_end.value);
 #endif
@@ -1055,7 +1054,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(2 == ins.operands.len);
     PG_ASSERT(0 != ins.meta_idx.value);
     IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
-    ir_print_var(meta.var);
+    ir_print_var(meta.var, meta.identifier);
     printf(" := ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
     printf(" + ");
@@ -1070,7 +1069,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
     IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
 
-    ir_print_var(meta.var);
+    ir_print_var(meta.var, meta.identifier);
     printf(" := ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
     printf(" %s ", LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
@@ -1085,7 +1084,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
 
     IrOperand rhs = PG_SLICE_AT(ins.operands, 0);
-    ir_print_var(meta.var);
+    ir_print_var(meta.var, meta.identifier);
     printf(" := ");
     ir_print_operand(rhs, emitter.metadata);
 
@@ -1098,7 +1097,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
     IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
 
-    ir_print_var(meta.var);
+    ir_print_var(meta.var, meta.identifier);
     printf(" := &");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
 
@@ -1108,7 +1107,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
   case IR_INSTRUCTION_KIND_SYSCALL: {
     IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
 
-    ir_print_var(meta.var);
+    ir_print_var(meta.var, meta.identifier);
     printf("%ssyscall(", 0 == ins.meta_idx.value ? "" : " := ");
 
     for (u64 j = 0; j < ins.operands.len; j++) {
