@@ -497,13 +497,8 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
     PgAdjacencyMatrixNeighborIterator it =
         pg_adjacency_matrix_make_neighbor_iterator(graph_clone, row);
 
-    InterferenceNodeIndex node_idx = {(u32)row};
-    MemoryLocationIndex node_mem_loc_idx = memory_locations_find_by_node_index(
-        emitter->interference_graph.memory_locations, node_idx);
-    PG_ASSERT(-1U != node_mem_loc_idx.value);
-    MemoryLocation node_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, node_mem_loc_idx.value);
-
+    MemoryLocation node_mem_loc =
+        PG_SLICE_AT(emitter->metadata, row).memory_location;
     // Interference check.
     {
       PgAdjacencyMatrixNeighbor neighbor = {0};
@@ -514,14 +509,8 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
         }
         PG_ASSERT(row != neighbor.node);
 
-        InterferenceNodeIndex neighbor_idx = {(u32)neighbor.node};
-        MemoryLocationIndex neighbor_mem_loc_idx =
-            memory_locations_find_by_node_index(
-                emitter->interference_graph.memory_locations, neighbor_idx);
-        PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
         MemoryLocation neighbor_mem_loc =
-            PG_SLICE_AT(emitter->interference_graph.memory_locations,
-                        neighbor_mem_loc_idx.value);
+            PG_SLICE_AT(emitter->metadata, neighbor.node).memory_location;
 
         if (MEMORY_LOCATION_KIND_REGISTER == node_mem_loc.kind &&
             MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
@@ -533,8 +522,8 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
 
     // Addressable check.
     {
-      bool addressable = PG_SLICE_AT(emitter->metadata, node_idx.value)
-                             .virtual_register.addressable;
+      bool addressable =
+          PG_SLICE_AT(emitter->metadata, row).virtual_register.addressable;
       if (addressable) {
         PG_ASSERT(MEMORY_LOCATION_KIND_STACK == node_mem_loc.kind);
       }
