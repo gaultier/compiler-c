@@ -129,9 +129,7 @@ typedef struct {
 
 typedef struct {
   IrVar var;
-#if 0
   IrInstructionIndex lifetime_start, lifetime_end;
-#endif
   VirtualRegister virtual_register;
   MemoryLocation memory_location;
   PgString identifier;
@@ -170,16 +168,19 @@ ir_metadata_last_idx(IrMetadataDyn metadata) {
 static IrMetadataIndex ir_make_metadata(IrMetadataDyn *metadata,
                                         PgAllocator *allocator) {
   IrMetadata res = {0};
-#if 0
-  res.lifetime_start = ins_idx;
-  res.lifetime_end = ins_idx;
-#endif
   res.var.id.value = (u32)metadata->len;
   res.virtual_register.value = res.var.id.value;
 
   *PG_DYN_PUSH(metadata, allocator) = res;
 
   return ir_metadata_last_idx(*metadata);
+}
+
+static void ir_metadata_start_lifetime(IrMetadataDyn metadata,
+                                       IrMetadataIndex meta_idx,
+                                       IrInstructionIndex ins_idx) {
+  PG_SLICE_AT(metadata, meta_idx.value).lifetime_start = ins_idx;
+  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 }
 
 [[nodiscard]]
@@ -216,12 +217,10 @@ static IrMetadata *ir_find_metadata_by_identifier(IrMetadataDyn metadata,
   return nullptr;
 }
 
-#if 0
-static void ir_var_extend_lifetime_on_use(IrMetadataDyn metadata, IrVar var,
-                                          IrInstructionIndex ins_idx) {
-  IrMetadata *meta = ir_find_metadata_by_var_id(metadata, var.id);
-  PG_ASSERT(meta);
-  meta->lifetime_end = ins_idx;
+static void ir_metadata_extend_lifetime_on_use(IrMetadataDyn metadata,
+                                               IrMetadataIndex meta_idx,
+                                               IrInstructionIndex ins_idx) {
+  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 
   // TODO: Variable pointed to needs to live at least as long as the pointer to
   // it.
@@ -229,7 +228,6 @@ static void ir_var_extend_lifetime_on_use(IrMetadataDyn metadata, IrVar var,
   // should have their meta extended to this point!
   // TODO: Dataflow.
 }
-#endif
 
 [[nodiscard]]
 static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
@@ -239,6 +237,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
     IrMetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    ir_metadata_start_lifetime(
+        emitter->metadata, meta_idx,
+        (IrInstructionIndex){(u32)emitter->instructions.len});
 
     IrInstruction ins = {
         .kind = IR_INSTRUCTION_KIND_LOAD,
@@ -270,6 +271,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
                                      errors, allocator);
 
     IrMetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    ir_metadata_start_lifetime(
+        emitter->metadata, meta_idx,
+        (IrInstructionIndex){(u32)emitter->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
@@ -280,16 +284,17 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-#if 0
-    IrInstructionIndex ins_idx = meta.lifetime_start;
+    IrInstructionIndex ins_idx =
+        PG_SLICE_AT(emitter->metadata, meta_idx.value).lifetime_start;
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_var_extend_lifetime_on_use(emitter->metadata, lhs.var, ins_idx);
+      ir_metadata_extend_lifetime_on_use(emitter->metadata, lhs.meta_idx,
+                                         ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_var_extend_lifetime_on_use(emitter->metadata, rhs.var, ins_idx);
+      ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
+                                         ins_idx);
     }
-#endif
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
@@ -303,6 +308,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
     IrMetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    ir_metadata_start_lifetime(
+        emitter->metadata, meta_idx,
+        (IrInstructionIndex){(u32)emitter->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
@@ -338,6 +346,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     }
 
     IrMetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    ir_metadata_start_lifetime(
+        emitter->metadata, meta_idx,
+        (IrInstructionIndex){(u32)emitter->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
@@ -398,6 +409,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     IrMetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     PG_SLICE_AT(emitter->metadata, meta_idx.value).identifier = node.identifier;
+    ir_metadata_start_lifetime(
+        emitter->metadata, meta_idx,
+        (IrInstructionIndex){(u32)emitter->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_LOAD;
@@ -469,6 +483,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     IrOperand rhs = ir_emit_ast_node(operand, emitter, errors, allocator);
     IrMetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    ir_metadata_start_lifetime(
+        emitter->metadata, meta_idx,
+        (IrInstructionIndex){(u32)emitter->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;

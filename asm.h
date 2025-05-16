@@ -90,33 +90,6 @@ struct AsmEmitter {
   ASM_EMITTER_FIELDS
 };
 
-[[nodiscard]]
-static MemoryLocationIndex memory_locations_find_by_virtual_register_index(
-    MemoryLocationDyn memory_locations, VirtualRegisterIndex virt_reg_idx) {
-  for (u64 i = 0; i < memory_locations.len; i++) {
-    MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
-
-    if (mem_loc.virt_reg_idx.value == virt_reg_idx.value) {
-      return (MemoryLocationIndex){(u32)i};
-    }
-  }
-  return (MemoryLocationIndex){-1U};
-}
-
-[[nodiscard]]
-static MemoryLocationIndex
-memory_locations_find_by_node_index(MemoryLocationDyn memory_locations,
-                                    InterferenceNodeIndex node_idx) {
-  for (u64 i = 0; i < memory_locations.len; i++) {
-    MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
-
-    if (mem_loc.node_idx.value == node_idx.value) {
-      return (MemoryLocationIndex){(u32)i};
-    }
-  }
-  return (MemoryLocationIndex){-1U};
-}
-
 static void asm_gpr_set_add(GprSet *set, u32 val) {
   PG_ASSERT(set->len > 0);
   PG_ASSERT(val < set->len);
@@ -208,7 +181,9 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
 
   for (u64 i = 0; i < metadata.len; i++) {
     IrMetadata meta = PG_SLICE_AT(metadata, i);
+#if 0
     PG_ASSERT(!meta.tombstone);
+#endif
     PG_ASSERT(meta.lifetime_start.value <= meta.lifetime_end.value);
     PG_ASSERT(meta.var.id.value);
 
