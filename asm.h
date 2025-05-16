@@ -533,9 +533,8 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
 
     // Addressable check.
     {
-      bool addressable = PG_SLICE_AT(emitter->lir_emitter->virtual_registers,
-                                     node_mem_loc.virt_reg_idx.value)
-                             .addressable;
+      bool addressable = PG_SLICE_AT(emitter->metadata, node_idx.value)
+                             .virtual_register.addressable;
       if (addressable) {
         PG_ASSERT(MEMORY_LOCATION_KIND_STACK == node_mem_loc.kind);
       }
