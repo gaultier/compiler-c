@@ -39,7 +39,7 @@ typedef enum {
 typedef struct {
   LirOperandKind kind;
   union {
-    VirtualRegisterIndex virt_reg_idx;
+    IrMetadataIndex meta_idx;
     u64 immediate;
     IrLabelId label;
   };
@@ -91,10 +91,9 @@ lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
   }
 }
 
-static void lir_print_virtual_register(VirtualRegisterIndex virt_reg_idx,
+static void lir_print_virtual_register(VirtualRegisterIndex meta_idx,
                                        IrMetadataDyn metadata) {
-  IrMetadata *meta =
-      ir_find_metadata_by_virtual_register(metadata, virt_reg_idx);
+  IrMetadata *meta = ir_find_metadata_by_virtual_register(metadata, meta_idx);
   PG_ASSERT(meta);
 
   printf("v%u{constraint=%s, addressable=%s}", meta->virtual_register.value,
@@ -148,7 +147,7 @@ static void lir_print_operand(LirOperand operand, IrMetadataDyn metadata) {
   case LIR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
-    lir_print_virtual_register(operand.virt_reg_idx, metadata);
+    lir_print_virtual_register(operand.meta_idx, metadata);
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, operand.immediate);
@@ -221,8 +220,8 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
 }
 
 static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
-                                               VirtualRegisterIndex src_idx,
-                                               VirtualRegisterIndex dst_idx,
+                                               IrMetadataIndex src_idx,
+                                               IrMetadataIndex dst_idx,
                                                Origin origin,
                                                PgAllocator *allocator) {
   LirInstruction ins = {
@@ -233,12 +232,12 @@ static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
 
   LirOperand rhs = {
       .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-      .virt_reg_idx = src_idx,
+      .meta_idx = src_idx,
   };
 
   LirOperand lhs = {
       .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-      .virt_reg_idx = dst_idx,
+      .meta_idx = dst_idx,
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs;
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs;
@@ -248,12 +247,12 @@ static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
 
 // We pass `IrOperand src` to be open to more immediate kinds in the future.
 static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
-                                                IrOperand src,
-                                                VirtualRegisterIndex dst_idx,
+                                                IrOperand src_op,
+                                                IrMetadataIndex dst_idx,
                                                 Origin origin,
                                                 PgAllocator *allocator) {
   // TODO: Expand when more immediate types are available.
-  PG_ASSERT(IR_OPERAND_KIND_U64 == src.kind);
+  PG_ASSERT(IR_OPERAND_KIND_U64 == src_op.kind);
 
   LirInstruction ins = {
       .kind = LIR_INSTRUCTION_KIND_MOV,
@@ -263,34 +262,35 @@ static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
 
   LirOperand lhs = {
       .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-      .virt_reg_idx = dst_idx,
+      .meta_idx = dst_idx,
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs;
 
   LirOperand rhs = {
       .kind = LIR_OPERAND_KIND_IMMEDIATE,
-      .immediate = src.n64,
+      .immediate = src_op.n64,
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs;
 
   *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 }
 
-static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src,
-                                      VirtualRegisterIndex dst_idx,
+static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
+                                      IrMetadataIndex dst_meta_idx,
                                       Origin origin, PgAllocator *allocator) {
-  switch (src.kind) {
+  switch (src_op.kind) {
   case IR_OPERAND_KIND_U64:
-    lir_emit_copy_immediate_to_virt_reg(emitter, src, dst_idx, origin,
+    lir_emit_copy_immediate_to_virt_reg(emitter, src_op, dst_meta_idx, origin,
                                         allocator);
     break;
   case IR_OPERAND_KIND_VAR: {
-    IrMetadata src_meta = ir_make_metadata(&emitter->metadata, allocator);
-    PG_DYN_LAST_PTR(&emitter->metadata)->var = src_meta.identifier = src.var;
-    VirtualRegisterIndex src_virt_reg_idx = {(u32)emitter->metadata.len - 1};
+    IrMetadata *src_meta =
+        ir_find_metadata_by_var_id(emitter->metadata, src_op.var.id);
+    PG_ASSERT(src_meta);
 
-    lir_emit_copy_virt_reg_to_virt_reg(emitter, src_virt_reg_idx, dst_idx,
-                                       origin, allocator);
+    lir_emit_copy_virt_reg_to_virt_reg(
+        emitter, ir_metadata_ptr_to_idx(emitter->metadata, src_meta),
+        dst_meta_idx, origin, allocator);
   } break;
   case IR_OPERAND_KIND_LABEL:
   case IR_OPERAND_KIND_NONE:
@@ -309,16 +309,13 @@ static LirOperand lir_ir_operand_to_lir_operand(LirEmitter emitter,
         .immediate = ir_op.n64,
     };
   case IR_OPERAND_KIND_VAR: {
-    VarVirtualRegisterIndex var_virt_reg_idx =
-        var_virtual_registers_find_by_var(emitter.var_virtual_registers,
-                                          ir_op.var);
-    PG_ASSERT(-1U != var_virt_reg_idx.value);
-    VarVirtualRegister var_virt_reg =
-        PG_SLICE_AT(emitter.var_virtual_registers, var_virt_reg_idx.value);
+    IrMetadata *meta =
+        ir_find_metadata_by_var_id(emitter->metadata, ir_op.var.id);
+    PG_ASSERT(meta);
 
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .virt_reg_idx = var_virt_reg.virt_reg_idx,
+        .meta_idx = ir_metadata_ptr_to_idx(emitter.metadata, meta),
     };
   }
   case IR_OPERAND_KIND_LABEL:
@@ -343,12 +340,12 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     IrOperand lhs_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
 
-    VirtualRegisterIndex res_virt_reg_idx = lir_make_virtual_register_for_var(
-        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
-    PG_ASSERT(-1U != res_virt_reg_idx.value);
+    IrMetadata res_meta = ir_make_metadata(&emitter->metadata, allocator);
+    IrMetadataIndex res_meta_idx =
+        (IrMetadataIndex){(u32)emitter->metadata.len};
 
-    lir_emit_copy_to_virt_reg(emitter, lhs_ir_val, res_virt_reg_idx,
-                              ir_ins.origin, allocator);
+    lir_emit_copy_to_virt_reg(emitter, lhs_ir_val, res_meta_idx, ir_ins.origin,
+                              allocator);
 
     // We now need to add rhs to it.
 
@@ -365,7 +362,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     LirOperand lhs_op = {
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .virt_reg_idx = res_virt_reg_idx,
+        .meta_idx = res_meta_idx,
     };
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs_op;
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs_op;
@@ -401,11 +398,11 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
               ? LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM
               : (LirVirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 +
                                                j - 1);
-      VirtualRegisterIndex virt_reg_idx =
+      VirtualRegisterIndex meta_idx =
           lir_make_virtual_register(emitter, virt_reg_constraint, allocator);
 
       if (IR_OPERAND_KIND_U64 == val.kind) {
-        lir_emit_copy_immediate_to_virt_reg(emitter, val, virt_reg_idx,
+        lir_emit_copy_immediate_to_virt_reg(emitter, val, meta_idx,
                                             ir_ins.origin, allocator);
       } else if (IR_OPERAND_KIND_VAR == val.kind) {
         VarVirtualRegisterIndex src_var_virt_reg_idx =
@@ -415,9 +412,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         VarVirtualRegister src_var_virt_reg = PG_SLICE_AT(
             emitter->var_virtual_registers, src_var_virt_reg_idx.value);
 
-        lir_emit_copy_virt_reg_to_virt_reg(
-            emitter, src_var_virt_reg.virt_reg_idx, virt_reg_idx, ir_ins.origin,
-            allocator);
+        lir_emit_copy_virt_reg_to_virt_reg(emitter, src_var_virt_reg.meta_idx,
+                                           meta_idx, ir_ins.origin, allocator);
       } else {
         PG_ASSERT(0);
       }
@@ -456,7 +452,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         PG_SLICE_AT(emitter->var_virtual_registers, src_var_virt_reg_idx.value);
 
     PG_SLICE_AT_PTR(&emitter->virtual_registers,
-                    src_var_virt_reg.virt_reg_idx.value)
+                    src_var_virt_reg.meta_idx.value)
         ->addressable = true;
 
     PG_ASSERT(src_var_virt_reg_idx.value != res_virt_reg_idx.value);
@@ -467,11 +463,11 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     };
     LirOperand lhs_lir_op = {
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .virt_reg_idx = res_virt_reg_idx,
+        .meta_idx = res_virt_reg_idx,
     };
     LirOperand rhs_lir_op = {
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .virt_reg_idx = src_var_virt_reg.virt_reg_idx,
+        .meta_idx = src_var_virt_reg.meta_idx,
     };
     *PG_DYN_PUSH(&lir_ins.operands, allocator) = lhs_lir_op;
     *PG_DYN_PUSH(&lir_ins.operands, allocator) = rhs_lir_op;
@@ -589,7 +585,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) = (LirOperand){
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .virt_reg_idx = res_virt_reg_idx,
+        .meta_idx = res_virt_reg_idx,
     };
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) =
         lir_ir_operand_to_lir_operand(*emitter, ir_lhs);

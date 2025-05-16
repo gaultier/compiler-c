@@ -44,11 +44,15 @@ typedef struct IrOperand IrOperand;
 PG_SLICE(IrOperand) IrOperandSlice;
 PG_DYN(IrOperand) IrOperandDyn;
 
+typedef struct {
+  u32 value;
+} IrMetadataIndex;
+
 struct IrOperand {
   IrOperandKind kind;
   union {
     u64 n64;
-    IrVar var;
+    IrMetadataIndex meta_idx;
     IrLabelId label;
   };
 };
@@ -59,10 +63,12 @@ typedef struct {
   LexTokenKind token_kind;
   Origin origin;
   // Result var. Not always present.
-  IrVar res_var;
+  IrMetadataIndex meta_idx;
 
   // When optimizing, IRs are not directly removed but instead tombstoned.
+#if 0
   bool tombstone;
+#endif
 } IrInstruction;
 PG_SLICE(IrInstruction) IrInstructionSlice;
 PG_DYN(IrInstruction) IrInstructionDyn;
@@ -122,9 +128,6 @@ typedef struct {
 } MemoryLocationIndex;
 
 typedef struct {
-  u32 value;
-} VirtualRegisterIndex;
-typedef struct {
   IrVar var;
 #if 0
   IrInstructionIndex lifetime_start, lifetime_end;
@@ -157,6 +160,12 @@ static IrLabelId ir_emitter_next_label_id(IrEmitter *emitter) {
   return id;
 }
 
+[[nodiscard]] static IrMetadataIndex
+ir_metadata_last_idx(IrMetadataDyn metadata) {
+  PG_ASSERT(metadata.len > 0);
+  return (IrMetadataIndex){(u32)metadata.len - 1};
+}
+
 [[nodiscard]]
 static IrMetadata ir_make_metadata(IrMetadataDyn *metadata,
                                    PgAllocator *allocator) {
@@ -173,6 +182,13 @@ static IrMetadata ir_make_metadata(IrMetadataDyn *metadata,
   return res;
 }
 
+[[nodiscard]]
+static IrMetadataIndex ir_metadata_ptr_to_idx(IrMetadataDyn metadata,
+                                              IrMetadata *meta) {
+  return (IrMetadataIndex){(u32)(meta - metadata.data)};
+}
+
+[[nodiscard]]
 static IrMetadata *ir_find_metadata_by_var_id(IrMetadataDyn metadata,
                                               IrVarId var_id) {
   if (0 == var_id.value) {
@@ -188,17 +204,7 @@ static IrMetadata *ir_find_metadata_by_var_id(IrMetadataDyn metadata,
   return nullptr;
 }
 
-static IrMetadata *ir_find_metadata_by_virtual_register(
-    IrMetadataDyn metadata, VirtualRegisterIndex virtual_register_idx) {
-  for (u64 i = 0; i < metadata.len; i++) {
-    IrMetadata *meta = PG_SLICE_AT_PTR(&metadata, i);
-    if (meta->virtual_register.value == virtual_register_idx.value) {
-      return meta;
-    }
-  }
-  return nullptr;
-}
-
+[[nodiscard]]
 static IrMetadata *ir_find_metadata_by_identifier(IrMetadataDyn metadata,
                                                   PgString identifier) {
   for (u64 i = 0; i < metadata.len; i++) {
@@ -233,11 +239,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
     IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
+    IrMetadataIndex meta_idx = ir_metadata_last_idx(emitter->metadata);
 
     IrInstruction ins = {
         .kind = IR_INSTRUCTION_KIND_LOAD,
         .origin = node.origin,
-        .res_var.id = meta.var.id,
+        .meta_idx = meta_idx,
     };
     *PG_DYN_PUSH(&ins.operands, allocator) = (IrOperand){
         .kind = IR_OPERAND_KIND_U64,
@@ -245,7 +252,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     };
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
   case AST_NODE_KIND_ADD: {
     // `2 + 3 + 4`:  +
@@ -264,11 +271,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
                                      errors, allocator);
 
     IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
+    IrMetadataIndex meta_idx = ir_metadata_last_idx(emitter->metadata);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
     ins.origin = node.origin;
-    ins.res_var.id = meta.var.id;
+    ins.meta_idx = meta_idx;
 
     *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
@@ -285,7 +293,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     }
 #endif
 
-    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
 
   case AST_NODE_KIND_COMPARISON: {
@@ -297,12 +305,13 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
     IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
+    IrMetadataIndex meta_idx = ir_metadata_last_idx(emitter->metadata);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
     ins.origin = node.origin;
     ins.token_kind = node.token_kind;
-    ins.res_var.id = meta.var.id;
+    ins.meta_idx = meta_idx;
 
     *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
@@ -319,7 +328,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     }
 #endif
 
-    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
 
   case AST_NODE_KIND_SYSCALL: {
@@ -332,12 +341,13 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     }
 
     IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
+    IrMetadataIndex meta_idx = ir_metadata_last_idx(emitter->metadata);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
     ins.origin = node.origin;
     ins.operands = operands;
-    ins.res_var.id = meta.var.id;
+    ins.meta_idx = meta_idx;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 
 #if 0
@@ -351,7 +361,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     }
 #endif
 
-    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
   case AST_NODE_KIND_BLOCK: {
     if (!pg_string_is_empty(node.identifier)) {
@@ -393,12 +403,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
     PG_DYN_LAST_PTR(&emitter->metadata)->identifier = meta.identifier =
         node.identifier;
+    IrMetadataIndex meta_idx = ir_metadata_last_idx(emitter->metadata);
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_LOAD;
     ins.origin = node.origin;
-    ins.res_var.id = meta.var.id;
-    ins.res_var.identifier = node.identifier;
+    ins.meta_idx = meta_idx;
 
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
@@ -411,7 +421,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     }
 #endif
 
-    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
 
   case AST_NODE_KIND_IDENTIFIER: {
@@ -426,15 +436,14 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       return (IrOperand){0};
     }
 
+    IrMetadataIndex meta_idx = ir_metadata_ptr_to_idx(emitter->metadata, meta);
+
 #if 0
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
     ir_var_extend_lifetime_on_use(emitter->metadata, meta->var, ins_idx);
 #endif
 
-    return (IrOperand){
-        .kind = IR_OPERAND_KIND_VAR,
-        .var = meta->var,
-    };
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
   case AST_NODE_KIND_BUILTIN_ASSERT: {
     PG_ASSERT(1 == node.operands.len);
@@ -466,10 +475,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     IrOperand rhs = ir_emit_ast_node(operand, emitter, errors, allocator);
     IrMetadata meta = ir_make_metadata(&emitter->metadata, allocator);
+    IrMetadataIndex meta_idx = ir_metadata_last_idx(emitter->metadata);
+
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;
     ins.origin = node.origin;
-    ins.res_var.id = meta.var.id;
+    ins.meta_idx = meta_idx;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
@@ -574,6 +585,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
                             PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_BLOCK == node.kind);
+
+  *PG_DYN_PUSH(&emitter->metadata, allocator) = (IrMetadata){0}; // Dummy.
 
   (void)ir_emit_ast_node(node, emitter, errors, allocator);
 }
@@ -927,16 +940,17 @@ static void ir_print_var(IrVar var) {
   }
 }
 
-static void ir_print_operand(IrOperand value) {
+static void ir_print_operand(IrOperand value, IrMetadataDyn metadata) {
   switch (value.kind) {
   case IR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case IR_OPERAND_KIND_U64:
     printf("%" PRIu64, value.n64);
     break;
-  case IR_OPERAND_KIND_VAR:
-    ir_print_var(value.var);
-    break;
+  case IR_OPERAND_KIND_VAR: {
+    IrVar var = PG_SLICE_AT(metadata, value.meta_idx.value).var;
+    ir_print_var(var);
+  } break;
   case IR_OPERAND_KIND_LABEL:
     printf(".%" PRIu32 "", value.label.value);
     break;
@@ -969,9 +983,11 @@ static void ir_emitter_print_meta(u64 i, IrMetadata meta) {
 static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
   IrInstruction ins = PG_SLICE_AT(emitter.instructions, i);
 
+#if 0
   if (ins.tombstone) {
     printf("\x1B[9m"); // Strikethrough.
   }
+#endif
 
   origin_print(ins.origin);
   printf(": [%u] ", i);
@@ -981,71 +997,67 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(0);
   case IR_INSTRUCTION_KIND_ADD: {
     PG_ASSERT(2 == ins.operands.len);
-    PG_ASSERT(0 != ins.res_var.id.value);
-
-    ir_print_var(ins.res_var);
+    PG_ASSERT(0 != ins.meta_idx.value);
+    IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+    ir_print_var(meta.var);
     printf(" := ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0));
     printf(" + ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 1));
 
-    IrMetadata *meta =
-        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
-    PG_ASSERT(meta);
     printf(" // ");
-    ir_emitter_print_meta(i, *meta);
+    ir_emitter_print_meta(i, meta);
   } break;
   case IR_INSTRUCTION_KIND_COMPARISON: {
     PG_ASSERT(2 == ins.operands.len);
-    PG_ASSERT(0 != ins.res_var.id.value);
+    PG_ASSERT(0 != ins.meta_idx.value);
 
-    ir_print_var(ins.res_var);
+    IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+
+    ir_print_var(meta.var);
     printf(" := ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0));
     printf(" %s ", LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
     ir_print_operand(PG_SLICE_AT(ins.operands, 1));
 
-    IrMetadata *meta =
-        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
-    PG_ASSERT(meta);
     printf(" // ");
     ir_emitter_print_meta(i, *meta);
   } break;
   case IR_INSTRUCTION_KIND_LOAD: {
     PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 != ins.res_var.id.value);
+    PG_ASSERT(0 != ins.meta_idx.value);
+    IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
 
     IrOperand rhs = PG_SLICE_AT(ins.operands, 0);
-    ir_print_var(ins.res_var);
+    ir_print_var(meta.var);
     printf(" := ");
-    ir_print_operand(rhs);
+    ir_print_operand(rhs, emitter.metadata);
 
-    IrMetadata *meta =
-        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
-    PG_ASSERT(meta);
     printf(" // ");
-    ir_emitter_print_meta(i, *meta);
+    ir_emitter_print_meta(i, meta);
   } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 != ins.res_var.id.value);
+    PG_ASSERT(0 != ins.meta_idx.value);
 
-    ir_print_var(ins.res_var);
+    IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+
+    ir_print_var(meta.var);
     printf(" := &");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 0));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
 
-    IrMetadata *meta =
-        ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
     printf(" // ");
-    ir_emitter_print_meta(i, *meta);
+    ir_emitter_print_meta(i, meta);
   } break;
   case IR_INSTRUCTION_KIND_SYSCALL: {
-    ir_print_var(ins.res_var);
-    printf("%ssyscall(", 0 == ins.res_var.id.value ? "" : " := ");
+    IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+
+    ir_print_var(meta.var);
+    printf("%ssyscall(", 0 == ins.meta_idx.value ? "" : " := ");
 
     for (u64 j = 0; j < ins.operands.len; j++) {
       IrOperand val = PG_SLICE_AT(ins.operands, j);
-      ir_print_operand(val);
+      ir_print_operand(val, emitter.metadata);
 
       if (j + 1 < ins.operands.len) {
         printf(", ");
@@ -1054,18 +1066,15 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
     printf(")");
 
-    if (0 != ins.res_var.id.value) {
-      IrMetadata *meta =
-          ir_find_metadata_by_var_id(emitter.metadata, ins.res_var.id);
-      PG_ASSERT(meta);
+    if (0 != ins.meta_idx.value) {
       printf(" // ");
-      ir_emitter_print_meta(i, *meta);
+      ir_emitter_print_meta(i, meta);
     }
     printf("\n");
   } break;
   case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ins.operands.len);
-    PG_ASSERT(0 == ins.res_var.id.value);
+    PG_ASSERT(0 == ins.meta_idx.value);
 
     IrOperand cond = PG_SLICE_AT(ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
@@ -1082,7 +1091,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
   } break;
   case IR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 == ins.res_var.id.value);
+    PG_ASSERT(0 == ins.meta_idx.value);
 
     IrOperand label = PG_SLICE_AT(ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_LABEL == label.kind);
@@ -1091,7 +1100,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
   case IR_INSTRUCTION_KIND_LABEL: {
     PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 == ins.res_var.id.value);
+    PG_ASSERT(0 == ins.meta_idx.value);
 
     IrOperand label = PG_SLICE_AT(ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_LABEL == label.kind);
@@ -1101,9 +1110,11 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
   default:
     PG_ASSERT(0);
   }
+#if 0
   if (ins.tombstone) {
     printf("\x1B[0m"); // Reset.
   }
+#endif
 }
 
 static void ir_emitter_print_instructions(IrEmitter emitter) {

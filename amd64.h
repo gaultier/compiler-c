@@ -1046,7 +1046,7 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
     MemoryLocationIndex mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lir_op.virt_reg_idx);
+            emitter->interference_graph.memory_locations, lir_op.meta_idx);
     PG_ASSERT(-1U != mem_loc_idx.value);
 
     MemoryLocation mem_loc = PG_SLICE_AT(
@@ -1153,7 +1153,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
     MemoryLocationIndex lhs_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
+            emitter->interference_graph.memory_locations, lhs.meta_idx);
     PG_ASSERT(-1U != lhs_mem_loc_idx.value);
     MemoryLocation lhs_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
@@ -1210,7 +1210,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     MemoryLocationIndex lhs_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lhs.virt_reg_idx);
+            emitter->interference_graph.memory_locations, lhs.meta_idx);
     PG_ASSERT(-1U != lhs_mem_loc_idx.value);
     MemoryLocation lhs_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
@@ -1237,7 +1237,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
     MemoryLocationIndex dst_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, dst.virt_reg_idx);
+            emitter->interference_graph.memory_locations, dst.meta_idx);
     PG_ASSERT(-1U != dst_mem_loc_idx.value);
     MemoryLocation dst_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, dst_mem_loc_idx.value);
@@ -1246,7 +1246,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     if (LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind) {
       MemoryLocationIndex src_mem_loc_idx =
           memory_locations_find_by_virtual_register_index(
-              emitter->interference_graph.memory_locations, src.virt_reg_idx);
+              emitter->interference_graph.memory_locations, src.meta_idx);
       PG_ASSERT(-1U != src_mem_loc_idx.value);
       MemoryLocation src_mem_loc = PG_SLICE_AT(
           emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
@@ -1307,7 +1307,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     MemoryLocationIndex src_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, src.virt_reg_idx);
+            emitter->interference_graph.memory_locations, src.meta_idx);
     PG_ASSERT(-1U != src_mem_loc_idx.value);
     MemoryLocation src_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
@@ -1453,12 +1453,12 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     MemoryLocationIndex dst_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, dst.virt_reg_idx);
+            emitter->interference_graph.memory_locations, dst.meta_idx);
     PG_ASSERT(-1U != dst_mem_loc_idx.value);
 
     MemoryLocationIndex src_mem_loc_idx =
         memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, src.virt_reg_idx);
+            emitter->interference_graph.memory_locations, src.meta_idx);
     PG_ASSERT(-1U != src_mem_loc_idx.value);
     MemoryLocation src_mem_loc = PG_SLICE_AT(
         emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
