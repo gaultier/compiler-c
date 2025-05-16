@@ -498,7 +498,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       return (IrOperand){0};
     }
 
-    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .var = ins.res_var};
+    return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
 
   case AST_NODE_KIND_IF: {
@@ -1001,9 +1001,9 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
     ir_print_var(meta.var);
     printf(" := ");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 0));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
     printf(" + ");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 1));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
 
     printf(" // ");
     ir_emitter_print_meta(i, meta);
@@ -1016,12 +1016,12 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 
     ir_print_var(meta.var);
     printf(" := ");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 0));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
     printf(" %s ", LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 1));
+    ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
 
     printf(" // ");
-    ir_emitter_print_meta(i, *meta);
+    ir_emitter_print_meta(i, meta);
   } break;
   case IR_INSTRUCTION_KIND_LOAD: {
     PG_ASSERT(1 == ins.operands.len);
@@ -1084,9 +1084,9 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
 
     printf("jump_if_false(");
-    ir_print_operand(cond);
+    ir_print_operand(cond, emitter.metadata);
     printf(", ");
-    ir_print_operand(branch_else);
+    ir_print_operand(branch_else, emitter.metadata);
     printf(")\n");
   } break;
   case IR_INSTRUCTION_KIND_JUMP: {
