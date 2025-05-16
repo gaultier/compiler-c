@@ -952,18 +952,53 @@ static void ir_print_operand(IrOperand value, IrMetadataDyn metadata) {
   }
 }
 
-static void ir_emitter_print_meta(u64 i, IrMetadata meta) {
+[[nodiscard]]
+static char *
+lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
+  switch (constraint) {
+  case LIR_VIRT_REG_CONSTRAINT_NONE:
+    return "NONE";
+  case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
+    return "CONDITION_FLAGS";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
+    return "SYSCALL_NUM";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
+    return "SYSCALL0";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
+    return "SYSCALL1";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
+    return "SYSCALL2";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
+    return "SYSCALL3";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
+    return "SYSCALL4";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
+    return "SYSCALL5";
+  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
+    return "SYSCALL_RET";
+
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void ir_emitter_print_meta(IrMetadata meta) {
 #if 0
   if (meta.tombstone) {
     printf("\x1B[9m"); // Strikethrough.
   }
 #endif
 
-  printf("[%lu] ", i);
   ir_print_var(meta.var);
 #if 0
   printf(" meta: [%u:%u]", meta.lifetime_start.value, meta.lifetime_end.value);
 #endif
+
+  if (meta.virtual_register.value) {
+    printf(" v%u{constraint=%s, addressable=%s}", meta.virtual_register.value,
+           lir_register_constraint_to_cstr(meta.virtual_register.constraint),
+           meta.virtual_register.addressable ? "true" : "false");
+  }
 
   printf("\n");
 #if 0
@@ -998,8 +1033,8 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" + ");
     ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
 
-    printf(" // ");
-    ir_emitter_print_meta(i, meta);
+    printf(" // [%u] ", i);
+    ir_emitter_print_meta(meta);
   } break;
   case IR_INSTRUCTION_KIND_COMPARISON: {
     PG_ASSERT(2 == ins.operands.len);
@@ -1013,8 +1048,8 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" %s ", LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
     ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
 
-    printf(" // ");
-    ir_emitter_print_meta(i, meta);
+    printf(" // [%u] ", i);
+    ir_emitter_print_meta(meta);
   } break;
   case IR_INSTRUCTION_KIND_LOAD: {
     PG_ASSERT(1 == ins.operands.len);
@@ -1026,8 +1061,8 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" := ");
     ir_print_operand(rhs, emitter.metadata);
 
-    printf(" // ");
-    ir_emitter_print_meta(i, meta);
+    printf(" // [%u] ", i);
+    ir_emitter_print_meta(meta);
   } break;
   case IR_INSTRUCTION_KIND_ADDRESS_OF: {
     PG_ASSERT(1 == ins.operands.len);
@@ -1039,8 +1074,8 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(" := &");
     ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
 
-    printf(" // ");
-    ir_emitter_print_meta(i, meta);
+    printf(" // [%u] ", i);
+    ir_emitter_print_meta(meta);
   } break;
   case IR_INSTRUCTION_KIND_SYSCALL: {
     IrMetadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
@@ -1060,8 +1095,8 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     printf(")");
 
     if (0 != ins.meta_idx.value) {
-      printf(" // ");
-      ir_emitter_print_meta(i, meta);
+      printf(" // [%u] ", i);
+      ir_emitter_print_meta(meta);
     }
     printf("\n");
   } break;
@@ -1119,7 +1154,8 @@ static void ir_emitter_print_instructions(IrEmitter emitter) {
 static void ir_emitter_print_metadata(IrMetadataDyn metadata) {
   for (u64 i = 0; i < metadata.len; i++) {
     IrMetadata meta = PG_SLICE_AT(metadata, i);
-    ir_emitter_print_meta(i, meta);
+    printf("[%lu] ", i);
+    ir_emitter_print_meta(meta);
   }
 }
 

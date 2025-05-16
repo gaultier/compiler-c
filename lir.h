@@ -2,6 +2,10 @@
 #include "ir.h"
 #include "submodules/cstd/lib.c"
 
+// On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
+// register arguments.
+static const u64 max_syscall_args_count = 6;
+
 typedef struct {
   u32 value;
 } InterferenceNodeIndex;
@@ -61,46 +65,6 @@ typedef struct {
   IrMetadataDyn metadata;
 } LirEmitter;
 
-[[nodiscard]]
-static char *
-lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
-  switch (constraint) {
-  case LIR_VIRT_REG_CONSTRAINT_NONE:
-    return "NONE";
-  case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
-    return "CONDITION_FLAGS";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
-    return "SYSCALL_NUM";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
-    return "SYSCALL0";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
-    return "SYSCALL1";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
-    return "SYSCALL2";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
-    return "SYSCALL3";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
-    return "SYSCALL4";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
-    return "SYSCALL5";
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
-    return "SYSCALL_RET";
-
-  default:
-    PG_ASSERT(0);
-  }
-}
-
-static void lir_print_virtual_register(VirtualRegisterIndex meta_idx,
-                                       IrMetadataDyn metadata) {
-  IrMetadata *meta = ir_find_metadata_by_virtual_register(metadata, meta_idx);
-  PG_ASSERT(meta);
-
-  printf("v%u{constraint=%s, addressable=%s}", meta->virtual_register.value,
-         lir_register_constraint_to_cstr(meta->virtual_register.constraint),
-         meta->virtual_register.addressable ? "true" : "false");
-}
-
 #if 0
 static void lir_print_memory_location(MemoryLocation loc) {
   switch (loc.kind) {
@@ -147,7 +111,8 @@ static void lir_print_operand(LirOperand operand, IrMetadataDyn metadata) {
   case LIR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
-    lir_print_virtual_register(operand.meta_idx, metadata);
+    IrMetadata meta = PG_SLICE_AT(metadata, operand.meta_idx.value);
+    ir_emitter_print_meta(meta);
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, operand.immediate);
@@ -284,13 +249,8 @@ static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
                                         allocator);
     break;
   case IR_OPERAND_KIND_VAR: {
-    IrMetadata *src_meta =
-        ir_find_metadata_by_var_id(emitter->metadata, src_op.var.id);
-    PG_ASSERT(src_meta);
-
-    lir_emit_copy_virt_reg_to_virt_reg(
-        emitter, ir_metadata_ptr_to_idx(emitter->metadata, src_meta),
-        dst_meta_idx, origin, allocator);
+    lir_emit_copy_virt_reg_to_virt_reg(emitter, src_op.meta_idx, dst_meta_idx,
+                                       origin, allocator);
   } break;
   case IR_OPERAND_KIND_LABEL:
   case IR_OPERAND_KIND_NONE:
@@ -300,8 +260,7 @@ static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
 }
 
 [[nodiscard]]
-static LirOperand lir_ir_operand_to_lir_operand(LirEmitter emitter,
-                                                IrOperand ir_op) {
+static LirOperand lir_ir_operand_to_lir_operand(IrOperand ir_op) {
   switch (ir_op.kind) {
   case IR_OPERAND_KIND_U64:
     return (LirOperand){
@@ -309,13 +268,9 @@ static LirOperand lir_ir_operand_to_lir_operand(LirEmitter emitter,
         .immediate = ir_op.n64,
     };
   case IR_OPERAND_KIND_VAR: {
-    IrMetadata *meta =
-        ir_find_metadata_by_var_id(emitter->metadata, ir_op.var.id);
-    PG_ASSERT(meta);
-
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .meta_idx = ir_metadata_ptr_to_idx(emitter.metadata, meta),
+        .meta_idx = ir_op.meta_idx,
     };
   }
   case IR_OPERAND_KIND_LABEL:
@@ -331,21 +286,19 @@ static LirOperand lir_ir_operand_to_lir_operand(LirEmitter emitter,
 
 static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
                                  PgAllocator *allocator) {
+#if 0
   PG_ASSERT(!ir_ins.tombstone);
+#endif
 
   switch (ir_ins.kind) {
   case IR_INSTRUCTION_KIND_ADD: {
     PG_ASSERT(2 == ir_ins.operands.len);
-    PG_ASSERT(ir_ins.res_var.id.value);
+    PG_ASSERT(ir_ins.meta_idx.value);
 
     IrOperand lhs_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
 
-    IrMetadata res_meta = ir_make_metadata(&emitter->metadata, allocator);
-    IrMetadataIndex res_meta_idx =
-        (IrMetadataIndex){(u32)emitter->metadata.len};
-
-    lir_emit_copy_to_virt_reg(emitter, lhs_ir_val, res_meta_idx, ir_ins.origin,
-                              allocator);
+    lir_emit_copy_to_virt_reg(emitter, lhs_ir_val, ir_ins.meta_idx,
+                              ir_ins.origin, allocator);
 
     // We now need to add rhs to it.
 
@@ -353,7 +306,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(IR_OPERAND_KIND_VAR == rhs_ir_val.kind ||
               IR_OPERAND_KIND_U64 == rhs_ir_val.kind);
 
-    LirOperand rhs_op = lir_ir_operand_to_lir_operand(*emitter, rhs_ir_val);
+    LirOperand rhs_op = lir_ir_operand_to_lir_operand(rhs_ir_val);
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_ADD,
         .origin = ir_ins.origin,
@@ -362,7 +315,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     LirOperand lhs_op = {
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .meta_idx = res_meta_idx,
+        .meta_idx = ir_ins.meta_idx,
     };
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = lhs_op;
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs_op;
@@ -372,23 +325,19 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
   } break;
   case IR_INSTRUCTION_KIND_LOAD: {
     PG_ASSERT(1 == ir_ins.operands.len);
-    PG_ASSERT(ir_ins.res_var.id.value);
+    PG_ASSERT(ir_ins.meta_idx.value);
 
     IrOperand src_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_VAR == src_ir_val.kind ||
               IR_OPERAND_KIND_U64 == src_ir_val.kind);
 
-    VirtualRegisterIndex res_virt_reg_idx = lir_make_virtual_register_for_var(
-        emitter, ir_ins.res_var, LIR_VIRT_REG_CONSTRAINT_NONE, allocator);
-    PG_ASSERT(-1U != res_virt_reg_idx.value);
-
-    lir_emit_copy_to_virt_reg(emitter, src_ir_val, res_virt_reg_idx,
+    lir_emit_copy_to_virt_reg(emitter, src_ir_val, ir_ins.meta_idx,
                               ir_ins.origin, allocator);
 
   } break;
   case IR_INSTRUCTION_KIND_SYSCALL: {
-    // PG_ASSERT(ir_ins.operands.len <=
-    //           1 /* syscall num */ + lir_syscall_args_count);
+    PG_ASSERT(ir_ins.operands.len <=
+              1 /* syscall num */ + max_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
 
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
@@ -588,9 +537,9 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
         .meta_idx = res_virt_reg_idx,
     };
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) =
-        lir_ir_operand_to_lir_operand(*emitter, ir_lhs);
+        lir_ir_operand_to_lir_operand(ir_lhs);
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_cmp.operands) =
-        lir_ir_operand_to_lir_operand(*emitter, ir_rhs);
+        lir_ir_operand_to_lir_operand(ir_rhs);
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
 
   } break;

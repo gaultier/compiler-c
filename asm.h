@@ -14,10 +14,6 @@ typedef struct {
   PgAdjacencyMatrix matrix;
 } InterferenceGraph;
 
-// On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
-// register arguments.
-static const u64 asm_syscall_args_count = 6;
-
 typedef struct {
   Register return_value;
   RegisterSlice caller_saved;
