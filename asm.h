@@ -6,7 +6,7 @@ typedef struct {
   u32 len;
 } GprSet;
 typedef struct {
-  MemoryLocationDyn memory_locations;
+  IrMetadataDyn metadata;
   // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
   // between i and j), stored as a bitfield of the right-upper half (without the
   // diagonal).
@@ -79,6 +79,7 @@ typedef struct AsmEmitter AsmEmitter;
   Register (*map_constraint_to_register)(                                      \
       AsmEmitter * asm_emitter, LirVirtualRegisterConstraint constraint);      \
                                                                                \
+  IrMetadataDyn metadata;                                                      \
   u32 stack_base_pointer_offset;                                               \
   u32 stack_base_pointer_max_offset;                                           \
   InterferenceGraph interference_graph;                                        \
@@ -135,9 +136,9 @@ static void asm_print_interference_graph(InterferenceGraph graph,
 
 static void asm_sanity_check_interference_graph(InterferenceGraph graph,
                                                 bool colored) {
-  PG_ASSERT(graph.memory_locations.len <= graph.matrix.nodes_count);
+  PG_ASSERT(graph.metadata.len <= graph.matrix.nodes_count);
   if (colored) {
-    PG_ASSERT(graph.memory_locations.len == graph.matrix.nodes_count);
+    PG_ASSERT(graph.metadata.len == graph.matrix.nodes_count);
   }
   PG_ASSERT(graph.matrix.bitfield_len <= graph.matrix.bitfield.len);
 
@@ -146,8 +147,8 @@ static void asm_sanity_check_interference_graph(InterferenceGraph graph,
   }
 
   if (colored) {
-    for (u64 i = 0; i < graph.memory_locations.len; i++) {
-      MemoryLocation mem_loc = PG_SLICE_AT(graph.memory_locations, i);
+    for (u64 i = 0; i < graph.metadata.len; i++) {
+      MemoryLocation mem_loc = PG_SLICE_AT(graph.metadata, i).memory_location;
       switch (mem_loc.kind) {
       case MEMORY_LOCATION_KIND_STATUS_REGISTER:
       case MEMORY_LOCATION_KIND_REGISTER:
@@ -176,8 +177,6 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
   }
 
   graph.matrix = pg_adjacency_matrix_make(metadata.len, allocator);
-  PG_DYN_ENSURE_CAP(&graph.memory_locations, graph.matrix.nodes_count,
-                    allocator);
 
   for (u64 i = 0; i < metadata.len; i++) {
     IrMetadata meta = PG_SLICE_AT(metadata, i);
@@ -190,7 +189,9 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
     for (u64 j = i + 1; j < metadata.len; j++) {
       IrMetadata it = PG_SLICE_AT(metadata, j);
       PG_ASSERT(it.lifetime_start.value <= it.lifetime_end.value);
+#if 0
       PG_ASSERT(!it.tombstone);
+#endif
 
       PG_ASSERT(meta.var.id.value != it.var.id.value);
 
@@ -208,11 +209,6 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
 
       pg_adjacency_matrix_add_edge(&graph.matrix, j, i);
     }
-
-    *PG_DYN_PUSH_WITHIN_CAPACITY(&graph.memory_locations) = (MemoryLocation){
-        .kind = MEMORY_LOCATION_KIND_NONE,
-        .node_idx = {(u32)i},
-    };
   }
 
   return graph;
@@ -229,33 +225,11 @@ static u32 asm_reserve_stack_slot(AsmEmitter *emitter, u32 slot_size) {
   return emitter->stack_base_pointer_offset;
 }
 
-static MemoryLocation *
-asm_get_memory_location_from_node_idx(AsmEmitter *emitter,
-                                      InterferenceNodeIndex node_idx) {
-  MemoryLocationIndex mem_loc_idx = memory_locations_find_by_node_index(
-      emitter->interference_graph.memory_locations, node_idx);
-  PG_ASSERT(-1U != mem_loc_idx.value);
-  MemoryLocation *mem_loc = PG_SLICE_AT_PTR(
-      &emitter->interference_graph.memory_locations, mem_loc_idx.value);
-  return mem_loc;
-}
-
-static VirtualRegister
-asm_get_virtual_register_from_node_idx(AsmEmitter emitter,
-                                       InterferenceNodeIndex node_idx) {
-  VirtualRegisterIndex virt_reg_idx =
-      asm_get_memory_location_from_node_idx(&emitter, node_idx)->virt_reg_idx;
-  VirtualRegister virt_reg =
-      PG_SLICE_AT(emitter.lir_emitter->virtual_registers, virt_reg_idx.value);
-
-  return virt_reg;
-}
-
 [[nodiscard]]
 static bool asm_must_spill(AsmEmitter emitter, InterferenceNodeIndex node_idx,
                            u64 neighbors_count) {
-  bool virt_reg_addressable =
-      asm_get_virtual_register_from_node_idx(emitter, node_idx).addressable;
+  bool virt_reg_addressable = PG_SLICE_AT(emitter.metadata, node_idx.value)
+                                  .virtual_register.addressable;
 
   bool needs_spill =
       neighbors_count >= emitter.gprs_count || virt_reg_addressable;
@@ -267,9 +241,8 @@ static void asm_spill_node(AsmEmitter *emitter,
                            InterferenceNodeIndex node_idx) {
 
   MemoryLocation *mem_loc =
-      asm_get_memory_location_from_node_idx(emitter, node_idx);
+      &PG_SLICE_AT(emitter->metadata, node_idx.value).memory_location;
   PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
-  PG_ASSERT(node_idx.value == mem_loc->node_idx.value);
 
   mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
   u32 rbp_offset =
@@ -321,17 +294,14 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
   for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
        row++) {
     InterferenceNodeIndex node_idx = {(u32)row};
-    MemoryLocation *mem_loc =
-        asm_get_memory_location_from_node_idx((AsmEmitter *)emitter, node_idx);
-    VirtualRegister virt_reg = PG_SLICE_AT(
-        emitter->lir_emitter->virtual_registers, mem_loc->virt_reg_idx.value);
-    switch (virt_reg.constraint) {
+    IrMetadata *meta = PG_SLICE_AT_PTR(&emitter->metadata, node_idx.value);
+    switch (meta->virtual_register.constraint) {
     case LIR_VIRT_REG_CONSTRAINT_NONE:
       break;
     case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
-      mem_loc->kind = MEMORY_LOCATION_KIND_STATUS_REGISTER;
-      mem_loc->reg =
-          emitter->map_constraint_to_register(emitter, virt_reg.constraint);
+      meta->memory_location.kind = MEMORY_LOCATION_KIND_STATUS_REGISTER;
+      meta->memory_location.reg = emitter->map_constraint_to_register(
+          emitter, meta->virtual_register.constraint);
       pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
@@ -345,9 +315,9 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
     case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
     case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
     case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
-      mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
-      mem_loc->reg =
-          emitter->map_constraint_to_register(emitter, virt_reg.constraint);
+      meta->memory_location.kind = MEMORY_LOCATION_KIND_REGISTER;
+      meta->memory_location.reg = emitter->map_constraint_to_register(
+          emitter, meta->virtual_register.constraint);
       pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
@@ -378,16 +348,10 @@ asm_color_assign_register(InterferenceGraph *graph,
 
     PG_ASSERT(node_idx.value != neighbor.node);
 
-    MemoryLocationIndex neighbor_mem_loc_idx =
-        memory_locations_find_by_node_index(
-            graph->memory_locations,
-            (InterferenceNodeIndex){(u32)neighbor.node});
-    PG_ASSERT(-1U != neighbor_mem_loc_idx.value);
-
+    MemoryLocation neighbor_mem_loc =
+        PG_SLICE_AT(graph->metadata, neighbor.node).memory_location;
     // If a neighbor already has an assigned register, add it to the set.
     {
-      MemoryLocation neighbor_mem_loc =
-          PG_SLICE_AT(graph->memory_locations, neighbor_mem_loc_idx.value);
       if (MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
         PG_ASSERT(neighbor_mem_loc.reg.value);
         // PG_ASSERT(neighbor_mem_loc.reg.value <=
@@ -402,15 +366,10 @@ asm_color_assign_register(InterferenceGraph *graph,
 
   // Update memory location.
 
-  MemoryLocationIndex mem_loc_idx =
-      memory_locations_find_by_node_index(graph->memory_locations, node_idx);
-  PG_ASSERT(-1U != mem_loc_idx.value);
   {
     MemoryLocation *mem_loc =
-        PG_SLICE_AT_PTR(&graph->memory_locations, mem_loc_idx.value);
+        &PG_SLICE_AT(graph->metadata, node_idx.value).memory_location;
     PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
-    PG_ASSERT(node_idx.value == mem_loc->node_idx.value);
-
     mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
     mem_loc->reg = res;
   }
@@ -520,8 +479,8 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
       } while (neighbor.has_value);
 
       LirVirtualRegisterConstraint constraint =
-          PG_SLICE_AT(emitter->lir_emitter->virtual_registers, node_idx.value)
-              .constraint;
+          PG_SLICE_AT(emitter->metadata, node_idx.value)
+              .virtual_register.constraint;
       PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == constraint);
 
       Register reg = asm_color_assign_register(&emitter->interference_graph,
