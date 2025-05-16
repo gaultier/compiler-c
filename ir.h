@@ -340,6 +340,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     ins.meta_idx = meta_idx;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 
+    // FIXME
 #if 0
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
     for (u64 i = 0; i < node.operands.len; i++) {
