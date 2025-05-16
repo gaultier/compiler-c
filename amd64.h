@@ -279,42 +279,6 @@ static void amd64_print_operand(Amd64Operand operand) {
   }
 }
 
-static void amd64_print_memory_locations(MemoryLocationDyn memory_locations,
-                                         VirtualRegisterDyn virtual_registers) {
-  for (u64 i = 0; i < memory_locations.len; i++) {
-    MemoryLocation mem_loc = PG_SLICE_AT(memory_locations, i);
-    printf("var=");
-    ir_print_var(mem_loc.var);
-    printf(" virt_reg=");
-    lir_print_virtual_register(mem_loc.virt_reg_idx, virtual_registers);
-    printf(" node_idx=%u ", mem_loc.node_idx.value);
-    printf(" mem_loc=");
-
-    switch (mem_loc.kind) {
-    case MEMORY_LOCATION_KIND_REGISTER:
-    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      amd64_print_register(mem_loc.reg);
-      break;
-    case MEMORY_LOCATION_KIND_STACK: {
-      printf("[");
-      amd64_print_register(amd64_rbp);
-      i32 offset = mem_loc.base_pointer_offset;
-      printf("-%" PRIi32 "]", offset);
-    } break;
-#if 0
-    case MEMORY_LOCATION_KIND_MEMORY:
-      printf("%#lx", loc.memory_address);
-      break;
-#endif
-    case MEMORY_LOCATION_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-
-    printf("\n");
-  }
-}
-
 static void amd64_print_instructions(Amd64InstructionSlice instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
     printf("[%" PRIu64 "] ", i);
@@ -1044,13 +1008,8 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
 
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
-    MemoryLocationIndex mem_loc_idx =
-        memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lir_op.meta_idx);
-    PG_ASSERT(-1U != mem_loc_idx.value);
-
-    MemoryLocation mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, mem_loc_idx.value);
+    MemoryLocation mem_loc =
+        PG_SLICE_AT(emitter->metadata, lir_op.meta_idx.value).memory_location;
     switch (mem_loc.kind) {
     case MEMORY_LOCATION_KIND_REGISTER: {
       PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
@@ -1151,12 +1110,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
-    MemoryLocationIndex lhs_mem_loc_idx =
-        memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lhs.meta_idx);
-    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
-    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
+    MemoryLocation lhs_mem_loc =
+        PG_SLICE_AT(emitter->metadata, lhs.meta_idx.value).memory_location;
 
     // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
     if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
@@ -1208,12 +1163,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
 
-    MemoryLocationIndex lhs_mem_loc_idx =
-        memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, lhs.meta_idx);
-    PG_ASSERT(-1U != lhs_mem_loc_idx.value);
-    MemoryLocation lhs_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, lhs_mem_loc_idx.value);
+    MemoryLocation lhs_mem_loc =
+        PG_SLICE_AT(emitter->metadata, lhs.meta_idx.value).memory_location;
 
     PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind &&
               "todo: load/store");
@@ -1235,22 +1186,13 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     LirOperand src = PG_SLICE_AT(lir.operands, 1);
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
-    MemoryLocationIndex dst_mem_loc_idx =
-        memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, dst.meta_idx);
-    PG_ASSERT(-1U != dst_mem_loc_idx.value);
-    MemoryLocation dst_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, dst_mem_loc_idx.value);
+    MemoryLocation dst_mem_loc =
+        PG_SLICE_AT(emitter->metadata, dst.meta_idx.value).memory_location;
+    MemoryLocation src_mem_loc =
+        PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
 
     // Easy case: `sete rax` or `sete [rbp-8]`
     if (LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind) {
-      MemoryLocationIndex src_mem_loc_idx =
-          memory_locations_find_by_virtual_register_index(
-              emitter->interference_graph.memory_locations, src.meta_idx);
-      PG_ASSERT(-1U != src_mem_loc_idx.value);
-      MemoryLocation src_mem_loc = PG_SLICE_AT(
-          emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
-
       if (MEMORY_LOCATION_KIND_STATUS_REGISTER == src_mem_loc.kind) {
         Amd64Instruction ins = {
             .kind = AMD64_INSTRUCTION_KIND_SET_IF_EQ,
@@ -1304,13 +1246,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     }
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
-
-    MemoryLocationIndex src_mem_loc_idx =
-        memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, src.meta_idx);
-    PG_ASSERT(-1U != src_mem_loc_idx.value);
-    MemoryLocation src_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
 
     // Easy case: at least one memory location is a register.
     if ((MEMORY_LOCATION_KIND_REGISTER == dst_mem_loc.kind ||
@@ -1451,17 +1386,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
 
-    MemoryLocationIndex dst_mem_loc_idx =
-        memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, dst.meta_idx);
-    PG_ASSERT(-1U != dst_mem_loc_idx.value);
-
-    MemoryLocationIndex src_mem_loc_idx =
-        memory_locations_find_by_virtual_register_index(
-            emitter->interference_graph.memory_locations, src.meta_idx);
-    PG_ASSERT(-1U != src_mem_loc_idx.value);
-    MemoryLocation src_mem_loc = PG_SLICE_AT(
-        emitter->interference_graph.memory_locations, src_mem_loc_idx.value);
+    MemoryLocation src_mem_loc =
+        PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
 
     PG_ASSERT(MEMORY_LOCATION_KIND_STACK == src_mem_loc.kind);
 
@@ -1553,16 +1479,11 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
     asm_print_interference_graph(amd64_emitter->interference_graph,
-                                 amd64_emitter->lir_emitter->lifetimes);
+                                 amd64_emitter->metadata);
 
     printf("\n------------ Adjacency matrix of interference graph "
            "------------\n\n");
     pg_adjacency_matrix_print(amd64_emitter->interference_graph.matrix);
-
-    printf("\n------------ Memory locations ------------\n");
-    amd64_print_memory_locations(
-        amd64_emitter->interference_graph.memory_locations,
-        amd64_emitter->lir_emitter->virtual_registers);
   }
   asm_sanity_check_interference_graph(amd64_emitter->interference_graph, true);
 

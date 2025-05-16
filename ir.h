@@ -1017,6 +1017,33 @@ static void ir_emitter_print_meta(IrMetadata meta) {
            meta.virtual_register.addressable ? "true" : "false");
   }
 
+  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
+    printf(" mem_loc=");
+
+    switch (meta.memory_location.kind) {
+    case MEMORY_LOCATION_KIND_REGISTER:
+    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
+      // TODO
+#if 0
+      amd64_print_register(meta.memory_location.reg);
+#endif
+      break;
+    case MEMORY_LOCATION_KIND_STACK: {
+      printf("[sp");
+      i32 offset = meta.memory_location.base_pointer_offset;
+      printf("-%" PRIi32 "]", offset);
+    } break;
+#if 0
+    case MEMORY_LOCATION_KIND_MEMORY:
+      printf("%#lx", loc.memory_address);
+      break;
+#endif
+    case MEMORY_LOCATION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+  }
+
   printf("\n");
 #if 0
   if (meta.tombstone) {
