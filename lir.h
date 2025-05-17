@@ -414,7 +414,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(2 == ir_ins.operands.len);
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
-    IrOperand branch_else = PG_SLICE_AT(ir_ins.operands, 1);
+    IrOperand branch_else = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind);
 
     LirInstruction ins_je = {

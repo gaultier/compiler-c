@@ -478,15 +478,15 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
           .origin = node.origin,
       };
-      *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) =
-          (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
-
       IrOperand jump_target = {
           .kind = IR_OPERAND_KIND_LABEL_NAME,
           .jump_label_name = emitter->label_program_epilog_die.name,
       };
       PG_ASSERT(jump_target.label.id.value);
       *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) = jump_target;
+
+      *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) =
+          (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
 
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_jump_if_false;
     }
@@ -538,8 +538,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
         .kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
         .origin = node.origin,
     };
-    *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_cond_jump;
+    *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
     IrInstructionIndex ir_cond_jump_idx = {
         (u32)(emitter->instructions.len - 1)};
 
@@ -1230,13 +1230,13 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(2 == ins.operands.len);
     PG_ASSERT(0 == ins.meta_idx.value);
 
-    IrOperand cond = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
-              IR_OPERAND_KIND_U64 == cond.kind);
-
-    IrOperand branch_else = PG_SLICE_AT(ins.operands, 1);
+    IrOperand branch_else = PG_SLICE_AT(ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind ||
               IR_OPERAND_KIND_LABEL_NAME == branch_else.kind);
+
+    IrOperand cond = PG_SLICE_AT(ins.operands, 1);
+    PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
+              IR_OPERAND_KIND_U64 == cond.kind);
 
     printf("jump_if_false(");
     ir_print_operand(cond, emitter.metadata);
