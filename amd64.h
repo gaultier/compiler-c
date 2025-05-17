@@ -1412,7 +1412,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     {
       LirOperand res = PG_SLICE_AT(lir.operands, 0);
-      IrMetadata res_meta = PG_SLICE_AT(emitter->metadata, res.meta_idx.value);
+      Metadata res_meta = PG_SLICE_AT(emitter->metadata, res.meta_idx.value);
       PG_ASSERT(MEMORY_LOCATION_KIND_STATUS_REGISTER ==
                 res_meta.memory_location.kind);
     }

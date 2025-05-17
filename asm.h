@@ -78,7 +78,7 @@ typedef struct AsmEmitter AsmEmitter;
       AsmEmitter * asm_emitter, LirVirtualRegisterConstraint constraint);      \
   void (*print_register)(Register reg);                                        \
                                                                                \
-  IrMetadataDyn metadata;                                                      \
+  MetadataDyn metadata;                                                      \
   u32 stack_base_pointer_offset;                                               \
   u32 stack_base_pointer_max_offset;                                           \
   InterferenceGraph interference_graph;                                        \
@@ -114,7 +114,7 @@ static Register asm_gpr_pop_first_unset(GprSet *set) {
 }
 
 static void asm_print_interference_graph(InterferenceGraph graph,
-                                         IrMetadataDyn metadata) {
+                                         MetadataDyn metadata) {
 
   printf("nodes_count=%lu\n", graph.nodes_count);
 
@@ -125,8 +125,8 @@ static void asm_print_interference_graph(InterferenceGraph graph,
         continue;
       }
 
-      IrMetadata a_meta = PG_SLICE_AT(metadata, row);
-      IrMetadata b_meta = PG_SLICE_AT(metadata, col);
+      Metadata a_meta = PG_SLICE_AT(metadata, row);
+      Metadata b_meta = PG_SLICE_AT(metadata, col);
       ir_print_var(a_meta);
       printf(" -> ");
       ir_print_var(b_meta);
@@ -136,7 +136,7 @@ static void asm_print_interference_graph(InterferenceGraph graph,
 }
 
 static void asm_sanity_check_interference_graph(InterferenceGraph graph,
-                                                IrMetadataDyn metadata,
+                                                MetadataDyn metadata,
                                                 bool colored) {
   PG_ASSERT(metadata.len != 0);
   PG_ASSERT(metadata.len == graph.nodes_count);
@@ -167,7 +167,7 @@ static void asm_sanity_check_interference_graph(InterferenceGraph graph,
 }
 
 [[nodiscard]]
-static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
+static InterferenceGraph asm_build_interference_graph(MetadataDyn metadata,
                                                       PgAllocator *allocator) {
   InterferenceGraph graph = {0};
 
@@ -179,7 +179,7 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
   PG_ASSERT(metadata.len == graph.nodes_count);
 
   for (u64 i = 0; i < metadata.len; i++) {
-    IrMetadata meta = PG_SLICE_AT(metadata, i);
+    Metadata meta = PG_SLICE_AT(metadata, i);
 #if 0
     PG_ASSERT(!meta.tombstone);
 #endif
@@ -192,7 +192,7 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
     }
 
     for (u64 j = i + 1; j < metadata.len; j++) {
-      IrMetadata it = PG_SLICE_AT(metadata, j);
+      Metadata it = PG_SLICE_AT(metadata, j);
       PG_ASSERT(it.lifetime_start.value <= it.lifetime_end.value);
 #if 0
       PG_ASSERT(!it.tombstone);
@@ -305,7 +305,7 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
 
   for (u64 row = 0; row < emitter->interference_graph.nodes_count; row++) {
     InterferenceNodeIndex node_idx = {(u32)row};
-    IrMetadata *meta = PG_SLICE_AT_PTR(&emitter->metadata, node_idx.value);
+    Metadata *meta = PG_SLICE_AT_PTR(&emitter->metadata, node_idx.value);
     switch (meta->virtual_register.constraint) {
     case LIR_VIRT_REG_CONSTRAINT_NONE:
       break;
@@ -342,7 +342,7 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
 [[nodiscard]] static Register
 asm_color_assign_register(InterferenceGraph *graph,
                           InterferenceNodeIndex node_idx, u32 gprs_count,
-                          IrMetadataDyn metadata) {
+                          MetadataDyn metadata) {
   GprSet neighbor_colors = {
       .len = gprs_count,
       .set = 0,

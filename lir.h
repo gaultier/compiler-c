@@ -42,7 +42,7 @@ typedef enum {
 typedef struct {
   LirOperandKind kind;
   union {
-    IrMetadataIndex meta_idx;
+    MetadataIndex meta_idx;
     u64 immediate;
     Label label; // LIR_OPERAND_KIND_LABEL.
   };
@@ -61,7 +61,7 @@ PG_DYN(LirInstruction) LirInstructionDyn;
 
 typedef struct {
   LirInstructionDyn instructions;
-  IrMetadataDyn metadata;
+  MetadataDyn metadata;
 } LirEmitter;
 
 #if 0
@@ -88,12 +88,12 @@ static void lir_print_memory_location(MemoryLocation loc) {
 }
 #endif
 
-static void lir_print_operand(LirOperand op, IrMetadataDyn metadata) {
+static void lir_print_operand(LirOperand op, MetadataDyn metadata) {
   switch (op.kind) {
   case LIR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
-    IrMetadata meta = PG_SLICE_AT(metadata, op.meta_idx.value);
+    Metadata meta = PG_SLICE_AT(metadata, op.meta_idx.value);
     printf("v%u{constraint=%s, addressable=%s}", meta.virtual_register.value,
            lir_register_constraint_to_cstr(meta.virtual_register.constraint),
            meta.virtual_register.addressable ? "true" : "false");
@@ -175,8 +175,8 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
 }
 
 static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
-                                               IrMetadataIndex src_idx,
-                                               IrMetadataIndex dst_idx,
+                                               MetadataIndex src_idx,
+                                               MetadataIndex dst_idx,
                                                Origin origin,
                                                PgAllocator *allocator) {
   LirInstruction ins = {
@@ -203,7 +203,7 @@ static void lir_emit_copy_virt_reg_to_virt_reg(LirEmitter *emitter,
 // We pass `IrOperand src` to be open to more immediate kinds in the future.
 static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
                                                 IrOperand src_op,
-                                                IrMetadataIndex dst_idx,
+                                                MetadataIndex dst_idx,
                                                 Origin origin,
                                                 PgAllocator *allocator) {
   // TODO: Expand when more immediate types are available.
@@ -231,7 +231,7 @@ static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
 }
 
 static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
-                                      IrMetadataIndex dst_meta_idx,
+                                      MetadataIndex dst_meta_idx,
                                       Origin origin, PgAllocator *allocator) {
   switch (src_op.kind) {
   case IR_OPERAND_KIND_U64:
