@@ -363,7 +363,7 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
 }
 
 static void amd64_print_section(AsmCodeSection section) {
-  if (ASM_SECTION_FLAG_GLOBAL & section.flags) {
+  if (AST_NODE_FLAG_GLOBAL & section.flags) {
     printf("global ");
     printf("%.*s", (i32)section.name.len, section.name.data);
     printf(":\n");
@@ -1499,12 +1499,16 @@ amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
   }
 }
 
-static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
-                                   AsmCodeSection *section,
-                                   LirInstructionSlice lirs, bool verbose,
-                                   PgAllocator *allocator) {
+[[nodiscard]]
+static AsmCodeSection
+amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
+                         bool verbose, PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
 
+  AsmCodeSection section = {
+      .name = fn_def.name,
+      .flags = fn_def.flags,
+  };
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
       .lhs =
@@ -1518,8 +1522,8 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
               .immediate = 0, // Backpatched.
           },
   };
-  amd64_add_instruction(&section->instructions, stack_sub, allocator);
-  u64 stack_sub_instruction_idx = section->instructions.len - 1;
+  amd64_add_instruction(&section.instructions, stack_sub, allocator);
+  u64 stack_sub_instruction_idx = section.instructions.len - 1;
 
   asm_color_interference_graph(asm_emitter, verbose, allocator);
 
@@ -1535,16 +1539,17 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
   asm_sanity_check_interference_graph(amd64_emitter->interference_graph,
                                       amd64_emitter->metadata, true);
 
-  for (u64 i = 0; i < lirs.len; i++) {
-    amd64_lir_to_asm(amd64_emitter, section, PG_SLICE_AT(lirs, i), allocator);
+  for (u64 i = 0; i < fn_def.instructions.len; i++) {
+    amd64_lir_to_asm(amd64_emitter, &section,
+                     PG_SLICE_AT(fn_def.instructions, i), allocator);
   }
 
   if (amd64_emitter->stack_base_pointer_max_offset > 0) {
     u32 rsp_max_offset_aligned_16 =
         (u32)PG_ROUNDUP(amd64_emitter->stack_base_pointer_max_offset, 16);
 
-    PG_C_ARRAY_AT_PTR((Amd64Instruction *)section->instructions.data,
-                      section->instructions.len, stack_sub_instruction_idx)
+    PG_C_ARRAY_AT_PTR((Amd64Instruction *)section.instructions.data,
+                      section.instructions.len, stack_sub_instruction_idx)
         ->rhs.immediate = rsp_max_offset_aligned_16;
 
     Amd64Instruction stack_add = {
@@ -1561,7 +1566,7 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
             },
     };
 
-    amd64_add_instruction(&section->instructions, stack_add, allocator);
+    amd64_add_instruction(&section.instructions, stack_add, allocator);
   } else {
 #if 0
     PG_C_ARRAY_AT_PTR((Amd64Instruction *)section->instructions.data,
@@ -1569,20 +1574,19 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
         ->tombstone = true;
 #endif
   }
+  return section;
 }
 
 static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
                                       LirFnDefinitionDyn fn_definitions,
                                       bool verbose, PgAllocator *allocator) {
 
-  {
-    AsmCodeSection section_start = {
-        .flags = ASM_SECTION_FLAG_GLOBAL, // TODO: Move to AST.
-    };
-    amd64_emit_lirs_to_asm(asm_emitter, &section_start, lirs, verbose,
-                           allocator);
+  for (u64 i = 0; i < fn_definitions.len; i++) {
+    LirFnDefinition fn_def = PG_SLICE_AT(fn_definitions, i);
+    AsmCodeSection section =
+        amd64_emit_fn_definition(asm_emitter, fn_def, verbose, allocator);
 
-    *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_start;
+    *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section;
   }
 
   amd64_sanity_check_program((Amd64Emitter *)asm_emitter);

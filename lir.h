@@ -130,8 +130,6 @@ static void lir_emitter_print_fn_definition(LirEmitter emitter,
       break;
     case LIR_INSTRUCTION_KIND_LABEL_DEFINITION:
       break;
-    case LIR_INSTRUCTION_KIND_FN_DEFINITION:
-      break;
     case LIR_INSTRUCTION_KIND_ADDRESS_OF:
       printf("address_of ");
       break;

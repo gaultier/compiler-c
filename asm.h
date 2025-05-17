@@ -26,7 +26,7 @@ typedef struct {
 
 typedef struct {
   PgString name;
-  AsmCodeSectionFlag flags;
+  AstNodeFlag flags;
   PgAnyDyn instructions;
 } AsmCodeSection;
 PG_SLICE(AsmCodeSection) AsmCodeSectionSlice;
