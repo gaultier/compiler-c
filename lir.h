@@ -481,6 +481,7 @@ static void lir_emit_fn_definition(LirEmitter *emitter,
     lir_emit_instruction(emitter, &lir_fn_def,
                          PG_SLICE_AT(ir_fn_def.instructions, i), allocator);
   }
+  *PG_DYN_PUSH(&emitter->fn_definitions, allocator) = lir_fn_def;
 }
 
 static void lir_emit_fn_definitions(LirEmitter *emitter,
