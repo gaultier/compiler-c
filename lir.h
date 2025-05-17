@@ -336,6 +336,13 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
               1 /* syscall num */ + max_syscall_args_count);
     PG_ASSERT(ir_ins.operands.len > 0);
 
+    if (ir_ins.meta_idx.value) {
+      PG_SLICE_AT(fn_def->metadata, ir_ins.meta_idx.value)
+          .virtual_register.constraint = VREG_CONSTRAINT_SYSCALL_RET;
+    }
+    // TODO: Record clobbering of first argument since it is also the return
+    // value of the syscall (at least on amd64).
+
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
       IrOperand val = PG_SLICE_AT(ir_ins.operands, j);
       VirtualRegisterConstraint virt_reg_constraint =
