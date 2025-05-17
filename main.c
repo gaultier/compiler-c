@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ IR ------------\n");
-    ir_emitter_print_fn_defs(ir_emitter);
+    ir_emitter_print_fn_definitions(ir_emitter);
   }
 #if 0
   if (cli_opts.optimize) {

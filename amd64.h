@@ -1509,6 +1509,8 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
       .name = fn_def.name,
       .flags = fn_def.flags,
   };
+  amd64_emit_epilog(&section, allocator);
+
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
       .lhs =
@@ -1574,6 +1576,8 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
         ->tombstone = true;
 #endif
   }
+  amd64_emit_prolog(&section, allocator);
+
   return section;
 }
 

@@ -1064,8 +1064,8 @@ static void ir_emitter_print_meta(Metadata meta) {
 #endif
 }
 
-static void ir_emitter_print_instruction(IrEmitter emitter,
-                                         IrFnDefinition fn_def, u32 i) {
+static void ir_emitter_print_fn_definition(IrEmitter emitter,
+                                           IrFnDefinition fn_def, u32 i) {
   IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
 
 #if 0
@@ -1213,17 +1213,10 @@ static void ir_emitter_print_instruction(IrEmitter emitter,
 #endif
 }
 
-static void ir_emitter_print_fn_instructions(IrEmitter emitter,
-                                             IrFnDefinition fn_def) {
-  for (u64 i = 0; i < fn_def.instructions.len; i++) {
-    ir_emitter_print_instruction(emitter, fn_def, (u32)i);
-  }
-}
-
-static void ir_emitter_print_fn_defs(IrEmitter emitter) {
+static void ir_emitter_print_fn_definitions(IrEmitter emitter) {
   for (u64 i = 0; i < emitter.fn_definitions.len; i++) {
     IrFnDefinition fn_def = PG_SLICE_AT(emitter.fn_definitions, i);
-    ir_emitter_print_instruction(emitter, fn_def, (u32)i);
+    ir_emitter_print_fn_definition(emitter, fn_def, (u32)i);
   }
 }
 
