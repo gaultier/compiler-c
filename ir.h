@@ -1065,8 +1065,13 @@ static void ir_emitter_print_meta(Metadata meta) {
 }
 
 static void ir_emitter_print_fn_definition(IrEmitter emitter,
-                                           IrFnDefinition fn_def, u32 i) {
-  IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
+                                           IrFnDefinition fn_def) {
+  PG_ASSERT(fn_def.name.len);
+
+  printf("fn %.*s() {\n", (i32)fn_def.name.len, fn_def.name.data);
+
+  for (u64 i = 0; i < fn_def.instructions.len; i++) {
+    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
 
 #if 0
   if (ins.tombstone) {
@@ -1074,149 +1079,152 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
   }
 #endif
 
-  if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
-    printf("\n");
-  }
-
-  printf("[%u] ", i);
-  origin_print(ins.origin);
-  printf(": ");
-
-  switch (ins.kind) {
-  case IR_INSTRUCTION_KIND_NONE:
-    PG_ASSERT(0);
-  case IR_INSTRUCTION_KIND_ADD: {
-    PG_ASSERT(2 == ins.operands.len);
-    PG_ASSERT(0 != ins.meta_idx.value);
-    Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
-    ir_print_var(meta);
-    printf(" := ");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
-    printf(" + ");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
-
-    printf(" // ");
-    ir_emitter_print_meta(meta);
-  } break;
-  case IR_INSTRUCTION_KIND_COMPARISON: {
-    PG_ASSERT(2 == ins.operands.len);
-    PG_ASSERT(0 != ins.meta_idx.value);
-
-    Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
-
-    ir_print_var(meta);
-    printf(" := ");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
-    printf(" %s ", LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
-
-    printf(" // ");
-    ir_emitter_print_meta(meta);
-  } break;
-  case IR_INSTRUCTION_KIND_LOAD: {
-    PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 != ins.meta_idx.value);
-    Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
-
-    IrOperand rhs = PG_SLICE_AT(ins.operands, 0);
-    ir_print_var(meta);
-    printf(" := ");
-    ir_print_operand(rhs, emitter.metadata);
-
-    printf(" // ");
-    ir_emitter_print_meta(meta);
-  } break;
-  case IR_INSTRUCTION_KIND_ADDRESS_OF: {
-    PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 != ins.meta_idx.value);
-
-    Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
-
-    ir_print_var(meta);
-    printf(" := &");
-    ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
-
-    printf(" // ");
-    ir_emitter_print_meta(meta);
-  } break;
-  case IR_INSTRUCTION_KIND_SYSCALL: {
-    Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
-
-    ir_print_var(meta);
-    printf("%ssyscall(", 0 == ins.meta_idx.value ? "" : " := ");
-
-    for (u64 j = 0; j < ins.operands.len; j++) {
-      IrOperand val = PG_SLICE_AT(ins.operands, j);
-      ir_print_operand(val, emitter.metadata);
-
-      if (j + 1 < ins.operands.len) {
-        printf(", ");
-      }
+    if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
+      printf("\n");
     }
 
-    printf(")");
+    printf("[%lu] ", i);
+    origin_print(ins.origin);
+    printf(": ");
 
-    if (0 != ins.meta_idx.value) {
+    switch (ins.kind) {
+    case IR_INSTRUCTION_KIND_NONE:
+      PG_ASSERT(0);
+    case IR_INSTRUCTION_KIND_ADD: {
+      PG_ASSERT(2 == ins.operands.len);
+      PG_ASSERT(0 != ins.meta_idx.value);
+      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+      ir_print_var(meta);
+      printf(" := ");
+      ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
+      printf(" + ");
+      ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
+
       printf(" // ");
       ir_emitter_print_meta(meta);
+    } break;
+    case IR_INSTRUCTION_KIND_COMPARISON: {
+      PG_ASSERT(2 == ins.operands.len);
+      PG_ASSERT(0 != ins.meta_idx.value);
+
+      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+
+      ir_print_var(meta);
+      printf(" := ");
+      ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
+      printf(" %s ",
+             LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
+      ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
+
+      printf(" // ");
+      ir_emitter_print_meta(meta);
+    } break;
+    case IR_INSTRUCTION_KIND_LOAD: {
+      PG_ASSERT(1 == ins.operands.len);
+      PG_ASSERT(0 != ins.meta_idx.value);
+      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+
+      IrOperand rhs = PG_SLICE_AT(ins.operands, 0);
+      ir_print_var(meta);
+      printf(" := ");
+      ir_print_operand(rhs, emitter.metadata);
+
+      printf(" // ");
+      ir_emitter_print_meta(meta);
+    } break;
+    case IR_INSTRUCTION_KIND_ADDRESS_OF: {
+      PG_ASSERT(1 == ins.operands.len);
+      PG_ASSERT(0 != ins.meta_idx.value);
+
+      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+
+      ir_print_var(meta);
+      printf(" := &");
+      ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
+
+      printf(" // ");
+      ir_emitter_print_meta(meta);
+    } break;
+    case IR_INSTRUCTION_KIND_SYSCALL: {
+      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+
+      ir_print_var(meta);
+      printf("%ssyscall(", 0 == ins.meta_idx.value ? "" : " := ");
+
+      for (u64 j = 0; j < ins.operands.len; j++) {
+        IrOperand val = PG_SLICE_AT(ins.operands, j);
+        ir_print_operand(val, emitter.metadata);
+
+        if (j + 1 < ins.operands.len) {
+          printf(", ");
+        }
+      }
+
+      printf(")");
+
+      if (0 != ins.meta_idx.value) {
+        printf(" // ");
+        ir_emitter_print_meta(meta);
+      }
+    } break;
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
+      PG_ASSERT(2 == ins.operands.len);
+      PG_ASSERT(0 == ins.meta_idx.value);
+
+      IrOperand branch_else = PG_SLICE_AT(ins.operands, 0);
+      PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
+
+      IrOperand cond = PG_SLICE_AT(ins.operands, 1);
+      PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
+                IR_OPERAND_KIND_U64 == cond.kind);
+
+      printf("jump_if_false(");
+      ir_print_operand(cond, emitter.metadata);
+      printf(", ");
+      ir_print_operand(branch_else, emitter.metadata);
+      printf(")");
+    } break;
+    case IR_INSTRUCTION_KIND_JUMP: {
+      PG_ASSERT(1 == ins.operands.len);
+      PG_ASSERT(0 == ins.meta_idx.value);
+
+      IrOperand op = PG_SLICE_AT(ins.operands, 0);
+      PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
+      PG_ASSERT(op.label.value.len);
+      printf("jump ");
+      ir_print_operand(op, emitter.metadata);
+    } break;
+
+    case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
+      PG_ASSERT(1 == ins.operands.len);
+      PG_ASSERT(0 == ins.meta_idx.value);
+
+      IrOperand op = PG_SLICE_AT(ins.operands, 0);
+      PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
+      PG_ASSERT(op.label.value.len);
+      ir_print_operand(op, emitter.metadata);
+    } break;
+    default:
+      PG_ASSERT(0);
     }
-  } break;
-  case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
-    PG_ASSERT(2 == ins.operands.len);
-    PG_ASSERT(0 == ins.meta_idx.value);
 
-    IrOperand branch_else = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
-
-    IrOperand cond = PG_SLICE_AT(ins.operands, 1);
-    PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
-              IR_OPERAND_KIND_U64 == cond.kind);
-
-    printf("jump_if_false(");
-    ir_print_operand(cond, emitter.metadata);
-    printf(", ");
-    ir_print_operand(branch_else, emitter.metadata);
-    printf(")");
-  } break;
-  case IR_INSTRUCTION_KIND_JUMP: {
-    PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 == ins.meta_idx.value);
-
-    IrOperand op = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.value.len);
-    printf("jump ");
-    ir_print_operand(op, emitter.metadata);
-  } break;
-
-  case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
-    PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 == ins.meta_idx.value);
-
-    IrOperand op = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.value.len);
-    ir_print_operand(op, emitter.metadata);
-  } break;
-  default:
-    PG_ASSERT(0);
-  }
-
-  if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
-    printf(":");
-  }
-  printf("\n");
+    if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
+      printf(":");
+    }
+    printf("\n");
 #if 0
   if (ins.tombstone) {
     printf("\x1B[0m"); // Reset.
   }
 #endif
+  }
+  printf("}\n\n");
 }
 
 static void ir_emitter_print_fn_definitions(IrEmitter emitter) {
   for (u64 i = 0; i < emitter.fn_definitions.len; i++) {
     IrFnDefinition fn_def = PG_SLICE_AT(emitter.fn_definitions, i);
-    ir_emitter_print_fn_definition(emitter, fn_def, (u32)i);
+    ir_emitter_print_fn_definition(emitter, fn_def);
   }
 }
 

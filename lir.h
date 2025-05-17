@@ -97,6 +97,10 @@ static void lir_print_operand(LirOperand op, MetadataDyn metadata) {
 
 static void lir_emitter_print_fn_definition(LirEmitter emitter,
                                             LirFnDefinition fn_def) {
+  PG_ASSERT(fn_def.name.len);
+
+  printf("fn %.*s() {\n", (i32)fn_def.name.len, fn_def.name.data);
+
   for (u64 i = 0; i < fn_def.instructions.len; i++) {
     LirInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
 
@@ -158,6 +162,7 @@ static void lir_emitter_print_fn_definition(LirEmitter emitter,
     }
     printf("\n");
   }
+  printf("}\n\n");
 }
 
 static void lir_emitter_print_fn_definitions(LirEmitter emitter) {
