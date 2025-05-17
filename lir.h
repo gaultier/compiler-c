@@ -115,6 +115,11 @@ static void lir_print_operand(LirOperand op, IrMetadataDyn metadata) {
 static void lir_emitter_print_instructions(LirEmitter emitter) {
   for (u64 i = 0; i < emitter.instructions.len; i++) {
     LirInstruction ins = PG_SLICE_AT(emitter.instructions, i);
+
+    if (LIR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
+      printf("\n");
+    }
+
     printf("[%" PRIu64 "] ", i);
 
     origin_print(ins.origin);
@@ -166,6 +171,10 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
       if (j + 1 < ins.operands.len) {
         printf(", ");
       }
+    }
+
+    if (LIR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
+      printf(":");
     }
     printf("\n");
   }

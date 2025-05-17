@@ -421,8 +421,9 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
 static void lex_tokens_print(LexTokenSlice tokens) {
   for (u64 i = 0; i < tokens.len; i++) {
     LexToken token = PG_SLICE_AT(tokens, i);
+    printf("[%lu] ", i);
     origin_print(token.origin);
-    putchar(' ');
+    printf(": ");
 
     switch (token.kind) {
     case LEX_TOKEN_KIND_NONE:

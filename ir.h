@@ -1061,8 +1061,13 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
   }
 #endif
 
+  if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
+    printf("\n");
+  }
+
+  printf("[%u] ", i);
   origin_print(ins.origin);
-  printf(": [%u] ", i);
+  printf(": ");
 
   switch (ins.kind) {
   case IR_INSTRUCTION_KIND_NONE:
@@ -1180,9 +1185,14 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
     PG_ASSERT(op.label.value.len);
     ir_print_operand(op, emitter.metadata);
+    printf("\n");
   } break;
   default:
     PG_ASSERT(0);
+  }
+
+  if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
+    printf(":");
   }
 #if 0
   if (ins.tombstone) {
