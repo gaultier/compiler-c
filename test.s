@@ -6,6 +6,8 @@ _start:
 mov rbp, rsp
 sub rbp, 64
 
+cmp qword ptr [rbp-8], 0
+
 mov rcx, 9
 mov r11, 10
 

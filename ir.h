@@ -432,23 +432,43 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   }
   case AST_NODE_KIND_BUILTIN_ASSERT: {
     PG_ASSERT(1 == node.operands.len);
-    AstNode operand = PG_SLICE_AT(node.operands, 0);
+    IrMetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    ir_metadata_start_lifetime(
+        emitter->metadata, meta_idx,
+        (IrInstructionIndex){(u32)emitter->instructions.len});
 
-    IrInstruction ins = {
-        .kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
-        .origin = node.origin,
-    };
+    {
+      AstNode operand = PG_SLICE_AT(node.operands, 0);
 
-    IrOperand cond = ir_emit_ast_node(operand, emitter, errors, allocator);
-    *PG_DYN_PUSH(&ins.operands, allocator) = cond;
+      IrInstruction ins_cmp = {
+          .kind = IR_INSTRUCTION_KIND_COMPARISON,
+          .origin = node.origin,
+          .meta_idx = meta_idx,
+          .token_kind = LEX_TOKEN_KIND_EQUAL_EQUAL,
+      };
+      IrOperand cond = ir_emit_ast_node(operand, emitter, errors, allocator);
+      *PG_DYN_PUSH(&ins_cmp.operands, allocator) = cond;
+      *PG_DYN_PUSH(&ins_cmp.operands, allocator) =
+          (IrOperand){.kind = IR_OPERAND_KIND_U64, .n64 = 1};
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
+    }
 
-    IrOperand jump_target = {
-        .kind = IR_OPERAND_KIND_LABEL,
-        .label = emitter->label_program_epilog_die,
-    };
-    *PG_DYN_PUSH(&ins.operands, allocator) = jump_target;
+    {
+      IrInstruction ins_jump_if_false = {
+          .kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
+          .origin = node.origin,
+      };
+      *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) =
+          (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+      IrOperand jump_target = {
+          .kind = IR_OPERAND_KIND_LABEL,
+          .label = emitter->label_program_epilog_die,
+      };
+      *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) = jump_target;
+
+      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_jump_if_false;
+    }
 
     return (IrOperand){0};
   }

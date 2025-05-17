@@ -409,51 +409,21 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(2 == ir_ins.operands.len);
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
-    IrOperand cond = PG_SLICE_AT(ir_ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind);
-
     IrOperand branch_else = PG_SLICE_AT(ir_ins.operands, 1);
     PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
 
-#if 0
-    {
-      LirInstruction ins_cmp = {
-          .kind = LIR_INSTRUCTION_KIND_CMP,
-          .origin = ir_ins.origin,
-          .var_to_memory_location_frozen = lir_memory_location_clone(
-              emitter->var_to_memory_location, allocator),
-      };
+    LirInstruction ins_je = {
+        .kind = LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
+        .origin = ir_ins.origin,
+    };
 
-      MemoryLocation *cond_mem_loc = lir_memory_location_find_var_on_stack(
-          emitter->var_to_memory_location, cond.var);
-      PG_ASSERT(cond_mem_loc);
-      LirOperand lhs = lir_memory_location_to_operand(*cond_mem_loc);
-      *PG_DYN_PUSH(&ins_cmp.operands, allocator) = lhs;
-      LirOperand rhs = {
-          .kind = LIR_OPERAND_KIND_IMMEDIATE,
-          .immediate = 0,
-      };
-      *PG_DYN_PUSH(&ins_cmp.operands, allocator) = rhs;
+    LirOperand ins_je_op = {
+        .kind = LIR_OPERAND_KIND_LABEL,
+        .label = branch_else.label,
+    };
+    *PG_DYN_PUSH(&ins_je.operands, allocator) = ins_je_op;
 
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
-    }
-    {
-      LirInstruction ins_je = {
-          .kind = LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
-          .origin = ir_ins.origin,
-          .var_to_memory_location_frozen = lir_memory_location_clone(
-              emitter->var_to_memory_location, allocator),
-      };
-
-      LirOperand ins_je_op = {
-          .kind = LIR_OPERAND_KIND_LABEL,
-          .label = branch_else.label,
-      };
-      *PG_DYN_PUSH(&ins_je.operands, allocator) = ins_je_op;
-
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_je;
-    }
-#endif
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_je;
   } break;
   case IR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == ir_ins.operands.len);
