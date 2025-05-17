@@ -1574,9 +1574,9 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
                      PG_SLICE_AT(fn_def.instructions, i), allocator);
   }
 
-  if (amd64_emitter->stack_base_pointer_max_offset > 0) {
+  if (fn_def.stack_base_pointer_max_offset > 0) {
     u32 rsp_max_offset_aligned_16 =
-        (u32)PG_ROUNDUP(amd64_emitter->stack_base_pointer_max_offset, 16);
+        (u32)PG_ROUNDUP(fn_def.stack_base_pointer_max_offset, 16);
 
     PG_C_ARRAY_AT_PTR((Amd64Instruction *)section.instructions.data,
                       section.instructions.len, stack_sub_instruction_idx)

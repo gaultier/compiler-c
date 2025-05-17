@@ -67,8 +67,6 @@ typedef struct AsmEmitter AsmEmitter;
       AsmEmitter * asm_emitter, VirtualRegisterConstraint constraint);         \
   void (*print_register)(Register reg);                                        \
                                                                                \
-  u32 stack_base_pointer_offset;                                               \
-  u32 stack_base_pointer_max_offset;                                           \
   LirEmitter *lir_emitter;                                                     \
   u32 gprs_count;                                                              \
   AsmProgram program;
@@ -151,14 +149,15 @@ static void asm_sanity_check_interference_graph(InterferenceGraph graph,
 }
 
 [[nodiscard]]
-static u32 asm_reserve_stack_slot(AsmEmitter *emitter, u32 slot_size) {
-  emitter->stack_base_pointer_offset += slot_size;
-  emitter->stack_base_pointer_max_offset =
-      PG_MAX(emitter->stack_base_pointer_max_offset,
-             emitter->stack_base_pointer_offset);
+static u32 asm_reserve_stack_slot(u32 *stack_base_pointer_offset,
+                                  u32 *stack_base_pointer_max_offset,
+                                  u32 slot_size) {
+  *stack_base_pointer_offset += slot_size;
+  *stack_base_pointer_max_offset =
+      PG_MAX(*stack_base_pointer_max_offset, *stack_base_pointer_offset);
 
-  PG_ASSERT(emitter->stack_base_pointer_offset > 0);
-  return emitter->stack_base_pointer_offset;
+  PG_ASSERT(*stack_base_pointer_offset > 0);
+  return *stack_base_pointer_offset;
 }
 
 [[nodiscard]]
@@ -174,7 +173,7 @@ static bool asm_must_spill(AsmEmitter emitter, LirFnDefinition fn_def,
   return needs_spill;
 }
 
-static void asm_spill_node(AsmEmitter *emitter, LirFnDefinition *fn_def,
+static void asm_spill_node(LirFnDefinition *fn_def,
                            InterferenceNodeIndex node_idx) {
 
   MemoryLocation *mem_loc =
@@ -182,8 +181,9 @@ static void asm_spill_node(AsmEmitter *emitter, LirFnDefinition *fn_def,
   PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
 
   mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
-  u32 rbp_offset =
-      asm_reserve_stack_slot((AsmEmitter *)emitter, sizeof(u64) /*FIXME*/);
+  u32 rbp_offset = asm_reserve_stack_slot(
+      &fn_def->stack_base_pointer_offset,
+      &fn_def->stack_base_pointer_max_offset, sizeof(u64) /*FIXME*/);
   mem_loc->base_pointer_offset = (i32)rbp_offset;
 }
 
@@ -212,7 +212,7 @@ static void asm_color_spill_remaining_nodes_in_graph(
     }
 
     // Need to spill.
-    asm_spill_node(emitter, fn_def, node_idx);
+    asm_spill_node(fn_def, node_idx);
   }
 }
 

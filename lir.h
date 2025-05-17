@@ -73,6 +73,8 @@ typedef struct {
   LirInstructionDyn instructions;
   MetadataDyn metadata;
   InterferenceGraph interference_graph;
+  u32 stack_base_pointer_offset;
+  u32 stack_base_pointer_max_offset;
 } LirFnDefinition;
 PG_DYN(LirFnDefinition) LirFnDefinitionDyn;
 
