@@ -76,6 +76,7 @@ typedef struct AsmEmitter AsmEmitter;
   void (*print_program)(AsmEmitter asm_emitter);                               \
   Register (*map_constraint_to_register)(                                      \
       AsmEmitter * asm_emitter, LirVirtualRegisterConstraint constraint);      \
+  void (*print_register)(Register reg);                                        \
                                                                                \
   IrMetadataDyn metadata;                                                      \
   u32 stack_base_pointer_offset;                                               \
@@ -496,6 +497,14 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
           asm_color_assign_register(&emitter->interference_graph, node_idx,
                                     emitter->gprs_count, emitter->metadata);
       PG_ASSERT(reg.value);
+
+      if (verbose) {
+        printf("asm: assigned register: ");
+        ir_emitter_print_meta(PG_SLICE_AT(emitter->metadata, node_idx.value));
+        printf(" -> ");
+        emitter->print_register(reg);
+        printf("\n");
+      }
     }
   }
 

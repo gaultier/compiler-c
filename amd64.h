@@ -1619,6 +1619,7 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
   amd64_emitter->print_program = amd64_print_program;
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
   amd64_emitter->encode_program_text = amd64_encode_program_text;
+  amd64_emitter->print_register = amd64_print_register;
 
   amd64_emitter->metadata = lir_emitter->metadata;
   amd64_emitter->interference_graph = interference_graph;

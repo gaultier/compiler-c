@@ -145,9 +145,6 @@ int main(int argc, char *argv[]) {
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_instructions(lir_emitter);
-
-    printf("\n------------ LIR var virtual registers ------------\n");
-    ir_emitter_print_metadata(lir_emitter.metadata);
   }
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);

@@ -95,8 +95,7 @@ static void lir_print_operand(LirOperand op, IrMetadataDyn metadata) {
     PG_ASSERT(0);
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
     IrMetadata meta = PG_SLICE_AT(metadata, op.meta_idx.value);
-    printf("vreg=v%u{constraint=%s, addressable=%s}",
-           meta.virtual_register.value,
+    printf("v%u{constraint=%s, addressable=%s}", meta.virtual_register.value,
            lir_register_constraint_to_cstr(meta.virtual_register.constraint),
            meta.virtual_register.addressable ? "true" : "false");
     break;
