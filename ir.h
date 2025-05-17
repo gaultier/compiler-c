@@ -367,10 +367,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_BLOCK: {
     if (!pg_string_is_empty(node.identifier)) {
 
-      Label label = {
-          .name.value = node.identifier,
-          .id = ir_emitter_next_label_id(emitter),
-      };
+      Label label = {.name.value = node.identifier};
+      if (pg_string_eq(node.identifier, PG_S("__builtin_exit"))) {
+        label.id = emitter->label_program_epilog_exit.id;
+      } else if (pg_string_eq(node.identifier, PG_S("__builtin_die"))) {
+        label.id = emitter->label_program_epilog_die.id;
+      }
 
       PG_ASSERT(label.id.value);
 
@@ -383,12 +385,6 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .label = label,
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label;
-
-      if (pg_string_eq(node.identifier, PG_S("__builtin_exit"))) {
-        emitter->label_program_epilog_exit = label;
-      } else if (pg_string_eq(node.identifier, PG_S("__builtin_die"))) {
-        emitter->label_program_epilog_die = label;
-      }
     }
 
     for (u64 i = 0; i < node.operands.len; i++) {
@@ -609,6 +605,12 @@ static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
   PG_ASSERT(AST_NODE_KIND_BLOCK == node.kind);
 
   *PG_DYN_PUSH(&emitter->metadata, allocator) = (IrMetadata){0}; // Dummy.
+
+  emitter->label_program_epilog_die.id = ir_emitter_next_label_id(emitter);
+  emitter->label_program_epilog_die.name.value = PG_S("__builtin_die");
+
+  emitter->label_program_epilog_exit.id = ir_emitter_next_label_id(emitter);
+  emitter->label_program_epilog_exit.name.value = PG_S("__builtin_exit");
 
   (void)ir_emit_ast_node(node, emitter, errors, allocator);
 }

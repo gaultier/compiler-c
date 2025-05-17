@@ -1378,7 +1378,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(1 == lir.operands.len);
 
     LirOperand op = PG_SLICE_AT(lir.operands, 0);
-    PG_ASSERT(LIR_OPERAND_KIND_LABEL_ID == op.kind);
+    PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
     PG_ASSERT(op.jump_label_id.value);
 
     Amd64Instruction instruction = {
