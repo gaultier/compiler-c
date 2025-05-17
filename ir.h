@@ -369,16 +369,19 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_BLOCK: {
     if (!pg_string_is_empty(node.identifier)) {
 
-      Label label = {.name.value = node.identifier};
+      Label label = {
+          .name.value = node.identifier,
+          .id = ir_emitter_next_label_id(emitter),
+      };
+      PG_ASSERT(label.id.value);
+
       if (pg_string_eq(node.identifier,
                        emitter->label_program_epilog_exit.name.value)) {
-        label.id = emitter->label_program_epilog_exit.id;
+        emitter->label_program_epilog_exit.id = label.id;
       } else if (pg_string_eq(node.identifier,
                               emitter->label_program_epilog_die.name.value)) {
-        label.id = emitter->label_program_epilog_die.id;
+        emitter->label_program_epilog_die.id = label.id;
       }
-
-      PG_ASSERT(label.id.value);
 
       IrInstruction ir_label = {
           .kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION,
@@ -1183,7 +1186,8 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
               IR_OPERAND_KIND_U64 == cond.kind);
 
     IrOperand branch_else = PG_SLICE_AT(ins.operands, 1);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind ||
+              IR_OPERAND_KIND_LABEL_NAME == branch_else.kind);
 
     printf("jump_if_false(");
     ir_print_operand(cond, emitter.metadata);

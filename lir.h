@@ -265,6 +265,7 @@ static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
   } break;
   case IR_OPERAND_KIND_LABEL:
   case IR_OPERAND_KIND_LABEL_NAME:
+  case IR_OPERAND_KIND_LABEL_ID:
   case IR_OPERAND_KIND_NONE:
   default:
     PG_ASSERT(0);
@@ -290,12 +291,13 @@ static LirOperand lir_ir_operand_to_lir_operand(IrOperand ir_op) {
         .kind = LIR_OPERAND_KIND_LABEL,
         .label = ir_op.label,
     };
-  case IR_OPERAND_KIND_LABEL_NAME:
+  case IR_OPERAND_KIND_LABEL_ID:
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_LABEL_ID,
         .jump_label_id = ir_op.jump_label_id,
     };
   case IR_OPERAND_KIND_NONE:
+  case IR_OPERAND_KIND_LABEL_NAME:
   default:
     PG_ASSERT(0);
   }
