@@ -115,6 +115,8 @@ static Register asm_gpr_pop_first_unset(GprSet *set) {
 static void asm_print_interference_graph(InterferenceGraph graph,
                                          IrMetadataDyn metadata) {
 
+  printf("nodes_count=%lu\n", graph.nodes_count);
+
   for (u64 row = 0; row < graph.nodes_count; row++) {
     for (u64 col = 0; col < row; col++) {
       bool edge = pg_adjacency_matrix_has_edge(graph, row, col);
@@ -135,17 +137,15 @@ static void asm_print_interference_graph(InterferenceGraph graph,
 static void asm_sanity_check_interference_graph(InterferenceGraph graph,
                                                 IrMetadataDyn metadata,
                                                 bool colored) {
-  PG_ASSERT(metadata.len >= graph.nodes_count);
-  if (colored) {
-    PG_ASSERT(metadata.len == graph.nodes_count);
-  }
+  PG_ASSERT(metadata.len != 0);
+  PG_ASSERT(metadata.len == graph.nodes_count);
 
-  if (0 == graph.nodes_count) {
+  if (1 == graph.nodes_count) {
     return;
   }
 
   if (colored) {
-    for (u64 i = 0; i < metadata.len; i++) {
+    for (u64 i = 1; i < metadata.len; i++) {
       MemoryLocation mem_loc = PG_SLICE_AT(metadata, i).memory_location;
       switch (mem_loc.kind) {
       case MEMORY_LOCATION_KIND_STATUS_REGISTER:
@@ -170,11 +170,12 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
                                                       PgAllocator *allocator) {
   InterferenceGraph graph = {0};
 
-  if (0 == metadata.len) {
+  if (1 == metadata.len) {
     return graph;
   }
 
   graph = pg_adjacency_matrix_make(metadata.len, allocator);
+  PG_ASSERT(metadata.len == graph.nodes_count);
 
   for (u64 i = 0; i < metadata.len; i++) {
     IrMetadata meta = PG_SLICE_AT(metadata, i);
@@ -182,7 +183,12 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
     PG_ASSERT(!meta.tombstone);
 #endif
     PG_ASSERT(meta.lifetime_start.value <= meta.lifetime_end.value);
-    PG_ASSERT(meta.virtual_register.value);
+    PG_ASSERT(i == 0 || meta.virtual_register.value);
+
+    // Interferes with no one (unused).
+    if (meta.lifetime_start.value == meta.lifetime_end.value) {
+      continue;
+    }
 
     for (u64 j = i + 1; j < metadata.len; j++) {
       IrMetadata it = PG_SLICE_AT(metadata, j);
@@ -192,6 +198,11 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
 #endif
 
       PG_ASSERT(meta.var.id.value != it.var.id.value);
+
+      // Interferes with no one (unused).
+      if (it.lifetime_start.value == it.lifetime_end.value) {
+        continue;
+      }
 
       // `it` strictly before `meta`.
       if (it.lifetime_end.value < meta.lifetime_start.value) {
@@ -288,6 +299,9 @@ static Register asm_get_free_register(GprSet regs) {
 
 static void asm_color_do_pre_coloring(AsmEmitter *emitter,
                                       PgString tombstones_bitfield) {
+  // Dummy.
+  pg_bitfield_set(tombstones_bitfield, 0, true);
+
   for (u64 row = 0; row < emitter->interference_graph.nodes_count; row++) {
     InterferenceNodeIndex node_idx = {(u32)row};
     IrMetadata *meta = PG_SLICE_AT_PTR(&emitter->metadata, node_idx.value);
@@ -395,8 +409,9 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
            "pre-coloring"
            "------------\n\n");
     pg_adjacency_matrix_print(emitter->interference_graph);
-    asm_color_do_pre_coloring(emitter, node_tombstones_bitfield);
-
+  }
+  asm_color_do_pre_coloring(emitter, node_tombstones_bitfield);
+  if (verbose) {
     printf("\n------------ Adjacency matrix of interference graph after "
            "pre-coloring"
            "------------\n\n");
