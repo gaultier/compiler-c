@@ -9,7 +9,7 @@ typedef enum {
   IR_INSTRUCTION_KIND_ADDRESS_OF,
   IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
   IR_INSTRUCTION_KIND_JUMP,
-  IR_INSTRUCTION_KIND_LABEL,
+  IR_INSTRUCTION_KIND_LABEL_DEFINITION,
   IR_INSTRUCTION_KIND_COMPARISON,
   IR_INSTRUCTION_KIND_SYSCALL,
 } IrInstructionKind;
@@ -33,15 +33,23 @@ typedef enum {
   IR_OPERAND_KIND_U64,
   IR_OPERAND_KIND_VAR,
   IR_OPERAND_KIND_LABEL,
+  IR_OPERAND_KIND_LABEL_ID,
 } IrOperandKind;
 
+// Unresolved.
 typedef struct {
   PgString value;
 } LabelName;
 
+// Resolved.
 typedef struct {
   u32 value;
 } LabelId;
+
+typedef struct {
+  LabelId id;
+  LabelName name;
+} Label;
 
 typedef struct IrOperand IrOperand;
 PG_SLICE(IrOperand) IrOperandSlice;
@@ -56,7 +64,8 @@ struct IrOperand {
   union {
     u64 n64;
     IrMetadataIndex meta_idx;
-    LabelId label;
+    LabelId jump_label_id; // IR_OPERAND_KIND_LABEL_ID.
+    Label label;           // IR_OPERAND_KIND_LABEL.
   };
 };
 
@@ -151,8 +160,8 @@ typedef struct {
 
   IrMetadataDyn metadata;
 
-  LabelId label_program_epilog_die;
-  LabelId label_program_epilog_exit;
+  Label label_program_epilog_die;
+  Label label_program_epilog_exit;
 } IrEmitter;
 
 [[nodiscard]]
@@ -357,25 +366,28 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   }
   case AST_NODE_KIND_BLOCK: {
     if (!pg_string_is_empty(node.identifier)) {
-      // FIXME: The actual label from the source gets lost.
 
-      LabelId label_id = ir_emitter_next_label_id(emitter);
-      PG_ASSERT(label_id.value);
+      Label label = {
+          .name.value = node.identifier,
+          .id = ir_emitter_next_label_id(emitter),
+      };
+
+      PG_ASSERT(label.id.value);
 
       IrInstruction ir_label = {
-          .kind = IR_INSTRUCTION_KIND_LABEL,
+          .kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION,
           .origin = node.origin,
       };
       *PG_DYN_PUSH(&ir_label.operands, allocator) = (IrOperand){
           .kind = IR_OPERAND_KIND_LABEL,
-          .label = label_id,
+          .label = label,
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label;
 
       if (pg_string_eq(node.identifier, PG_S("__builtin_exit"))) {
-        emitter->label_program_epilog_exit = label_id;
+        emitter->label_program_epilog_exit = label;
       } else if (pg_string_eq(node.identifier, PG_S("__builtin_die"))) {
-        emitter->label_program_epilog_die = label_id;
+        emitter->label_program_epilog_die = label;
       }
     }
 
@@ -467,10 +479,10 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
 
       IrOperand jump_target = {
-          .kind = IR_OPERAND_KIND_LABEL,
-          .label = emitter->label_program_epilog_die,
+          .kind = IR_OPERAND_KIND_LABEL_ID,
+          .jump_label_id = emitter->label_program_epilog_die.id,
       };
-      PG_ASSERT(jump_target.label.value);
+      PG_ASSERT(jump_target.label.id.value);
       *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) = jump_target;
 
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_jump_if_false;
@@ -545,8 +557,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .origin = node.origin,
       };
       *PG_DYN_PUSH(&ir_jump.operands, allocator) = (IrOperand){
-          .kind = IR_OPERAND_KIND_LABEL,
-          .label = branch_if_cont_label,
+          .kind = IR_OPERAND_KIND_LABEL_ID,
+          .jump_label_id = branch_if_cont_label,
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_jump;
     }
@@ -554,12 +566,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     // 'else' branch.
     {
       IrInstruction ir_label_else = {
-          .kind = IR_INSTRUCTION_KIND_LABEL,
+          .kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION,
           .origin = node.origin,
       };
       *PG_DYN_PUSH(&ir_label_else.operands, allocator) = (IrOperand){
-          .kind = IR_OPERAND_KIND_LABEL,
-          .label = branch_else_label,
+          .kind = IR_OPERAND_KIND_LABEL_ID,
+          .jump_label_id = branch_else_label,
       };
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label_else;
       if (3 == node.operands.len) {
@@ -568,20 +580,20 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       }
     }
     IrInstruction ir_label_if_cont = {
-        .kind = IR_INSTRUCTION_KIND_LABEL,
+        .kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION,
         .origin = node.origin,
     };
     *PG_DYN_PUSH(&ir_label_if_cont.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_LABEL,
-        .label = branch_if_cont_label,
+        .kind = IR_OPERAND_KIND_LABEL_ID,
+        .jump_label_id = branch_if_cont_label,
     };
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label_if_cont;
 
     IrInstruction *ir_cond_jump_backpatch =
         PG_SLICE_AT_PTR(&emitter->instructions, ir_cond_jump_idx.value);
     *PG_DYN_PUSH(&ir_cond_jump_backpatch->operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_LABEL,
-        .label = branch_else_label,
+        .kind = IR_OPERAND_KIND_LABEL_ID,
+        .jump_label_id = branch_else_label,
     };
 
     return (IrOperand){0};
@@ -950,19 +962,27 @@ static void ir_print_var(IrVar var, PgString identifier) {
   }
 }
 
-static void ir_print_operand(IrOperand value, IrMetadataDyn metadata) {
-  switch (value.kind) {
+static void ir_print_operand(IrOperand op, IrMetadataDyn metadata) {
+  switch (op.kind) {
   case IR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case IR_OPERAND_KIND_U64:
-    printf("%" PRIu64, value.n64);
+    printf("%" PRIu64, op.n64);
     break;
   case IR_OPERAND_KIND_VAR: {
-    IrMetadata meta = PG_SLICE_AT(metadata, value.meta_idx.value);
+    IrMetadata meta = PG_SLICE_AT(metadata, op.meta_idx.value);
     ir_print_var(meta.var, meta.identifier);
   } break;
   case IR_OPERAND_KIND_LABEL:
-    printf(".%" PRIu32 "", value.label.value);
+    PG_ASSERT(op.label.id.value);
+    PG_ASSERT(op.label.name.value.len);
+
+    printf(".%u-%.*s:\n", op.label.id.value, (i32)op.label.name.value.len,
+           op.label.name.value.data);
+    break;
+  case IR_OPERAND_KIND_LABEL_ID:
+    PG_ASSERT(op.jump_label_id.value);
+    printf(".%" PRIu32 "", op.jump_label_id.value);
     break;
   default:
     PG_ASSERT(0);
@@ -1155,7 +1175,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
               IR_OPERAND_KIND_U64 == cond.kind);
 
     IrOperand branch_else = PG_SLICE_AT(ins.operands, 1);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind);
 
     printf("jump_if_false(");
     ir_print_operand(cond, emitter.metadata);
@@ -1167,19 +1187,22 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(1 == ins.operands.len);
     PG_ASSERT(0 == ins.meta_idx.value);
 
-    IrOperand label = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL == label.kind);
-    printf("jump .%u\n", label.label.value);
+    IrOperand op = PG_SLICE_AT(ins.operands, 0);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == op.kind);
+    PG_ASSERT(op.jump_label_id.value);
+    printf("jump \n");
+    ir_print_operand(op, emitter.metadata);
   } break;
 
-  case IR_INSTRUCTION_KIND_LABEL: {
+  case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
     PG_ASSERT(1 == ins.operands.len);
     PG_ASSERT(0 == ins.meta_idx.value);
 
-    IrOperand label = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL == label.kind);
-
-    printf(".%u:\n", label.label.value);
+    IrOperand op = PG_SLICE_AT(ins.operands, 0);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
+    PG_ASSERT(op.label.id.value);
+    PG_ASSERT(op.label.name.value.len);
+    ir_print_operand(op, emitter.metadata);
   } break;
   default:
     PG_ASSERT(0);
