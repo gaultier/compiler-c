@@ -992,7 +992,7 @@ static void ir_print_operand(IrOperand op, IrMetadataDyn metadata) {
     break;
   case IR_OPERAND_KIND_LABEL_NAME:
     PG_ASSERT(op.jump_label_name.value.len);
-    printf(".%.*s:\n", (i32)op.jump_label_name.value.len,
+    printf(".%.*s", (i32)op.jump_label_name.value.len,
            op.jump_label_name.value.data);
     break;
   default:

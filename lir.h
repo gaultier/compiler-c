@@ -89,23 +89,6 @@ static void lir_print_memory_location(MemoryLocation loc) {
     PG_ASSERT(0);
   }
 }
-
-static void lir_print_var_to_memory_location(
-    VarToMemoryLocationDyn var_to_memory_location) {
-  for (u64 i = 0; i < var_to_memory_location.len; i++) {
-    VarToMemoryLocation var_to_mem_loc = PG_SLICE_AT(var_to_memory_location, i);
-    printf("; ");
-    ir_print_var(var_to_mem_loc.var);
-    printf(": ");
-    for (u64 j = 0; j < var_to_mem_loc.locations.len; j++) {
-      MemoryLocation loc = PG_SLICE_AT(var_to_mem_loc.locations, j);
-      lir_print_memory_location(loc);
-
-      printf(" ");
-    }
-    printf("\n");
-  }
-}
 #endif
 
 static void lir_print_operand(LirOperand op, IrMetadataDyn metadata) {
@@ -114,7 +97,10 @@ static void lir_print_operand(LirOperand op, IrMetadataDyn metadata) {
     PG_ASSERT(0);
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
     IrMetadata meta = PG_SLICE_AT(metadata, op.meta_idx.value);
-    ir_emitter_print_meta(meta);
+    printf("vreg=v%u{constraint=%s, addressable=%s}",
+           meta.virtual_register.value,
+           lir_register_constraint_to_cstr(meta.virtual_register.constraint),
+           meta.virtual_register.addressable ? "true" : "false");
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, op.immediate);
@@ -429,7 +415,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
     IrOperand branch_else = PG_SLICE_AT(ir_ins.operands, 1);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL_NAME == branch_else.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind);
 
     LirInstruction ins_je = {
         .kind = LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
@@ -449,7 +435,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
     IrOperand op = PG_SLICE_AT(ir_ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL_NAME == op.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == op.kind);
 
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_JUMP,
