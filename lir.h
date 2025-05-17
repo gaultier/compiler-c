@@ -64,30 +64,6 @@ typedef struct {
   MetadataDyn metadata;
 } LirEmitter;
 
-#if 0
-static void lir_print_memory_location(MemoryLocation loc) {
-  switch (loc.kind) {
-  case MEMORY_LOCATION_KIND_REGISTER:
-    lir_print_register(loc.reg);
-    break;
-  case MEMORY_LOCATION_KIND_STACK: {
-    printf("[");
-    lir_print_register(
-        (VirtualRegister){.constraint = VREG_CONSTRAINT_BASE_POINTER});
-    i32 offset = loc.base_pointer_offset;
-    printf("%" PRIi32, offset);
-    printf("]");
-  } break;
-  case MEMORY_LOCATION_KIND_MEMORY:
-    printf("%#lx", loc.memory_address);
-    break;
-  case MEMORY_LOCATION_KIND_NONE:
-  default:
-    PG_ASSERT(0);
-  }
-}
-#endif
-
 static void lir_print_operand(LirOperand op, MetadataDyn metadata) {
   switch (op.kind) {
   case LIR_OPERAND_KIND_NONE:
@@ -231,8 +207,8 @@ static void lir_emit_copy_immediate_to_virt_reg(LirEmitter *emitter,
 }
 
 static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
-                                      MetadataIndex dst_meta_idx,
-                                      Origin origin, PgAllocator *allocator) {
+                                      MetadataIndex dst_meta_idx, Origin origin,
+                                      PgAllocator *allocator) {
   switch (src_op.kind) {
   case IR_OPERAND_KIND_U64:
     lir_emit_copy_immediate_to_virt_reg(emitter, src_op, dst_meta_idx, origin,
@@ -335,8 +311,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
       VirtualRegisterConstraint virt_reg_constraint =
           (0 == j)
               ? VREG_CONSTRAINT_SYSCALL_NUM
-              : (VirtualRegisterConstraint)(VREG_CONSTRAINT_SYSCALL0 +
-                                               j - 1);
+              : (VirtualRegisterConstraint)(VREG_CONSTRAINT_SYSCALL0 + j - 1);
       PG_SLICE_AT(emitter->metadata, val.meta_idx.value)
           .virtual_register.constraint = virt_reg_constraint;
 

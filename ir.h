@@ -1026,7 +1026,6 @@ static void ir_emitter_print_meta(Metadata meta) {
     }
   }
 
-  printf("\n");
 #if 0
   if (meta.tombstone) {
     printf("\x1B[0m"); // Strikethrough.
@@ -1129,7 +1128,6 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
       printf(" // ");
       ir_emitter_print_meta(meta);
     }
-    printf("\n");
   } break;
   case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == ins.operands.len);
@@ -1146,7 +1144,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     ir_print_operand(cond, emitter.metadata);
     printf(", ");
     ir_print_operand(branch_else, emitter.metadata);
-    printf(")\n");
+    printf(")");
   } break;
   case IR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == ins.operands.len);
@@ -1155,7 +1153,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     IrOperand op = PG_SLICE_AT(ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
     PG_ASSERT(op.label.value.len);
-    printf("jump \n");
+    printf("jump ");
     ir_print_operand(op, emitter.metadata);
   } break;
 
@@ -1167,7 +1165,6 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
     PG_ASSERT(op.label.value.len);
     ir_print_operand(op, emitter.metadata);
-    printf("\n");
   } break;
   default:
     PG_ASSERT(0);
@@ -1176,6 +1173,7 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
   if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
     printf(":");
   }
+  printf("\n");
 #if 0
   if (ins.tombstone) {
     printf("\x1B[0m"); // Reset.
@@ -1194,6 +1192,7 @@ static void ir_emitter_print_metadata(MetadataDyn metadata) {
     Metadata meta = PG_SLICE_AT(metadata, i);
     printf("[%lu] ", i);
     ir_emitter_print_meta(meta);
+    printf("\n");
   }
 }
 

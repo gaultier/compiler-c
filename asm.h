@@ -75,10 +75,10 @@ typedef struct AsmEmitter AsmEmitter;
                                    PgAllocator * allocator);                   \
   void (*print_program)(AsmEmitter asm_emitter);                               \
   Register (*map_constraint_to_register)(                                      \
-      AsmEmitter * asm_emitter, VirtualRegisterConstraint constraint);      \
+      AsmEmitter * asm_emitter, VirtualRegisterConstraint constraint);         \
   void (*print_register)(Register reg);                                        \
                                                                                \
-  MetadataDyn metadata;                                                      \
+  MetadataDyn metadata;                                                        \
   u32 stack_base_pointer_offset;                                               \
   u32 stack_base_pointer_max_offset;                                           \
   InterferenceGraph interference_graph;                                        \
@@ -298,8 +298,9 @@ static Register asm_get_free_register(GprSet regs) {
   return res;
 }
 
-static void asm_color_do_pre_coloring(AsmEmitter *emitter,
-                                      PgString tombstones_bitfield) {
+static void asm_color_do_precoloring(AsmEmitter *emitter,
+                                     PgString tombstones_bitfield,
+                                     bool verbose) {
   // Dummy.
   pg_bitfield_set(tombstones_bitfield, 0, true);
 
@@ -332,6 +333,14 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
       pg_adjacency_matrix_remove_node(&emitter->interference_graph,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
+
+      if (verbose) {
+        printf("asm: assigned register: ");
+        ir_emitter_print_meta(PG_SLICE_AT(emitter->metadata, node_idx.value));
+        printf(" -> ");
+        emitter->print_register(meta->memory_location.reg);
+        printf("\n");
+      }
       break;
     default:
       PG_ASSERT(0);
@@ -411,7 +420,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
            "------------\n\n");
     pg_adjacency_matrix_print(emitter->interference_graph);
   }
-  asm_color_do_pre_coloring(emitter, node_tombstones_bitfield);
+  asm_color_do_precoloring(emitter, node_tombstones_bitfield, verbose);
   if (verbose) {
     printf("\n------------ Adjacency matrix of interference graph after "
            "pre-coloring"
