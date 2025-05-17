@@ -97,6 +97,23 @@ static void asm_gpr_set_add(GprSet *set, u32 val) {
 }
 
 [[nodiscard]]
+static bool asm_gpr_set_has(GprSet set, u32 val) {
+  PG_ASSERT(set.len > 0);
+  PG_ASSERT(val < set.len);
+  return set.set & (1 << val);
+}
+
+[[nodiscard]]
+static GprSet asm_gpr_union(GprSet a, GprSet b) {
+  PG_ASSERT(a.len == b.len);
+
+  return (GprSet){
+      .len = a.len,
+      .set = a.set | b.set,
+  };
+}
+
+[[nodiscard]]
 static Register asm_gpr_pop_first_unset(GprSet *set) {
   PG_ASSERT(set->len > 0);
 
@@ -116,7 +133,7 @@ static Register asm_gpr_pop_first_unset(GprSet *set) {
 static void asm_print_interference_graph(InterferenceGraph graph,
                                          MetadataDyn metadata) {
 
-  printf("nodes_count=%lu\n", graph.nodes_count);
+  printf("nodes_count=%lu\n\n", graph.nodes_count);
 
   for (u64 row = 0; row < graph.nodes_count; row++) {
     for (u64 col = 0; col < row; col++) {
@@ -294,12 +311,12 @@ static Register asm_get_free_register(GprSet regs) {
   // TODO: Smarter free register selection.
   // E.g. favor caller-saved registers, etc.
   Register res = asm_gpr_pop_first_unset(&regs);
-  PG_ASSERT(res.value && "todo: spill");
+  PG_ASSERT(res.value);
   return res;
 }
 
 static void asm_color_do_precoloring(AsmEmitter *emitter,
-                                     PgString tombstones_bitfield,
+                                     PgString tombstones_bitfield, GprSet *set,
                                      bool verbose) {
   // Dummy.
   pg_bitfield_set(tombstones_bitfield, 0, true);
@@ -333,6 +350,8 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
       pg_adjacency_matrix_remove_node(&emitter->interference_graph,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
+      PG_ASSERT(!asm_gpr_set_has(*set, meta->memory_location.reg.value));
+      asm_gpr_set_add(set, meta->memory_location.reg.value);
 
       if (verbose) {
         printf("asm: assigned register: ");
@@ -351,7 +370,7 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
 [[nodiscard]] static Register
 asm_color_assign_register(InterferenceGraph *graph,
                           InterferenceNodeIndex node_idx, u32 gprs_count,
-                          MetadataDyn metadata) {
+                          GprSet gprs_precolored, MetadataDyn metadata) {
   GprSet neighbor_colors = {
       .len = gprs_count,
       .set = 0,
@@ -382,6 +401,7 @@ asm_color_assign_register(InterferenceGraph *graph,
     }
   } while (neighbor.has_value);
 
+  neighbor_colors = asm_gpr_union(neighbor_colors, gprs_precolored);
   Register res = asm_get_free_register(neighbor_colors);
   PG_ASSERT(res.value);
 
@@ -420,11 +440,21 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
            "------------\n\n");
     pg_adjacency_matrix_print(emitter->interference_graph);
   }
-  asm_color_do_precoloring(emitter, node_tombstones_bitfield, verbose);
+  GprSet gprs_precolored = {
+      .len = emitter->gprs_count,
+      .set = 0,
+  };
+  asm_color_do_precoloring(emitter, node_tombstones_bitfield, &gprs_precolored,
+                           verbose);
   if (verbose) {
     printf("\n------------ Adjacency matrix of interference graph after "
            "pre-coloring"
            "------------\n\n");
+    for (u64 i = 0; i < emitter->interference_graph.nodes_count; i++) {
+      bool removed = pg_bitfield_get(node_tombstones_bitfield, i);
+      printf("%s%lu%s ", removed ? "\x1B[9m" : "", i, removed ? "\x1B[0m" : "");
+    }
+    printf("\n");
     pg_adjacency_matrix_print(emitter->interference_graph);
   }
 
@@ -502,9 +532,9 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
               .virtual_register.constraint;
       PG_ASSERT(VREG_CONSTRAINT_NONE == constraint);
 
-      Register reg =
-          asm_color_assign_register(&emitter->interference_graph, node_idx,
-                                    emitter->gprs_count, emitter->metadata);
+      Register reg = asm_color_assign_register(
+          &emitter->interference_graph, node_idx, emitter->gprs_count,
+          gprs_precolored, emitter->metadata);
       PG_ASSERT(reg.value);
 
       if (verbose) {
