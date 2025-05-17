@@ -527,21 +527,25 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
                                       fn_def, errors, allocator);
     // TODO: else.
 
+    Label branch_if_cont_label = ir_emitter_next_label_name(emitter, allocator);
+    Label branch_else_label = ir_emitter_next_label_name(emitter, allocator);
+
     IrInstruction ir_cond_jump = {
         .kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
         .origin = node.origin,
     };
-    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_cond_jump;
+    *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_LABEL,
+        .label = branch_else_label,
+    };
     *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_cond_jump;
     IrInstructionIndex ir_cond_jump_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == cond.kind) {
       ir_metadata_extend_lifetime_on_use(fn_def->metadata, cond.meta_idx,
                                          ir_cond_jump_idx);
     }
-
-    Label branch_if_cont_label = ir_emitter_next_label_name(emitter, allocator);
-    Label branch_else_label = ir_emitter_next_label_name(emitter, allocator);
 
     // 'then' branch.
     {
@@ -583,13 +587,6 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
         .label = branch_if_cont_label,
     };
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_label_if_cont;
-
-    IrInstruction *ir_cond_jump_backpatch =
-        PG_SLICE_AT_PTR(&fn_def->instructions, ir_cond_jump_idx.value);
-    *PG_DYN_PUSH(&ir_cond_jump_backpatch->operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_LABEL,
-        .label = branch_else_label,
-    };
 
     return (IrOperand){0};
   }
