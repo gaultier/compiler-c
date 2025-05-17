@@ -332,10 +332,10 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     for (u64 j = 0; j < ir_ins.operands.len; j++) {
       IrOperand val = PG_SLICE_AT(ir_ins.operands, j);
-      LirVirtualRegisterConstraint virt_reg_constraint =
+      VirtualRegisterConstraint virt_reg_constraint =
           (0 == j)
               ? LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM
-              : (LirVirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 +
+              : (VirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 +
                                                j - 1);
       PG_SLICE_AT(emitter->metadata, val.meta_idx.value)
           .virtual_register.constraint = virt_reg_constraint;

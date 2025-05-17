@@ -74,11 +74,11 @@ typedef enum {
   LIR_VIRT_REG_CONSTRAINT_SYSCALL4,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL5,
   LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET,
-} LirVirtualRegisterConstraint;
+} VirtualRegisterConstraint;
 
 typedef struct {
   u32 value;
-  LirVirtualRegisterConstraint constraint;
+  VirtualRegisterConstraint constraint;
   bool addressable;
 } VirtualRegister;
 PG_SLICE(VirtualRegister) VirtualRegisterSlice;
@@ -956,7 +956,7 @@ static void ir_print_operand(IrOperand op, MetadataDyn metadata) {
 
 [[nodiscard]]
 static char *
-lir_register_constraint_to_cstr(LirVirtualRegisterConstraint constraint) {
+lir_register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
   switch (constraint) {
   case LIR_VIRT_REG_CONSTRAINT_NONE:
     return "NONE";

@@ -75,7 +75,7 @@ typedef struct AsmEmitter AsmEmitter;
                                    PgAllocator * allocator);                   \
   void (*print_program)(AsmEmitter asm_emitter);                               \
   Register (*map_constraint_to_register)(                                      \
-      AsmEmitter * asm_emitter, LirVirtualRegisterConstraint constraint);      \
+      AsmEmitter * asm_emitter, VirtualRegisterConstraint constraint);      \
   void (*print_register)(Register reg);                                        \
                                                                                \
   MetadataDyn metadata;                                                      \
@@ -488,7 +488,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
                                      neighbor.col);
       } while (neighbor.has_value);
 
-      LirVirtualRegisterConstraint constraint =
+      VirtualRegisterConstraint constraint =
           PG_SLICE_AT(emitter->metadata, node_idx.value)
               .virtual_register.constraint;
       PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == constraint);

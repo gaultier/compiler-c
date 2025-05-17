@@ -1475,7 +1475,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
 static Register
 amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
-                                 LirVirtualRegisterConstraint constraint) {
+                                 VirtualRegisterConstraint constraint) {
   (void)asm_emitter;
 
   switch (constraint) {
