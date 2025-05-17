@@ -1621,25 +1621,35 @@ static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
 static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
                                  AsmCodeSection section,
                                  PgAllocator *allocator) {
+  PG_ASSERT(section.name.len);
+
+  *PG_DYN_PUSH(&asm_emitter->program.label_addresses, allocator) =
+      (LabelAddress){
+          .label = {section.name},
+          .code_address = sb->len,
+      };
+
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction ins =
         PG_C_ARRAY_AT((Amd64Instruction *)section.instructions.data,
                       section.instructions.len, i);
     amd64_encode_instruction(asm_emitter, sb, ins, allocator);
   }
+}
 
+static void amd64_section_resolve_jumps(AsmEmitter *asm_emitter, Pgu8Dyn sb) {
   for (u64 i = 0; i < asm_emitter->program.jumps_to_backpatch.len; i++) {
     LabelAddress jump_to_backpatch =
         PG_SLICE_AT(asm_emitter->program.jumps_to_backpatch, i);
     PG_ASSERT(jump_to_backpatch.label.value.len);
     PG_ASSERT(jump_to_backpatch.code_address > 0);
-    PG_ASSERT(jump_to_backpatch.code_address <= sb->len - 1);
+    PG_ASSERT(jump_to_backpatch.code_address <= sb.len - 1);
 
     LabelAddress label = {0};
     for (u64 j = 0; j < asm_emitter->program.label_addresses.len; j++) {
       label = PG_SLICE_AT(asm_emitter->program.label_addresses, j);
       PG_ASSERT(label.label.value.len);
-      PG_ASSERT(label.code_address <= sb->len - 1);
+      PG_ASSERT(label.code_address <= sb.len - 1);
 
       if (pg_string_eq(label.label.value, jump_to_backpatch.label.value)) {
         break;
@@ -1649,7 +1659,7 @@ static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     PG_ASSERT(pg_string_eq(label.label.value, jump_to_backpatch.label.value));
 
     u8 *jump_displacement_encoded =
-        PG_SLICE_AT_PTR(sb, jump_to_backpatch.code_address);
+        PG_SLICE_AT_PTR(&sb, jump_to_backpatch.code_address);
     i64 displacement = (i64)label.code_address -
                        (i64)jump_to_backpatch.code_address - (i64)sizeof(i32);
     PG_ASSERT(displacement <= INT32_MAX);
@@ -1668,6 +1678,8 @@ static Pgu8Slice amd64_encode_program_text(AsmEmitter *asm_emitter,
     AsmCodeSection section = PG_SLICE_AT(asm_emitter->program.text, i);
     amd64_encode_section(asm_emitter, &sb, section, allocator);
   }
+
+  amd64_section_resolve_jumps(asm_emitter, sb);
 
   return PG_DYN_SLICE(Pgu8Slice, sb);
 }
