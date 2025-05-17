@@ -927,6 +927,31 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
     return;
   }
 
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
+    Register lhs_reg = instruction.lhs.reg;
+    Register rhs_reg = instruction.rhs.reg;
+
+    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
+    if (amd64_is_register_64_bits_only(lhs_reg)) {
+      rex |= AMD64_REX_MASK_B;
+    }
+    *PG_DYN_PUSH(sb, allocator) = rex;
+
+    if (amd64_is_register_64_bits_only(rhs_reg)) {
+      rex |= AMD64_REX_MASK_B;
+    }
+
+    u8 opcode = 0x3B;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    u8 modrm = (0b11 << 6) |
+               (u8)((amd64_encode_register_value(lhs_reg) & 0b111) << 3) |
+               (u8)(amd64_encode_register_value(rhs_reg) & 0b111);
+    *PG_DYN_PUSH(sb, allocator) = modrm;
+    return;
+  }
+
   PG_ASSERT(0 && "todo");
 }
 
