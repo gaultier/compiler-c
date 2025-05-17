@@ -23,6 +23,11 @@ typedef struct AstNode AstNode;
 PG_SLICE(AstNode) AstNodeSlice;
 PG_DYN(AstNode) AstNodeDyn;
 
+typedef enum {
+  AST_NODE_FLAG_NONE = 0,
+  AST_NODE_FLAG_GLOBAL = 1 << 0,
+} AstNodeFlag;
+
 struct AstNode {
   AstNodeKind kind;
   AstNodeDyn operands;
@@ -30,6 +35,7 @@ struct AstNode {
   PgString identifier;
   Origin origin;
   LexTokenKind token_kind;
+  AstNodeFlag flags;
 };
 
 static void ast_print(AstNode node, u32 left_width) {
@@ -726,6 +732,7 @@ static AstNode *ast_emit(LexTokenSlice tokens, ErrorDyn *errors,
       pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
   fn_start->kind = AST_NODE_KIND_FN_DEFINITION;
   fn_start->identifier = PG_S("_start");
+  fn_start->flags = AST_NODE_FLAG_GLOBAL;
 
   for (u64 tokens_idx = 0; tokens_idx < tokens.len;) {
     LexTokenSlice remaining = PG_SLICE_RANGE_START(tokens, tokens_idx);

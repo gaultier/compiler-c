@@ -1391,22 +1391,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     amd64_add_instruction(&section->instructions, instruction, allocator);
   } break;
 
-  case LIR_INSTRUCTION_KIND_FN_DEFINITION: {
-    PG_ASSERT(1 == lir.operands.len);
-
-    LirOperand op = PG_SLICE_AT(lir.operands, 0);
-    PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.value.len);
-
-    Amd64Instruction instruction = {
-        .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, op),
-        .origin = lir.origin,
-    };
-
-    amd64_add_instruction(&section->instructions, instruction, allocator);
-  } break;
-
   case LIR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == lir.operands.len);
 
@@ -1587,19 +1571,16 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
   }
 }
 
-static void amd64_emit_program(AsmEmitter *asm_emitter,
-                               LirInstructionSlice lirs, bool verbose,
-                               PgAllocator *allocator) {
+static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
+                                      LirFnDefinitionDyn fn_definitions,
+                                      bool verbose, PgAllocator *allocator) {
 
   {
     AsmCodeSection section_start = {
-        .flags = ASM_SECTION_FLAG_GLOBAL,
-        .name = PG_S("_start"),
+        .flags = ASM_SECTION_FLAG_GLOBAL, // TODO: Move to AST.
     };
-    amd64_emit_prolog(&section_start, allocator);
     amd64_emit_lirs_to_asm(asm_emitter, &section_start, lirs, verbose,
                            allocator);
-    amd64_emit_epilog(&section_start, allocator);
 
     *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_start;
   }
@@ -1668,7 +1649,7 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
                                           PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter =
       pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
-  amd64_emitter->emit_program = amd64_emit_program;
+  amd64_emitter->emit_fn_definitions = amd64_emit_fn_definitions;
   amd64_emitter->print_program = amd64_print_program;
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
   amd64_emitter->encode_program_text = amd64_encode_program_text;

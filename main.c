@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ IR ------------\n");
-    ir_emitter_print_instructions(ir_emitter);
+    ir_emitter_print_fn_defs(ir_emitter);
   }
 #if 0
   if (cli_opts.optimize) {
@@ -135,19 +135,14 @@ int main(int argc, char *argv[]) {
     ir_emitter_print_metadata(ir_emitter.metadata);
   }
 
-  IrInstructionSlice irs_slice =
-      PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
-
   LirEmitter lir_emitter = {
       .metadata = ir_emitter.metadata,
   };
-  lir_emit_instructions(&lir_emitter, irs_slice, allocator);
+  lir_emit_fn_definitions(&lir_emitter, ir_emitter.fn_definitions, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
-    lir_emitter_print_instructions(lir_emitter);
+    lir_emitter_print_fn_definitions(lir_emitter);
   }
-  LirInstructionSlice lirs_slice =
-      PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
 
   InterferenceGraph interference_graph = {0};
   if (lir_emitter.metadata.len > 0) {
@@ -166,8 +161,8 @@ int main(int argc, char *argv[]) {
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter = amd64_make_asm_emitter(
       interference_graph, &lir_emitter, exe_path, allocator);
-  asm_emitter->emit_program(asm_emitter, lirs_slice, cli_opts.verbose,
-                            allocator);
+  asm_emitter->emit_fn_definitions(asm_emitter, lir_emitter.fn_definitions,
+                                   cli_opts.verbose, allocator);
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM %.*s ------------\n",

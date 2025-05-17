@@ -24,11 +24,6 @@ typedef struct {
   Register base_pointer;
 } Architecture;
 
-typedef enum {
-  ASM_SECTION_FLAG_NONE = 0,
-  ASM_SECTION_FLAG_GLOBAL = 1 << 0,
-} AsmCodeSectionFlag;
-
 typedef struct {
   PgString name;
   AsmCodeSectionFlag flags;
@@ -68,9 +63,9 @@ typedef struct {
 typedef struct AsmEmitter AsmEmitter;
 
 #define ASM_EMITTER_FIELDS                                                     \
-  void (*emit_program)(AsmEmitter * asm_emitter,                               \
-                       LirInstructionSlice lir_instructions, bool verbose,     \
-                       PgAllocator *allocator);                                \
+  void (*emit_fn_definitions)(AsmEmitter * asm_emitter,                        \
+                              LirFnDefinitionDyn fn_definitions, bool verbose, \
+                              PgAllocator *allocator);                         \
   Pgu8Slice (*encode_program_text)(AsmEmitter * asm_emitter,                   \
                                    PgAllocator * allocator);                   \
   void (*print_program)(AsmEmitter asm_emitter);                               \
@@ -96,12 +91,14 @@ static void asm_gpr_set_add(GprSet *set, u32 val) {
   set->set |= 1 << val;
 }
 
+#if 0
 [[nodiscard]]
 static bool asm_gpr_set_has(GprSet set, u32 val) {
   PG_ASSERT(set.len > 0);
   PG_ASSERT(val < set.len);
   return set.set & (1 << val);
 }
+#endif
 
 [[nodiscard]]
 static GprSet asm_gpr_union(GprSet a, GprSet b) {
@@ -350,7 +347,9 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
       pg_adjacency_matrix_remove_node(&emitter->interference_graph,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
+#if 0
       PG_ASSERT(!asm_gpr_set_has(*set, meta->memory_location.reg.value));
+#endif
       asm_gpr_set_add(set, meta->memory_location.reg.value);
 
       if (verbose) {

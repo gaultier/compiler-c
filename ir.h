@@ -12,7 +12,6 @@ typedef enum {
   IR_INSTRUCTION_KIND_LABEL_DEFINITION,
   IR_INSTRUCTION_KIND_COMPARISON,
   IR_INSTRUCTION_KIND_SYSCALL,
-  IR_INSTRUCTION_KIND_FN_DEFINITION,
 } IrInstructionKind;
 
 typedef struct {
@@ -63,6 +62,16 @@ typedef struct {
 } IrInstruction;
 PG_SLICE(IrInstruction) IrInstructionSlice;
 PG_DYN(IrInstruction) IrInstructionDyn;
+
+typedef struct {
+  PgString name;
+  AstNodeFlag flags;
+
+  // TODO: Arguments.
+
+  IrInstructionDyn instructions;
+} IrFnDefinition;
+PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
 
 typedef enum {
   VREG_CONSTRAINT_NONE,
@@ -126,7 +135,8 @@ typedef struct {
 PG_DYN(Metadata) MetadataDyn;
 
 typedef struct {
-  IrInstructionDyn instructions;
+  IrFnDefinitionDyn fn_definitions;
+
   // Gets incremented.
   u32 label_id;
 
@@ -201,7 +211,8 @@ static void ir_metadata_extend_lifetime_on_use(MetadataDyn metadata,
 
 [[nodiscard]]
 static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
-                                  ErrorDyn *errors, PgAllocator *allocator) {
+                                  IrFnDefinition *fn_def, ErrorDyn *errors,
+                                  PgAllocator *allocator) {
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
@@ -209,7 +220,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     ir_metadata_start_lifetime(
         emitter->metadata, meta_idx,
-        (IrInstructionIndex){(u32)emitter->instructions.len});
+        (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {
         .kind = IR_INSTRUCTION_KIND_LOAD,
@@ -221,7 +232,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
         .n64 = node.n64,
     };
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
   case AST_NODE_KIND_ADD: {
@@ -236,14 +247,14 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     // %3 = %2 + %1
     PG_ASSERT(2 == node.operands.len);
     IrOperand lhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
-                                     errors, allocator);
+                                     fn_def, errors, allocator);
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
-                                     errors, allocator);
+                                     fn_def, errors, allocator);
 
     MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     ir_metadata_start_lifetime(
         emitter->metadata, meta_idx,
-        (IrInstructionIndex){(u32)emitter->instructions.len});
+        (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
@@ -253,7 +264,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
     IrInstructionIndex ins_idx =
         PG_SLICE_AT(emitter->metadata, meta_idx.value).lifetime_start;
 
@@ -272,15 +283,15 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_COMPARISON: {
     PG_ASSERT(2 == node.operands.len);
     IrOperand lhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
-                                     errors, allocator);
+                                     fn_def, errors, allocator);
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
-                                     errors, allocator);
+                                     fn_def, errors, allocator);
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
     MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     ir_metadata_start_lifetime(
         emitter->metadata, meta_idx,
-        (IrInstructionIndex){(u32)emitter->instructions.len});
+        (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
@@ -291,9 +302,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     *PG_DYN_PUSH(&ins.operands, allocator) = lhs;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
       ir_metadata_extend_lifetime_on_use(emitter->metadata, lhs.meta_idx,
@@ -311,7 +322,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrOperandDyn operands = {0};
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      IrOperand operand = ir_emit_ast_node(child, emitter, errors, allocator);
+      IrOperand operand =
+          ir_emit_ast_node(child, emitter, fn_def, errors, allocator);
 
       *PG_DYN_PUSH(&operands, allocator) = operand;
     }
@@ -319,16 +331,16 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     ir_metadata_start_lifetime(
         emitter->metadata, meta_idx,
-        (IrInstructionIndex){(u32)emitter->instructions.len});
+        (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
     ins.origin = node.origin;
     ins.operands = operands;
     ins.meta_idx = meta_idx;
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     for (u64 i = 0; i < node.operands.len; i++) {
       IrOperand val = PG_SLICE_AT(ins.operands, i);
       if (IR_OPERAND_KIND_VAR == val.kind) {
@@ -352,34 +364,30 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .kind = IR_OPERAND_KIND_LABEL,
           .label = label,
       };
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label;
+      *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_label;
     }
 
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      (void)ir_emit_ast_node(child, emitter, errors, allocator);
+      (void)ir_emit_ast_node(child, emitter, fn_def, errors, allocator);
     }
     return (IrOperand){0};
   }
   case AST_NODE_KIND_FN_DEFINITION: {
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
-    Label label = {.value = node.identifier};
-
-    IrInstruction ir = {
-        .kind = IR_INSTRUCTION_KIND_FN_DEFINITION,
-        .origin = node.origin,
+    PG_ASSERT(!fn_def);
+    IrFnDefinition fn_def_real = {
+        .name = node.identifier,
+        .flags = node.flags,
     };
-    *PG_DYN_PUSH(&ir.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_LABEL, // FIXME
-        .label = label,
-    };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir;
 
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      (void)ir_emit_ast_node(child, emitter, errors, allocator);
+      (void)ir_emit_ast_node(child, emitter, &fn_def_real, errors, allocator);
     }
+    // FIXME: Should be done in two-steps to enable recursion.
+    *PG_DYN_PUSH(&emitter->fn_definitions, allocator) = fn_def_real;
     return (IrOperand){0};
   }
   case AST_NODE_KIND_VAR_DEFINITION: {
@@ -387,13 +395,14 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
     AstNode rhs_node = PG_SLICE_AT(node.operands, 0);
-    IrOperand rhs = ir_emit_ast_node(rhs_node, emitter, errors, allocator);
+    IrOperand rhs =
+        ir_emit_ast_node(rhs_node, emitter, fn_def, errors, allocator);
 
     MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     PG_SLICE_AT(emitter->metadata, meta_idx.value).identifier = node.identifier;
     ir_metadata_start_lifetime(
         emitter->metadata, meta_idx,
-        (IrInstructionIndex){(u32)emitter->instructions.len});
+        (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_LOAD;
@@ -401,9 +410,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     ins.meta_idx = meta_idx;
 
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
       ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
                                          ins_idx);
@@ -426,7 +435,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     MetadataIndex meta_idx = ir_metadata_ptr_to_idx(emitter->metadata, meta);
 
-    IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     ir_metadata_extend_lifetime_on_use(emitter->metadata, meta_idx, ins_idx);
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
@@ -436,7 +445,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     ir_metadata_start_lifetime(
         emitter->metadata, meta_idx,
-        (IrInstructionIndex){(u32)emitter->instructions.len});
+        (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     {
       AstNode operand = PG_SLICE_AT(node.operands, 0);
@@ -447,11 +456,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .meta_idx = meta_idx,
           .token_kind = LEX_TOKEN_KIND_EQUAL_EQUAL,
       };
-      IrOperand cond = ir_emit_ast_node(operand, emitter, errors, allocator);
+      IrOperand cond =
+          ir_emit_ast_node(operand, emitter, fn_def, errors, allocator);
       *PG_DYN_PUSH(&ins_cmp.operands, allocator) = cond;
       *PG_DYN_PUSH(&ins_cmp.operands, allocator) =
           (IrOperand){.kind = IR_OPERAND_KIND_U64, .n64 = 0};
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
+      *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins_cmp;
     }
 
     {
@@ -469,7 +479,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) =
           (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
 
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_jump_if_false;
+      *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins_jump_if_false;
     }
 
     return (IrOperand){0};
@@ -480,11 +490,12 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     AstNode operand = PG_SLICE_AT(node.operands, 0);
     PG_ASSERT(AST_NODE_KIND_IDENTIFIER == operand.kind);
 
-    IrOperand rhs = ir_emit_ast_node(operand, emitter, errors, allocator);
+    IrOperand rhs =
+        ir_emit_ast_node(operand, emitter, fn_def, errors, allocator);
     MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
     ir_metadata_start_lifetime(
         emitter->metadata, meta_idx,
-        (IrInstructionIndex){(u32)emitter->instructions.len});
+        (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;
@@ -492,10 +503,10 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     ins.meta_idx = meta_idx;
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
+      IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
       ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
                                          ins_idx);
     } else {
@@ -512,17 +523,16 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_IF: {
     PG_ASSERT(2 == node.operands.len);
     IrOperand cond = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
-                                      errors, allocator);
+                                      fn_def, errors, allocator);
     // TODO: else.
 
     IrInstruction ir_cond_jump = {
         .kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
         .origin = node.origin,
     };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_cond_jump;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_cond_jump;
     *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
-    IrInstructionIndex ir_cond_jump_idx = {
-        (u32)(emitter->instructions.len - 1)};
+    IrInstructionIndex ir_cond_jump_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == cond.kind) {
       ir_metadata_extend_lifetime_on_use(emitter->metadata, cond.meta_idx,
@@ -534,8 +544,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     // 'then' branch.
     {
-      (void)ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter, errors,
-                             allocator);
+      (void)ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter, fn_def,
+                             errors, allocator);
       IrInstruction ir_jump = {
           .kind = IR_INSTRUCTION_KIND_JUMP,
           .origin = node.origin,
@@ -544,7 +554,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .kind = IR_OPERAND_KIND_LABEL,
           .label = branch_if_cont_label,
       };
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_jump;
+      *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_jump;
     }
 
     // 'else' branch.
@@ -557,10 +567,10 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .kind = IR_OPERAND_KIND_LABEL,
           .label = branch_else_label,
       };
-      *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label_else;
+      *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_label_else;
       if (3 == node.operands.len) {
-        (void)ir_emit_ast_node(PG_SLICE_AT(node.operands, 2), emitter, errors,
-                               allocator);
+        (void)ir_emit_ast_node(PG_SLICE_AT(node.operands, 2), emitter, fn_def,
+                               errors, allocator);
       }
     }
     IrInstruction ir_label_if_cont = {
@@ -571,10 +581,10 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
         .kind = IR_OPERAND_KIND_LABEL,
         .label = branch_if_cont_label,
     };
-    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir_label_if_cont;
+    *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_label_if_cont;
 
     IrInstruction *ir_cond_jump_backpatch =
-        PG_SLICE_AT_PTR(&emitter->instructions, ir_cond_jump_idx.value);
+        PG_SLICE_AT_PTR(&fn_def->instructions, ir_cond_jump_idx.value);
     *PG_DYN_PUSH(&ir_cond_jump_backpatch->operands, allocator) = (IrOperand){
         .kind = IR_OPERAND_KIND_LABEL,
         .label = branch_else_label,
@@ -597,7 +607,7 @@ static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
   emitter->label_program_epilog_die.value = PG_S("__builtin_die");
   emitter->label_program_epilog_exit.value = PG_S("__builtin_exit");
 
-  (void)ir_emit_ast_node(node, emitter, errors, allocator);
+  (void)ir_emit_ast_node(node, emitter, nullptr, errors, allocator);
 }
 
 #if 0
@@ -1054,8 +1064,9 @@ static void ir_emitter_print_meta(Metadata meta) {
 #endif
 }
 
-static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
-  IrInstruction ins = PG_SLICE_AT(emitter.instructions, i);
+static void ir_emitter_print_instruction(IrEmitter emitter,
+                                         IrFnDefinition fn_def, u32 i) {
+  IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
 
 #if 0
   if (ins.tombstone) {
@@ -1187,15 +1198,6 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
     PG_ASSERT(op.label.value.len);
     ir_print_operand(op, emitter.metadata);
   } break;
-  case IR_INSTRUCTION_KIND_FN_DEFINITION: {
-    PG_ASSERT(1 == ins.operands.len);
-    PG_ASSERT(0 == ins.meta_idx.value);
-
-    IrOperand op = PG_SLICE_AT(ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.value.len);
-    ir_print_operand(op, emitter.metadata);
-  } break;
   default:
     PG_ASSERT(0);
   }
@@ -1211,9 +1213,17 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
 #endif
 }
 
-static void ir_emitter_print_instructions(IrEmitter emitter) {
-  for (u64 i = 0; i < emitter.instructions.len; i++) {
-    ir_emitter_print_instruction(emitter, (u32)i);
+static void ir_emitter_print_fn_instructions(IrEmitter emitter,
+                                             IrFnDefinition fn_def) {
+  for (u64 i = 0; i < fn_def.instructions.len; i++) {
+    ir_emitter_print_instruction(emitter, fn_def, (u32)i);
+  }
+}
+
+static void ir_emitter_print_fn_defs(IrEmitter emitter) {
+  for (u64 i = 0; i < emitter.fn_definitions.len; i++) {
+    IrFnDefinition fn_def = PG_SLICE_AT(emitter.fn_definitions, i);
+    ir_emitter_print_instruction(emitter, fn_def, (u32)i);
   }
 }
 
