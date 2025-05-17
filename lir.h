@@ -349,7 +349,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     IrOperand lhs_ir_op = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_VAR == lhs_ir_op.kind);
 
-    PG_SLICE_AT(emitter->metadata, ir_ins.meta_idx.value)
+    PG_SLICE_AT(emitter->metadata, lhs_ir_op.meta_idx.value)
         .virtual_register.addressable = true;
 
     PG_ASSERT(lhs_ir_op.meta_idx.value != ir_ins.meta_idx.value);
