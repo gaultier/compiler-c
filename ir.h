@@ -36,8 +36,12 @@ typedef enum {
 } IrOperandKind;
 
 typedef struct {
+  PgString value;
+} LabelName;
+
+typedef struct {
   u32 value;
-} IrLabelId;
+} LabelId;
 
 typedef struct IrOperand IrOperand;
 PG_SLICE(IrOperand) IrOperandSlice;
@@ -52,7 +56,7 @@ struct IrOperand {
   union {
     u64 n64;
     IrMetadataIndex meta_idx;
-    IrLabelId label;
+    LabelId label;
   };
 };
 
@@ -141,19 +145,19 @@ PG_DYN(IrMetadata) IrMetadataDyn;
 typedef struct {
   IrInstructionDyn instructions;
   // Gets incremented.
-  IrLabelId label_id;
+  LabelId label_id;
   // Gets incremented.
   IrVarId var_id;
 
   IrMetadataDyn metadata;
 
-  IrLabelId label_program_epilog_die;
-  IrLabelId label_program_epilog_exit;
+  LabelId label_program_epilog_die;
+  LabelId label_program_epilog_exit;
 } IrEmitter;
 
 [[nodiscard]]
-static IrLabelId ir_emitter_next_label_id(IrEmitter *emitter) {
-  IrLabelId id = {.value = ++emitter->label_id.value};
+static LabelId ir_emitter_next_label_id(IrEmitter *emitter) {
+  LabelId id = {.value = ++emitter->label_id.value};
   return id;
 }
 
@@ -355,7 +359,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     if (!pg_string_is_empty(node.identifier)) {
       // FIXME: The actual label from the source gets lost.
 
-      IrLabelId label_id = ir_emitter_next_label_id(emitter);
+      LabelId label_id = ir_emitter_next_label_id(emitter);
+      PG_ASSERT(label_id.value);
 
       IrInstruction ir_label = {
           .kind = IR_INSTRUCTION_KIND_LABEL,
@@ -465,6 +470,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           .kind = IR_OPERAND_KIND_LABEL,
           .label = emitter->label_program_epilog_die,
       };
+      PG_ASSERT(jump_target.label.value);
       *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) = jump_target;
 
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_jump_if_false;
@@ -527,8 +533,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
                                          ir_cond_jump_idx);
     }
 
-    IrLabelId branch_if_cont_label = ir_emitter_next_label_id(emitter);
-    IrLabelId branch_else_label = ir_emitter_next_label_id(emitter);
+    LabelId branch_if_cont_label = ir_emitter_next_label_id(emitter);
+    LabelId branch_else_label = ir_emitter_next_label_id(emitter);
 
     // 'then' branch.
     {

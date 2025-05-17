@@ -13,7 +13,7 @@ PG_SLICE(InterferenceNodeIndex) InterferenceNodeIndexSlice;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
 typedef struct {
-  IrLabelId label;
+  LabelId label;
   u64 address_text;
 } LabelAddress;
 PG_SLICE(LabelAddress) LabelAddressSlice;
@@ -45,7 +45,7 @@ typedef struct {
   union {
     IrMetadataIndex meta_idx;
     u64 immediate;
-    IrLabelId label;
+    LabelId label;
   };
 } LirOperand;
 PG_SLICE(LirOperand) LirOperandSlice;

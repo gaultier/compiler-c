@@ -23,7 +23,7 @@ typedef struct {
     Register reg;
     u64 immediate;
     Amd64EffectiveAddress effective_address;
-    IrLabelId label;
+    LabelId label;
   };
 } Amd64Operand;
 PG_SLICE(Amd64Operand) Amd64OperandSlice;
@@ -272,6 +272,7 @@ static void amd64_print_operand(Amd64Operand operand) {
            operand.effective_address.displacement);
   } break;
   case AMD64_OPERAND_KIND_LABEL:
+    PG_ASSERT(operand.label.value);
     printf(".%" PRIu32, operand.label.value);
     break;
   default:
@@ -831,7 +832,7 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
                                         PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP_IF_EQ == instruction.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
-  PG_ASSERT(instruction.lhs.label.value > 0);
+  PG_ASSERT(instruction.lhs.label.value);
 
   u8 opcode1 = 0x0f;
   *PG_DYN_PUSH(sb, allocator) = opcode1;
@@ -854,7 +855,7 @@ static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP == instruction.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
-  PG_ASSERT(instruction.lhs.label.value > 0);
+  PG_ASSERT(instruction.lhs.label.value);
 
   u8 opcode = 0xe9;
   *PG_DYN_PUSH(sb, allocator) = opcode;
@@ -972,7 +973,7 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     break;
 
   case AMD64_INSTRUCTION_KIND_LABEL:
-    PG_ASSERT(instruction.lhs.label.value > 0);
+    PG_ASSERT(instruction.lhs.label.value);
     *PG_DYN_PUSH(&asm_emitter->program.label_addresses, allocator) =
         (LabelAddress){
             .label = instruction.lhs.label,
@@ -1062,11 +1063,13 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
         .kind = AMD64_OPERAND_KIND_IMMEDIATE,
         .immediate = lir_op.immediate,
     };
-  case LIR_OPERAND_KIND_LABEL:
+  case LIR_OPERAND_KIND_LABEL: {
+    PG_ASSERT(lir_op.label.value);
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_LABEL,
         .label = lir_op.label,
     };
+  }
   case LIR_OPERAND_KIND_NONE:
   default:
     PG_ASSERT(0);
@@ -1324,6 +1327,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand label = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == label.kind);
+    PG_ASSERT(label.label.value);
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
         .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, label),
@@ -1339,6 +1344,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand label = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == label.kind);
+    PG_ASSERT(label.label.value);
+
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL,
         .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, label),
@@ -1353,6 +1360,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand label = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == label.kind);
+    PG_ASSERT(label.label.value);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
@@ -1540,89 +1548,6 @@ static void amd64_emit_program(AsmEmitter *asm_emitter,
     amd64_emit_epilog(&section_start, allocator);
 
     *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_start;
-  }
-
-  {
-    AsmCodeSection section_exit = {
-        .name = PG_S("exit"),
-    };
-    Amd64Instruction ins_mov_0 = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = amd64_arch.syscall_num,
-            },
-        .rhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                //  Only on amd64.
-                .immediate = 60,
-            },
-    };
-    amd64_add_instruction(&section_exit.instructions, ins_mov_0, allocator);
-
-    Amd64Instruction ins_mov_1 = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = PG_SLICE_AT(amd64_arch.syscall_calling_convention, 0),
-            },
-        .rhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                .immediate = 0,
-            },
-    };
-    amd64_add_instruction(&section_exit.instructions, ins_mov_1, allocator);
-
-    Amd64Instruction ins_syscall = {
-        .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-    };
-    amd64_add_instruction(&section_exit.instructions, ins_syscall, allocator);
-    *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_exit;
-  }
-  {
-    AsmCodeSection section_die = {
-        .name = PG_S("die"),
-    };
-    Amd64Instruction ins_mov_0 = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = amd64_arch.syscall_num,
-            },
-        .rhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                //  Only on amd64.
-                .immediate = 60,
-            },
-    };
-    amd64_add_instruction(&section_die.instructions, ins_mov_0, allocator);
-
-    Amd64Instruction ins_mov_1 = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .reg = PG_SLICE_AT(amd64_arch.syscall_calling_convention, 0),
-            },
-        .rhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                .immediate = 1,
-            },
-    };
-    amd64_add_instruction(&section_die.instructions, ins_mov_1, allocator);
-
-    Amd64Instruction ins_syscall = {
-        .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
-    };
-    amd64_add_instruction(&section_die.instructions, ins_syscall, allocator);
-    *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section_die;
   }
 
   amd64_sanity_check_program((Amd64Emitter *)asm_emitter);
