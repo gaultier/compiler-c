@@ -1562,8 +1562,9 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
     printf("\n------------ Colored interference graph ------------\n");
     lir_print_interference_graph(fn_def.interference_graph, fn_def.metadata);
 
-    printf("\n------------ Adjacency matrix of interference graph "
-           "------------\n\n");
+    printf("\n------------ Adjacency matrix of interference graph %.*s"
+           "------------\n\n",
+           (i32)fn_def.name.len, fn_def.name.data);
     pg_adjacency_matrix_print(fn_def.interference_graph);
   }
   asm_sanity_check_interference_graph(fn_def.interference_graph,

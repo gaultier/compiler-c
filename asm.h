@@ -349,8 +349,9 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
 
   if (verbose) {
     printf("\n------------ Adjacency matrix of interference graph before "
-           "pre-coloring"
-           "------------\n\n");
+           "pre-coloring %.*s"
+           "------------\n\n",
+           (i32)fn_def->name.len, fn_def->name.data);
     pg_adjacency_matrix_print(fn_def->interference_graph);
   }
   GprSet gprs_precolored = {
@@ -361,8 +362,9 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
                            &gprs_precolored, verbose);
   if (verbose) {
     printf("\n------------ Adjacency matrix of interference graph after "
-           "pre-coloring"
-           "------------\n\n");
+           "pre-coloring %.*s"
+           "------------\n\n",
+           (i32)fn_def->name.len, fn_def->name.data);
     for (u64 i = 0; i < fn_def->interference_graph.nodes_count; i++) {
       bool removed = pg_bitfield_get(node_tombstones_bitfield, i);
       printf("%s%lu%s ", removed ? "\x1B[9m" : "", i, removed ? "\x1B[0m" : "");
