@@ -960,10 +960,18 @@ static void amd64_encode_instruction_sete(Pgu8Dyn *sb,
                                           PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_SET_IF_EQ == instruction.kind);
 
-  (void)sb;
-  (void)allocator;
+  u8 opcode1 = 0x0F;
+  u8 opcode2 = 0x94;
+  *PG_DYN_PUSH(sb, allocator) = opcode1;
+  *PG_DYN_PUSH(sb, allocator) = opcode2;
 
-  // PG_ASSERT(0 && "todo");
+  PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind);
+  Register reg = instruction.lhs.reg;
+
+  u8 modrm = (0b11 << 6) |
+
+             (u8)(amd64_encode_register_value(reg) & 0b111);
+  *PG_DYN_PUSH(sb, allocator) = modrm;
 }
 
 static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
