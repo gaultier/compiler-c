@@ -310,16 +310,17 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
-#if 0
+
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_var_extend_lifetime_on_use(emitter->metadata, lhs.var, ins_idx);
+      ir_metadata_extend_lifetime_on_use(emitter->metadata, lhs.meta_idx,
+                                         ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_var_extend_lifetime_on_use(emitter->metadata, rhs.var, ins_idx);
+      ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
+                                         ins_idx);
     }
-#endif
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }

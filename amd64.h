@@ -175,7 +175,9 @@ typedef struct {
   Amd64InstructionKind kind;
   Amd64Operand lhs, rhs;
   Origin origin;
+#if 0
   bool tombstone; // TODO: Consider if necessary.
+#endif
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
@@ -1375,15 +1377,20 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
   case LIR_INSTRUCTION_KIND_CMP: {
     PG_ASSERT(3 == lir.operands.len);
 
-    LirOperand res = PG_SLICE_AT(lir.operands, 0);
-    (void)res; // TODO: Use?
+    {
+      LirOperand res = PG_SLICE_AT(lir.operands, 0);
+      IrMetadata res_meta = PG_SLICE_AT(emitter->metadata, res.meta_idx.value);
+      PG_ASSERT(MEMORY_LOCATION_KIND_STATUS_REGISTER ==
+                res_meta.memory_location.kind);
+    }
+
     LirOperand lhs = PG_SLICE_AT(lir.operands, 1);
     LirOperand rhs = PG_SLICE_AT(lir.operands, 2);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_CMP,
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
         .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
         .origin = lir.origin,
     };
 
@@ -1425,11 +1432,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     };
     amd64_add_instruction(&section->instructions, ins_store, allocator);
 
-  } break;
-
-  case LIR_INSTRUCTION_KIND_COMPARISON: {
-    PG_ASSERT(2 == lir.operands.len);
-    PG_ASSERT(0);
   } break;
 
   case LIR_INSTRUCTION_KIND_NONE:
@@ -1528,9 +1530,11 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
 
     amd64_add_instruction(&section->instructions, stack_add, allocator);
   } else {
+#if 0
     PG_C_ARRAY_AT_PTR((Amd64Instruction *)section->instructions.data,
                       section->instructions.len, stack_sub_instruction_idx)
         ->tombstone = true;
+#endif
   }
 }
 

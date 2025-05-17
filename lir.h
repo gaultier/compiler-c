@@ -29,7 +29,6 @@ typedef enum {
   LIR_INSTRUCTION_KIND_LABEL_DEFINITION,
   LIR_INSTRUCTION_KIND_CMP,
   LIR_INSTRUCTION_KIND_ADDRESS_OF,
-  LIR_INSTRUCTION_KIND_COMPARISON,
   LIR_INSTRUCTION_KIND_SYSCALL,
 } LirInstructionKind;
 
@@ -127,10 +126,6 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
     switch (ins.kind) {
     case LIR_INSTRUCTION_KIND_ADD:
       printf("add ");
-      break;
-    case LIR_INSTRUCTION_KIND_COMPARISON:
-      printf("cmp-%s ",
-             LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
       break;
     case LIR_INSTRUCTION_KIND_SUB:
       printf("sub ");
