@@ -130,37 +130,19 @@ int main(int argc, char *argv[]) {
     ir_emitter_trim_tombstone_items(&ir_emitter);
   }
 #endif
-  if (cli_opts.verbose) {
-    printf("\n------------ IR metadata ------------\n");
-    ir_emitter_print_metadata(ir_emitter.metadata);
-  }
 
-  LirEmitter lir_emitter = {
-      .metadata = ir_emitter.metadata,
-  };
-  lir_emit_fn_definitions(&lir_emitter, ir_emitter.fn_definitions, allocator);
+  LirEmitter lir_emitter = {0};
+  lir_emit_fn_definitions(&lir_emitter, ir_emitter.fn_definitions,
+                          cli_opts.verbose, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_fn_definitions(lir_emitter);
   }
 
-  InterferenceGraph interference_graph = {0};
-  if (lir_emitter.metadata.len > 0) {
-    interference_graph =
-        asm_build_interference_graph(lir_emitter.metadata, allocator);
-  }
-
-  if (cli_opts.verbose) {
-    printf("\n------------ Interference graph ------------\n");
-    asm_print_interference_graph(interference_graph, lir_emitter.metadata);
-  }
-  asm_sanity_check_interference_graph(interference_graph, lir_emitter.metadata,
-                                      false);
-
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
-  AsmEmitter *asm_emitter = amd64_make_asm_emitter(
-      interference_graph, &lir_emitter, exe_path, allocator);
+  AsmEmitter *asm_emitter =
+      amd64_make_asm_emitter(&lir_emitter, exe_path, allocator);
   asm_emitter->emit_fn_definitions(asm_emitter, lir_emitter.fn_definitions,
                                    cli_opts.verbose, allocator);
 

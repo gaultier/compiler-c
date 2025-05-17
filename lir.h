@@ -58,6 +58,12 @@ typedef struct {
 } LirInstruction;
 PG_DYN(LirInstruction) LirInstructionDyn;
 
+// Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
+// between i and j), stored as a bitfield of the right-upper half (without the
+// diagonal).
+// Each row is a memory location (see above field).
+typedef PgAdjacencyMatrix InterferenceGraph;
+
 typedef struct {
   PgString name;
   AstNodeFlag flags;
@@ -65,12 +71,13 @@ typedef struct {
   // TODO: Arguments.
 
   LirInstructionDyn instructions;
+  MetadataDyn metadata;
+  InterferenceGraph interference_graph;
 } LirFnDefinition;
 PG_DYN(LirFnDefinition) LirFnDefinitionDyn;
 
 typedef struct {
   LirFnDefinitionDyn fn_definitions;
-  MetadataDyn metadata;
 } LirEmitter;
 
 static void lir_print_operand(LirOperand op, MetadataDyn metadata) {
@@ -95,8 +102,7 @@ static void lir_print_operand(LirOperand op, MetadataDyn metadata) {
   }
 }
 
-static void lir_emitter_print_fn_definition(LirEmitter emitter,
-                                            LirFnDefinition fn_def) {
+static void lir_emitter_print_fn_definition(LirFnDefinition fn_def) {
   PG_ASSERT(fn_def.name.len);
 
   printf("fn %.*s() {\n", (i32)fn_def.name.len, fn_def.name.data);
@@ -150,7 +156,7 @@ static void lir_emitter_print_fn_definition(LirEmitter emitter,
 
     for (u64 j = 0; j < ins.operands.len; j++) {
       LirOperand op = PG_SLICE_AT(ins.operands, j);
-      lir_print_operand(op, emitter.metadata);
+      lir_print_operand(op, fn_def.metadata);
 
       if (j + 1 < ins.operands.len) {
         printf(", ");
@@ -168,7 +174,7 @@ static void lir_emitter_print_fn_definition(LirEmitter emitter,
 static void lir_emitter_print_fn_definitions(LirEmitter emitter) {
   for (u64 i = 0; i < emitter.fn_definitions.len; i++) {
     LirFnDefinition fn_def = PG_SLICE_AT(emitter.fn_definitions, i);
-    lir_emitter_print_fn_definition(emitter, fn_def);
+    lir_emitter_print_fn_definition(fn_def);
   }
 }
 
@@ -272,8 +278,8 @@ static LirOperand lir_ir_operand_to_lir_operand(IrOperand ir_op) {
   }
 }
 
-static void lir_emit_instruction(LirEmitter *emitter, LirFnDefinition *fn_def,
-                                 IrInstruction ir_ins, PgAllocator *allocator) {
+static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
+                                 PgAllocator *allocator) {
 #if 0
   PG_ASSERT(!ir_ins.tombstone);
 #endif
@@ -334,7 +340,7 @@ static void lir_emit_instruction(LirEmitter *emitter, LirFnDefinition *fn_def,
           (0 == j)
               ? VREG_CONSTRAINT_SYSCALL_NUM
               : (VirtualRegisterConstraint)(VREG_CONSTRAINT_SYSCALL0 + j - 1);
-      PG_SLICE_AT(emitter->metadata, val.meta_idx.value)
+      PG_SLICE_AT(fn_def->metadata, val.meta_idx.value)
           .virtual_register.constraint = virt_reg_constraint;
     }
 
@@ -352,7 +358,7 @@ static void lir_emit_instruction(LirEmitter *emitter, LirFnDefinition *fn_def,
     IrOperand lhs_ir_op = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_VAR == lhs_ir_op.kind);
 
-    PG_SLICE_AT(emitter->metadata, lhs_ir_op.meta_idx.value)
+    PG_SLICE_AT(fn_def->metadata, lhs_ir_op.meta_idx.value)
         .virtual_register.addressable = true;
 
     PG_ASSERT(lhs_ir_op.meta_idx.value != ir_ins.meta_idx.value);
@@ -438,7 +444,7 @@ static void lir_emit_instruction(LirEmitter *emitter, LirFnDefinition *fn_def,
     PG_ASSERT(2 == ir_ins.operands.len);
     PG_ASSERT(ir_ins.meta_idx.value);
 
-    PG_SLICE_AT(emitter->metadata, ir_ins.meta_idx.value)
+    PG_SLICE_AT(fn_def->metadata, ir_ins.meta_idx.value)
         .virtual_register.constraint = VREG_CONSTRAINT_CONDITION_FLAGS;
 
     IrOperand ir_lhs = PG_SLICE_AT(ir_ins.operands, 0);
@@ -469,8 +475,88 @@ static void lir_emit_instruction(LirEmitter *emitter, LirFnDefinition *fn_def,
   }
 }
 
+[[nodiscard]]
+static InterferenceGraph lir_build_interference_graph(MetadataDyn metadata,
+                                                      PgAllocator *allocator) {
+  InterferenceGraph graph = {0};
+
+  if (1 == metadata.len) {
+    return graph;
+  }
+
+  graph = pg_adjacency_matrix_make(metadata.len, allocator);
+  PG_ASSERT(metadata.len == graph.nodes_count);
+
+  for (u64 i = 0; i < metadata.len; i++) {
+    Metadata meta = PG_SLICE_AT(metadata, i);
+#if 0
+    PG_ASSERT(!meta.tombstone);
+#endif
+    PG_ASSERT(meta.lifetime_start.value <= meta.lifetime_end.value);
+    PG_ASSERT(i == 0 || meta.virtual_register.value);
+
+    // Interferes with no one (unused).
+    if (meta.lifetime_start.value == meta.lifetime_end.value) {
+      continue;
+    }
+
+    for (u64 j = i + 1; j < metadata.len; j++) {
+      Metadata it = PG_SLICE_AT(metadata, j);
+      PG_ASSERT(it.lifetime_start.value <= it.lifetime_end.value);
+#if 0
+      PG_ASSERT(!it.tombstone);
+#endif
+
+      PG_ASSERT(meta.virtual_register.value != it.virtual_register.value);
+
+      // Interferes with no one (unused).
+      if (it.lifetime_start.value == it.lifetime_end.value) {
+        continue;
+      }
+
+      // `it` strictly before `meta`.
+      if (it.lifetime_end.value < meta.lifetime_start.value) {
+        continue;
+      }
+
+      // `it` strictly after `meta`.
+      if (meta.lifetime_end.value < it.lifetime_start.value) {
+        continue;
+      }
+
+      // Interferes: add an edge between the two nodes.
+
+      pg_adjacency_matrix_add_edge(&graph, j, i);
+    }
+  }
+
+  return graph;
+}
+
+static void lir_print_interference_graph(InterferenceGraph graph,
+                                         MetadataDyn metadata) {
+
+  printf("nodes_count=%lu\n\n", graph.nodes_count);
+
+  for (u64 row = 0; row < graph.nodes_count; row++) {
+    for (u64 col = 0; col < row; col++) {
+      bool edge = pg_adjacency_matrix_has_edge(graph, row, col);
+      if (!edge) {
+        continue;
+      }
+
+      Metadata a_meta = PG_SLICE_AT(metadata, row);
+      Metadata b_meta = PG_SLICE_AT(metadata, col);
+      ir_print_var(a_meta);
+      printf(" -> ");
+      ir_print_var(b_meta);
+      printf("\n");
+    }
+  }
+}
+
 static void lir_emit_fn_definition(LirEmitter *emitter,
-                                   IrFnDefinition ir_fn_def,
+                                   IrFnDefinition ir_fn_def, bool verbose,
                                    PgAllocator *allocator) {
   LirFnDefinition lir_fn_def = {
       .name = ir_fn_def.name,
@@ -478,17 +564,29 @@ static void lir_emit_fn_definition(LirEmitter *emitter,
   };
 
   for (u64 i = 0; i < ir_fn_def.instructions.len; i++) {
-    lir_emit_instruction(emitter, &lir_fn_def,
-                         PG_SLICE_AT(ir_fn_def.instructions, i), allocator);
+    lir_emit_instruction(&lir_fn_def, PG_SLICE_AT(ir_fn_def.instructions, i),
+                         allocator);
   }
+
+  if (lir_fn_def.metadata.len > 0) {
+    lir_fn_def.interference_graph =
+        lir_build_interference_graph(lir_fn_def.metadata, allocator);
+  }
+
+  if (verbose) {
+    printf("\n------------ Interference graph ------------\n");
+    lir_print_interference_graph(lir_fn_def.interference_graph,
+                                 lir_fn_def.metadata);
+  }
+
   *PG_DYN_PUSH(&emitter->fn_definitions, allocator) = lir_fn_def;
 }
 
 static void lir_emit_fn_definitions(LirEmitter *emitter,
                                     IrFnDefinitionDyn ir_fn_definitions,
-                                    PgAllocator *allocator) {
+                                    bool verbose, PgAllocator *allocator) {
   for (u64 i = 0; i < ir_fn_definitions.len; i++) {
     IrFnDefinition ir_fn_def = PG_SLICE_AT(ir_fn_definitions, i);
-    lir_emit_fn_definition(emitter, ir_fn_def, allocator);
+    lir_emit_fn_definition(emitter, ir_fn_def, verbose, allocator);
   }
 }

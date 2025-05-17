@@ -1038,15 +1038,14 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   }
 }
 
-[[nodiscard]] static Amd64Operand
-amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
-                                           LirOperand lir_op) {
+[[nodiscard]] static Amd64Operand amd64_convert_lir_operand_to_amd64_operand(
+    Amd64Emitter *emitter, MetadataDyn metadata, LirOperand lir_op) {
   (void)emitter;
 
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
     MemoryLocation mem_loc =
-        PG_SLICE_AT(emitter->metadata, lir_op.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, lir_op.meta_idx.value).memory_location;
     switch (mem_loc.kind) {
     case MEMORY_LOCATION_KIND_REGISTER: {
       PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
@@ -1141,7 +1140,8 @@ static void amd64_sanity_check_program(Amd64Emitter *emitter) {
 }
 
 static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
-                             LirInstruction lir, PgAllocator *allocator) {
+                             MetadataDyn metadata, LirInstruction lir,
+                             PgAllocator *allocator) {
   switch (lir.kind) {
   case LIR_INSTRUCTION_KIND_ADD: {
     PG_ASSERT(2 == lir.operands.len);
@@ -1150,14 +1150,16 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
     MemoryLocation lhs_mem_loc =
-        PG_SLICE_AT(emitter->metadata, lhs.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, lhs.meta_idx.value).memory_location;
 
     // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
     if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_ADD,
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            rhs),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            lhs),
           .origin = lir.origin,
       };
       amd64_add_instruction(&section->instructions, instruction, allocator);
@@ -1174,7 +1176,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                 // TODO: pick one of the spill registers?
                 .reg = amd64_spill_registers[0], // TODO: mark it as used?
             },
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+        .rhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
     };
     amd64_add_instruction(&section->instructions, ins_load, allocator);
 
@@ -1182,13 +1185,15 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
         .kind = AMD64_INSTRUCTION_KIND_ADD,
         .origin = lir.origin,
         .lhs = ins_load.lhs,
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+        .rhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
     };
     amd64_add_instruction(&section->instructions, ins_add, allocator);
 
     Amd64Instruction ins_store = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .lhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, lhs),
         .rhs = ins_load.lhs,
         .origin = lir.origin,
     };
@@ -1203,15 +1208,17 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
 
     MemoryLocation lhs_mem_loc =
-        PG_SLICE_AT(emitter->metadata, lhs.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, lhs.meta_idx.value).memory_location;
 
     PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind &&
               "todo: load/store");
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_SUB,
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
+        .rhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
+        .lhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, lhs),
         .origin = lir.origin,
     };
 
@@ -1226,17 +1233,18 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
     MemoryLocation dst_mem_loc =
-        PG_SLICE_AT(emitter->metadata, dst.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, dst.meta_idx.value).memory_location;
 
     // Easy case: `sete rax` or `sete [rbp-8]`
     if (LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind) {
       MemoryLocation src_mem_loc =
-          PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
+          PG_SLICE_AT(metadata, src.meta_idx.value).memory_location;
 
       if (MEMORY_LOCATION_KIND_STATUS_REGISTER == src_mem_loc.kind) {
         Amd64Instruction ins = {
             .kind = AMD64_INSTRUCTION_KIND_SET_IF_EQ,
-            .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
+            .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                              dst),
             .origin = lir.origin,
         };
         amd64_add_instruction(&section->instructions, ins, allocator);
@@ -1249,8 +1257,10 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
         LIR_OPERAND_KIND_IMMEDIATE == src.kind) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            dst),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            src),
           .origin = lir.origin,
       };
 
@@ -1270,13 +1280,15 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                   // TODO: pick one of the spill registers?
                   .reg = amd64_spill_registers[0], // TODO: mark it as used?
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            src),
       };
       amd64_add_instruction(&section->instructions, ins_load, allocator);
 
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            dst),
           .rhs = ins_load.lhs,
           .origin = lir.origin,
       };
@@ -1287,15 +1299,17 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
     MemoryLocation src_mem_loc =
-        PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, src.meta_idx.value).memory_location;
 
     // Easy case: at least one memory location is a register.
     if ((MEMORY_LOCATION_KIND_REGISTER == dst_mem_loc.kind ||
          MEMORY_LOCATION_KIND_REGISTER == src_mem_loc.kind)) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            dst),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            src),
           .origin = lir.origin,
       };
 
@@ -1314,13 +1328,15 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                   // TODO: pick one of the spill registers?
                   .reg = amd64_spill_registers[0], // TODO: mark it as used?
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            src),
       };
       amd64_add_instruction(&section->instructions, ins_load, allocator);
 
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
+          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            dst),
           .rhs = ins_load.lhs,
           .origin = lir.origin,
       };
@@ -1341,7 +1357,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                           .displacement = -(i32)dst_mem_loc.base_pointer_offset,
                       },
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
+          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+                                                            src),
       };
       amd64_add_instruction(&section->instructions, ins_store, allocator);
     } else {
@@ -1367,7 +1384,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, op),
+        .lhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, op),
         .origin = lir.origin,
     };
 
@@ -1384,7 +1402,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, op),
+        .lhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, op),
         .origin = lir.origin,
     };
 
@@ -1400,7 +1419,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, op),
+        .lhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, op),
         .origin = lir.origin,
     };
 
@@ -1412,7 +1432,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     {
       LirOperand res = PG_SLICE_AT(lir.operands, 0);
-      Metadata res_meta = PG_SLICE_AT(emitter->metadata, res.meta_idx.value);
+      Metadata res_meta = PG_SLICE_AT(metadata, res.meta_idx.value);
       PG_ASSERT(MEMORY_LOCATION_KIND_STATUS_REGISTER ==
                 res_meta.memory_location.kind);
     }
@@ -1422,8 +1442,10 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_CMP,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, lhs),
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, rhs),
+        .lhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, lhs),
+        .rhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
         .origin = lir.origin,
     };
 
@@ -1439,7 +1461,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
 
     MemoryLocation src_mem_loc =
-        PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, src.meta_idx.value).memory_location;
 
     PG_ASSERT(MEMORY_LOCATION_KIND_STACK == src_mem_loc.kind);
 
@@ -1452,14 +1474,16 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                 // TODO: pick one of the spill registers?
                 .reg = amd64_spill_registers[0], // TODO: mark it as used?
             },
-        .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, src),
+        .rhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, src),
     };
     PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins_load.rhs.kind);
     amd64_add_instruction(&section->instructions, ins_load, allocator);
 
     Amd64Instruction ins_store = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, dst),
+        .lhs =
+            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, dst),
         .rhs = ins_load.lhs,
         .origin = lir.origin,
     };
@@ -1527,22 +1551,19 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
   amd64_add_instruction(&section.instructions, stack_sub, allocator);
   u64 stack_sub_instruction_idx = section.instructions.len - 1;
 
-  asm_color_interference_graph(asm_emitter, verbose, allocator);
-
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
-    asm_print_interference_graph(amd64_emitter->interference_graph,
-                                 amd64_emitter->metadata);
+    lir_print_interference_graph(fn_def.interference_graph, fn_def.metadata);
 
     printf("\n------------ Adjacency matrix of interference graph "
            "------------\n\n");
-    pg_adjacency_matrix_print(amd64_emitter->interference_graph);
+    pg_adjacency_matrix_print(fn_def.interference_graph);
   }
-  asm_sanity_check_interference_graph(amd64_emitter->interference_graph,
-                                      amd64_emitter->metadata, true);
+  asm_sanity_check_interference_graph(fn_def.interference_graph,
+                                      fn_def.metadata, true);
 
   for (u64 i = 0; i < fn_def.instructions.len; i++) {
-    amd64_lir_to_asm(amd64_emitter, &section,
+    amd64_lir_to_asm(amd64_emitter, &section, fn_def.metadata,
                      PG_SLICE_AT(fn_def.instructions, i), allocator);
   }
 
@@ -1587,6 +1608,7 @@ static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
 
   for (u64 i = 0; i < fn_definitions.len; i++) {
     LirFnDefinition fn_def = PG_SLICE_AT(fn_definitions, i);
+    asm_color_interference_graph(asm_emitter, &fn_def, verbose, allocator);
     AsmCodeSection section =
         amd64_emit_fn_definition(asm_emitter, fn_def, verbose, allocator);
 
@@ -1651,8 +1673,7 @@ static Pgu8Slice amd64_encode_program_text(AsmEmitter *asm_emitter,
 }
 
 [[nodiscard]]
-static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
-                                          LirEmitter *lir_emitter,
+static AsmEmitter *amd64_make_asm_emitter(LirEmitter *lir_emitter,
                                           PgString exe_path,
                                           PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter =
@@ -1663,8 +1684,6 @@ static AsmEmitter *amd64_make_asm_emitter(InterferenceGraph interference_graph,
   amd64_emitter->encode_program_text = amd64_encode_program_text;
   amd64_emitter->print_register = amd64_print_register;
 
-  amd64_emitter->metadata = lir_emitter->metadata;
-  amd64_emitter->interference_graph = interference_graph;
   amd64_emitter->lir_emitter = lir_emitter;
 
   amd64_emitter->gprs_count = amd64_register_allocator_gprs_slice.len;

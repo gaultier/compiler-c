@@ -63,16 +63,6 @@ typedef struct {
 PG_SLICE(IrInstruction) IrInstructionSlice;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
-typedef struct {
-  PgString name;
-  AstNodeFlag flags;
-
-  // TODO: Arguments.
-
-  IrInstructionDyn instructions;
-} IrFnDefinition;
-PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
-
 typedef enum {
   VREG_CONSTRAINT_NONE,
   VREG_CONSTRAINT_CONDITION_FLAGS,
@@ -135,12 +125,21 @@ typedef struct {
 PG_DYN(Metadata) MetadataDyn;
 
 typedef struct {
+  PgString name;
+  AstNodeFlag flags;
+
+  // TODO: Arguments.
+
+  IrInstructionDyn instructions;
+  MetadataDyn metadata;
+} IrFnDefinition;
+PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
+
+typedef struct {
   IrFnDefinitionDyn fn_definitions;
 
   // Gets incremented.
   u32 label_id;
-
-  MetadataDyn metadata;
 
   Label label_program_epilog_die;
   Label label_program_epilog_exit;
@@ -217,9 +216,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_U64: {
-    MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
     ir_metadata_start_lifetime(
-        emitter->metadata, meta_idx,
+        fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {
@@ -251,9 +250,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
                                      fn_def, errors, allocator);
 
-    MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
     ir_metadata_start_lifetime(
-        emitter->metadata, meta_idx,
+        fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
@@ -266,14 +265,14 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
     IrInstructionIndex ins_idx =
-        PG_SLICE_AT(emitter->metadata, meta_idx.value).lifetime_start;
+        PG_SLICE_AT(fn_def->metadata, meta_idx.value).lifetime_start;
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_metadata_extend_lifetime_on_use(emitter->metadata, lhs.meta_idx,
+      ir_metadata_extend_lifetime_on_use(fn_def->metadata, lhs.meta_idx,
                                          ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
+      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.meta_idx,
                                          ins_idx);
     }
 
@@ -288,9 +287,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
                                      fn_def, errors, allocator);
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
-    MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
     ir_metadata_start_lifetime(
-        emitter->metadata, meta_idx,
+        fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
@@ -307,11 +306,11 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_metadata_extend_lifetime_on_use(emitter->metadata, lhs.meta_idx,
+      ir_metadata_extend_lifetime_on_use(fn_def->metadata, lhs.meta_idx,
                                          ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
+      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.meta_idx,
                                          ins_idx);
     }
 
@@ -328,9 +327,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       *PG_DYN_PUSH(&operands, allocator) = operand;
     }
 
-    MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
     ir_metadata_start_lifetime(
-        emitter->metadata, meta_idx,
+        fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
@@ -344,7 +343,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     for (u64 i = 0; i < node.operands.len; i++) {
       IrOperand val = PG_SLICE_AT(ins.operands, i);
       if (IR_OPERAND_KIND_VAR == val.kind) {
-        ir_metadata_extend_lifetime_on_use(emitter->metadata, val.meta_idx,
+        ir_metadata_extend_lifetime_on_use(fn_def->metadata, val.meta_idx,
                                            ins_idx);
       }
     }
@@ -377,17 +376,19 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
     PG_ASSERT(!fn_def);
-    IrFnDefinition fn_def_real = {
+    IrFnDefinition fn_def_real = (IrFnDefinition){
         .name = node.identifier,
         .flags = node.flags,
     };
+    fn_def = &fn_def_real;
+    *PG_DYN_PUSH(&fn_def->metadata, allocator) = (Metadata){0}; // Dummy.
 
     for (u64 i = 0; i < node.operands.len; i++) {
       AstNode child = PG_SLICE_AT(node.operands, i);
-      (void)ir_emit_ast_node(child, emitter, &fn_def_real, errors, allocator);
+      (void)ir_emit_ast_node(child, emitter, fn_def, errors, allocator);
     }
     // FIXME: Should be done in two-steps to enable recursion.
-    *PG_DYN_PUSH(&emitter->fn_definitions, allocator) = fn_def_real;
+    *PG_DYN_PUSH(&emitter->fn_definitions, allocator) = *fn_def;
     return (IrOperand){0};
   }
   case AST_NODE_KIND_VAR_DEFINITION: {
@@ -398,10 +399,10 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrOperand rhs =
         ir_emit_ast_node(rhs_node, emitter, fn_def, errors, allocator);
 
-    MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
-    PG_SLICE_AT(emitter->metadata, meta_idx.value).identifier = node.identifier;
+    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
+    PG_SLICE_AT(fn_def->metadata, meta_idx.value).identifier = node.identifier;
     ir_metadata_start_lifetime(
-        emitter->metadata, meta_idx,
+        fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
@@ -414,7 +415,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
+      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.meta_idx,
                                          ins_idx);
     }
 
@@ -423,7 +424,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
   case AST_NODE_KIND_IDENTIFIER: {
     Metadata *meta =
-        ir_find_metadata_by_identifier(emitter->metadata, node.identifier);
+        ir_find_metadata_by_identifier(fn_def->metadata, node.identifier);
 
     if (!meta) {
       *PG_DYN_PUSH(errors, allocator) = (Error){
@@ -433,18 +434,18 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       return (IrOperand){0};
     }
 
-    MetadataIndex meta_idx = ir_metadata_ptr_to_idx(emitter->metadata, meta);
+    MetadataIndex meta_idx = ir_metadata_ptr_to_idx(fn_def->metadata, meta);
 
     IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
-    ir_metadata_extend_lifetime_on_use(emitter->metadata, meta_idx, ins_idx);
+    ir_metadata_extend_lifetime_on_use(fn_def->metadata, meta_idx, ins_idx);
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
   case AST_NODE_KIND_BUILTIN_ASSERT: {
     PG_ASSERT(1 == node.operands.len);
-    MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
     ir_metadata_start_lifetime(
-        emitter->metadata, meta_idx,
+        fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     {
@@ -492,9 +493,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     IrOperand rhs =
         ir_emit_ast_node(operand, emitter, fn_def, errors, allocator);
-    MetadataIndex meta_idx = ir_make_metadata(&emitter->metadata, allocator);
+    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
     ir_metadata_start_lifetime(
-        emitter->metadata, meta_idx,
+        fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
@@ -507,7 +508,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
       IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
-      ir_metadata_extend_lifetime_on_use(emitter->metadata, rhs.meta_idx,
+      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.meta_idx,
                                          ins_idx);
     } else {
       *PG_DYN_PUSH(errors, allocator) = (Error){
@@ -535,7 +536,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     IrInstructionIndex ir_cond_jump_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == cond.kind) {
-      ir_metadata_extend_lifetime_on_use(emitter->metadata, cond.meta_idx,
+      ir_metadata_extend_lifetime_on_use(fn_def->metadata, cond.meta_idx,
                                          ir_cond_jump_idx);
     }
 
@@ -601,8 +602,6 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
                             PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_BLOCK == node.kind);
-
-  *PG_DYN_PUSH(&emitter->metadata, allocator) = (Metadata){0}; // Dummy.
 
   emitter->label_program_epilog_die.value = PG_S("__builtin_die");
   emitter->label_program_epilog_exit.value = PG_S("__builtin_exit");
@@ -1064,8 +1063,15 @@ static void ir_emitter_print_meta(Metadata meta) {
 #endif
 }
 
-static void ir_emitter_print_fn_definition(IrEmitter emitter,
-                                           IrFnDefinition fn_def) {
+static void metadata_print(MetadataDyn metadata) {
+  for (u64 i = 0; i < metadata.len; i++) {
+    Metadata meta = PG_SLICE_AT(metadata, i);
+    printf("[%lu] ", i);
+    ir_emitter_print_meta(meta);
+    printf("\n");
+  }
+}
+static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
   PG_ASSERT(fn_def.name.len);
 
   printf("fn %.*s() {\n", (i32)fn_def.name.len, fn_def.name.data);
@@ -1093,12 +1099,12 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
     case IR_INSTRUCTION_KIND_ADD: {
       PG_ASSERT(2 == ins.operands.len);
       PG_ASSERT(0 != ins.meta_idx.value);
-      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
       ir_print_var(meta);
       printf(" := ");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
+      ir_print_operand(PG_SLICE_AT(ins.operands, 0), fn_def.metadata);
       printf(" + ");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
+      ir_print_operand(PG_SLICE_AT(ins.operands, 1), fn_def.metadata);
 
       printf(" // ");
       ir_emitter_print_meta(meta);
@@ -1107,14 +1113,14 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
       PG_ASSERT(2 == ins.operands.len);
       PG_ASSERT(0 != ins.meta_idx.value);
 
-      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
 
       ir_print_var(meta);
       printf(" := ");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
+      ir_print_operand(PG_SLICE_AT(ins.operands, 0), fn_def.metadata);
       printf(" %s ",
              LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 1), emitter.metadata);
+      ir_print_operand(PG_SLICE_AT(ins.operands, 1), fn_def.metadata);
 
       printf(" // ");
       ir_emitter_print_meta(meta);
@@ -1122,12 +1128,12 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
     case IR_INSTRUCTION_KIND_LOAD: {
       PG_ASSERT(1 == ins.operands.len);
       PG_ASSERT(0 != ins.meta_idx.value);
-      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
 
       IrOperand rhs = PG_SLICE_AT(ins.operands, 0);
       ir_print_var(meta);
       printf(" := ");
-      ir_print_operand(rhs, emitter.metadata);
+      ir_print_operand(rhs, fn_def.metadata);
 
       printf(" // ");
       ir_emitter_print_meta(meta);
@@ -1136,24 +1142,24 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
       PG_ASSERT(1 == ins.operands.len);
       PG_ASSERT(0 != ins.meta_idx.value);
 
-      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
 
       ir_print_var(meta);
       printf(" := &");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 0), emitter.metadata);
+      ir_print_operand(PG_SLICE_AT(ins.operands, 0), fn_def.metadata);
 
       printf(" // ");
       ir_emitter_print_meta(meta);
     } break;
     case IR_INSTRUCTION_KIND_SYSCALL: {
-      Metadata meta = PG_SLICE_AT(emitter.metadata, ins.meta_idx.value);
+      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
 
       ir_print_var(meta);
       printf("%ssyscall(", 0 == ins.meta_idx.value ? "" : " := ");
 
       for (u64 j = 0; j < ins.operands.len; j++) {
         IrOperand val = PG_SLICE_AT(ins.operands, j);
-        ir_print_operand(val, emitter.metadata);
+        ir_print_operand(val, fn_def.metadata);
 
         if (j + 1 < ins.operands.len) {
           printf(", ");
@@ -1179,9 +1185,9 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
                 IR_OPERAND_KIND_U64 == cond.kind);
 
       printf("jump_if_false(");
-      ir_print_operand(cond, emitter.metadata);
+      ir_print_operand(cond, fn_def.metadata);
       printf(", ");
-      ir_print_operand(branch_else, emitter.metadata);
+      ir_print_operand(branch_else, fn_def.metadata);
       printf(")");
     } break;
     case IR_INSTRUCTION_KIND_JUMP: {
@@ -1192,7 +1198,7 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
       PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
       PG_ASSERT(op.label.value.len);
       printf("jump ");
-      ir_print_operand(op, emitter.metadata);
+      ir_print_operand(op, fn_def.metadata);
     } break;
 
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
@@ -1202,7 +1208,7 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
       IrOperand op = PG_SLICE_AT(ins.operands, 0);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
       PG_ASSERT(op.label.value.len);
-      ir_print_operand(op, emitter.metadata);
+      ir_print_operand(op, fn_def.metadata);
     } break;
     default:
       PG_ASSERT(0);
@@ -1219,21 +1225,15 @@ static void ir_emitter_print_fn_definition(IrEmitter emitter,
 #endif
   }
   printf("}\n\n");
+
+  printf("\n------------ IR metadata ------------\n");
+  metadata_print(fn_def.metadata);
 }
 
 static void ir_emitter_print_fn_definitions(IrEmitter emitter) {
   for (u64 i = 0; i < emitter.fn_definitions.len; i++) {
     IrFnDefinition fn_def = PG_SLICE_AT(emitter.fn_definitions, i);
-    ir_emitter_print_fn_definition(emitter, fn_def);
-  }
-}
-
-static void ir_emitter_print_metadata(MetadataDyn metadata) {
-  for (u64 i = 0; i < metadata.len; i++) {
-    Metadata meta = PG_SLICE_AT(metadata, i);
-    printf("[%lu] ", i);
-    ir_emitter_print_meta(meta);
-    printf("\n");
+    ir_emitter_print_fn_definition(fn_def);
   }
 }
 
@@ -1248,10 +1248,10 @@ static void ir_emitter_trim_tombstone_items(IrEmitter *emitter) {
     i++;
   }
 
-  for (u64 i = 0; i < emitter->metadata.len;) {
-    Metadata meta = PG_SLICE_AT(emitter->metadata, i);
+  for (u64 i = 0; i < fn_def->metadata.len;) {
+    Metadata meta = PG_SLICE_AT(fn_def->metadata, i);
     if (meta.tombstone) {
-      PG_DYN_REMOVE_AT(&emitter->metadata, i);
+      PG_DYN_REMOVE_AT(&fn_def->metadata, i);
       continue;
     }
     i++;
