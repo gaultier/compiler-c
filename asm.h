@@ -267,7 +267,7 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
 
       if (verbose) {
         printf("asm: assigned register: ");
-        ir_emitter_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
+        metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
         printf(" -> ");
         emitter->print_register(meta->memory_location.reg);
         printf("\n");
@@ -452,7 +452,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
 
       if (verbose) {
         printf("asm: assigned register: ");
-        ir_emitter_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
+        metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
         printf(" -> ");
         emitter->print_register(reg);
         printf("\n");

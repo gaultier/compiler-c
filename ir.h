@@ -1009,7 +1009,7 @@ lir_register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
   }
 }
 
-static void ir_emitter_print_meta(Metadata meta) {
+static void metadata_print_meta(Metadata meta) {
 #if 0
   if (meta.tombstone) {
     printf("\x1B[9m"); // Strikethrough.
@@ -1067,7 +1067,7 @@ static void metadata_print(MetadataDyn metadata) {
   for (u64 i = 0; i < metadata.len; i++) {
     Metadata meta = PG_SLICE_AT(metadata, i);
     printf("[%lu] ", i);
-    ir_emitter_print_meta(meta);
+    metadata_print_meta(meta);
     printf("\n");
   }
 }
@@ -1107,7 +1107,7 @@ static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
       ir_print_operand(PG_SLICE_AT(ins.operands, 1), fn_def.metadata);
 
       printf(" // ");
-      ir_emitter_print_meta(meta);
+      metadata_print_meta(meta);
     } break;
     case IR_INSTRUCTION_KIND_COMPARISON: {
       PG_ASSERT(2 == ins.operands.len);
@@ -1123,7 +1123,7 @@ static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
       ir_print_operand(PG_SLICE_AT(ins.operands, 1), fn_def.metadata);
 
       printf(" // ");
-      ir_emitter_print_meta(meta);
+      metadata_print_meta(meta);
     } break;
     case IR_INSTRUCTION_KIND_LOAD: {
       PG_ASSERT(1 == ins.operands.len);
@@ -1136,7 +1136,7 @@ static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
       ir_print_operand(rhs, fn_def.metadata);
 
       printf(" // ");
-      ir_emitter_print_meta(meta);
+      metadata_print_meta(meta);
     } break;
     case IR_INSTRUCTION_KIND_ADDRESS_OF: {
       PG_ASSERT(1 == ins.operands.len);
@@ -1149,7 +1149,7 @@ static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
       ir_print_operand(PG_SLICE_AT(ins.operands, 0), fn_def.metadata);
 
       printf(" // ");
-      ir_emitter_print_meta(meta);
+      metadata_print_meta(meta);
     } break;
     case IR_INSTRUCTION_KIND_SYSCALL: {
       Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
@@ -1170,7 +1170,7 @@ static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
 
       if (0 != ins.meta_idx.value) {
         printf(" // ");
-        ir_emitter_print_meta(meta);
+        metadata_print_meta(meta);
       }
     } break;
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
@@ -1224,10 +1224,12 @@ static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
   }
 #endif
   }
-  printf("}\n\n");
+  printf("}\n");
 
-  printf("\n------------ IR metadata ------------\n");
+  printf("\n------------ IR metadata %.*s ------------\n", (i32)fn_def.name.len,
+         fn_def.name.data);
   metadata_print(fn_def.metadata);
+  printf("\n\n");
 }
 
 static void ir_emitter_print_fn_definitions(IrEmitter emitter) {

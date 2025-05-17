@@ -561,6 +561,7 @@ static void lir_emit_fn_definition(LirEmitter *emitter,
   LirFnDefinition lir_fn_def = {
       .name = ir_fn_def.name,
       .flags = ir_fn_def.flags,
+      .metadata = ir_fn_def.metadata,
   };
 
   for (u64 i = 0; i < ir_fn_def.instructions.len; i++) {
