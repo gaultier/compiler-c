@@ -12,6 +12,7 @@ typedef enum {
   IR_INSTRUCTION_KIND_LABEL_DEFINITION,
   IR_INSTRUCTION_KIND_COMPARISON,
   IR_INSTRUCTION_KIND_SYSCALL,
+  IR_INSTRUCTION_KIND_FN_DEFINITION,
 } IrInstructionKind;
 
 typedef struct {
@@ -358,10 +359,30 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       AstNode child = PG_SLICE_AT(node.operands, i);
       (void)ir_emit_ast_node(child, emitter, errors, allocator);
     }
-    // TODO: Label?
     return (IrOperand){0};
   }
-  case AST_NODE_KIND_VAR_DECL: {
+  case AST_NODE_KIND_FN_DEFINITION: {
+    PG_ASSERT(!pg_string_is_empty(node.identifier));
+
+    Label label = {.value = node.identifier};
+
+    IrInstruction ir = {
+        .kind = IR_INSTRUCTION_KIND_FN_DEFINITION,
+        .origin = node.origin,
+    };
+    *PG_DYN_PUSH(&ir.operands, allocator) = (IrOperand){
+        .kind = IR_OPERAND_KIND_LABEL, // FIXME
+        .label = label,
+    };
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ir;
+
+    for (u64 i = 0; i < node.operands.len; i++) {
+      AstNode child = PG_SLICE_AT(node.operands, i);
+      (void)ir_emit_ast_node(child, emitter, errors, allocator);
+    }
+    return (IrOperand){0};
+  }
+  case AST_NODE_KIND_VAR_DEFINITION: {
     PG_ASSERT(1 == node.operands.len);
     PG_ASSERT(!pg_string_is_empty(node.identifier));
 
@@ -1158,6 +1179,15 @@ static void ir_emitter_print_instruction(IrEmitter emitter, u32 i) {
   } break;
 
   case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
+    PG_ASSERT(1 == ins.operands.len);
+    PG_ASSERT(0 == ins.meta_idx.value);
+
+    IrOperand op = PG_SLICE_AT(ins.operands, 0);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
+    PG_ASSERT(op.label.value.len);
+    ir_print_operand(op, emitter.metadata);
+  } break;
+  case IR_INSTRUCTION_KIND_FN_DEFINITION: {
     PG_ASSERT(1 == ins.operands.len);
     PG_ASSERT(0 == ins.meta_idx.value);
 

@@ -1391,6 +1391,22 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     amd64_add_instruction(&section->instructions, instruction, allocator);
   } break;
 
+  case LIR_INSTRUCTION_KIND_FN_DEFINITION: {
+    PG_ASSERT(1 == lir.operands.len);
+
+    LirOperand op = PG_SLICE_AT(lir.operands, 0);
+    PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
+    PG_ASSERT(op.label.value.len);
+
+    Amd64Instruction instruction = {
+        .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
+        .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, op),
+        .origin = lir.origin,
+    };
+
+    amd64_add_instruction(&section->instructions, instruction, allocator);
+  } break;
+
   case LIR_INSTRUCTION_KIND_JUMP: {
     PG_ASSERT(1 == lir.operands.len);
 

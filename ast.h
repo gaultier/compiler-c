@@ -10,12 +10,13 @@ typedef enum {
   AST_NODE_KIND_IDENTIFIER,
   AST_NODE_KIND_ADD,
   AST_NODE_KIND_BLOCK,
-  AST_NODE_KIND_VAR_DECL,
+  AST_NODE_KIND_VAR_DEFINITION,
   AST_NODE_KIND_ADDRESS_OF,
   AST_NODE_KIND_IF,
   AST_NODE_KIND_COMPARISON,
   AST_NODE_KIND_BUILTIN_ASSERT,
   AST_NODE_KIND_SYSCALL,
+  AST_NODE_KIND_FN_DEFINITION,
 } AstNodeKind;
 
 typedef struct AstNode AstNode;
@@ -106,7 +107,7 @@ static void ast_print(AstNode node, u32 left_width) {
       ast_print(PG_SLICE_AT(node.operands, i), left_width + 2);
     }
   } break;
-  case AST_NODE_KIND_VAR_DECL:
+  case AST_NODE_KIND_VAR_DEFINITION:
     PG_ASSERT(1 == node.operands.len);
 
     printf("VarDecl(%.*s\n", (i32)node.identifier.len, node.identifier.data);
@@ -131,6 +132,13 @@ static void ast_print(AstNode node, u32 left_width) {
       putchar(' ');
     }
     printf(")\n");
+    break;
+
+  case AST_NODE_KIND_FN_DEFINITION:
+    printf("FnDef\n");
+    for (u64 i = 0; i < node.operands.len; i++) {
+      ast_print(PG_SLICE_AT(node.operands, i), left_width + 2);
+    }
     break;
 
   default:
@@ -188,7 +196,7 @@ static AstNode *ast_parse_var_decl(LexTokenSlice tokens, ErrorDyn *errors,
   }
 
   AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-  res->kind = AST_NODE_KIND_VAR_DECL;
+  res->kind = AST_NODE_KIND_VAR_DEFINITION;
   res->origin = token_first.origin;
   res->identifier = token_first.s;
   *PG_DYN_PUSH(&res->operands, allocator) = *rhs;

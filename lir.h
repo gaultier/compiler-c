@@ -30,6 +30,7 @@ typedef enum {
   LIR_INSTRUCTION_KIND_CMP,
   LIR_INSTRUCTION_KIND_ADDRESS_OF,
   LIR_INSTRUCTION_KIND_SYSCALL,
+  LIR_INSTRUCTION_KIND_FN_DEFINITION,
 } LirInstructionKind;
 
 typedef enum {
@@ -119,6 +120,8 @@ static void lir_emitter_print_instructions(LirEmitter emitter) {
       printf("jmp ");
       break;
     case LIR_INSTRUCTION_KIND_LABEL_DEFINITION:
+      break;
+    case LIR_INSTRUCTION_KIND_FN_DEFINITION:
       break;
     case LIR_INSTRUCTION_KIND_ADDRESS_OF:
       printf("address_of ");
@@ -314,25 +317,6 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
               : (VirtualRegisterConstraint)(VREG_CONSTRAINT_SYSCALL0 + j - 1);
       PG_SLICE_AT(emitter->metadata, val.meta_idx.value)
           .virtual_register.constraint = virt_reg_constraint;
-
-#if 0
-      if (IR_OPERAND_KIND_U64 == val.kind) {
-        lir_emit_copy_immediate_to_virt_reg(emitter, val, meta_idx,
-                                            ir_ins.origin, allocator);
-      } else if (IR_OPERAND_KIND_VAR == val.kind) {
-        VarVirtualRegisterIndex src_var_virt_reg_idx =
-            var_virtual_registers_find_by_var(emitter->var_virtual_registers,
-                                              val.var);
-        PG_ASSERT(-1U != src_var_virt_reg_idx.value);
-        VarVirtualRegister src_var_virt_reg = PG_SLICE_AT(
-            emitter->var_virtual_registers, src_var_virt_reg_idx.value);
-
-        lir_emit_copy_virt_reg_to_virt_reg(emitter, src_var_virt_reg.meta_idx,
-                                           meta_idx, ir_ins.origin, allocator);
-      } else {
-        PG_ASSERT(0);
-      }
-#endif
     }
 
     LirInstruction lir_ins = {
@@ -419,6 +403,27 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
 
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_LABEL_DEFINITION,
+        .origin = ir_ins.origin,
+    };
+
+    LirOperand lir_op = {
+        .kind = LIR_OPERAND_KIND_LABEL,
+        .label = op.label,
+    };
+    *PG_DYN_PUSH(&ins.operands, allocator) = lir_op;
+
+    *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
+  } break;
+
+  case IR_INSTRUCTION_KIND_FN_DEFINITION: {
+    PG_ASSERT(1 == ir_ins.operands.len);
+    PG_ASSERT(0 == ir_ins.meta_idx.value);
+
+    IrOperand op = PG_SLICE_AT(ir_ins.operands, 0);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
+
+    LirInstruction ins = {
+        .kind = LIR_INSTRUCTION_KIND_FN_DEFINITION,
         .origin = ir_ins.origin,
     };
 
