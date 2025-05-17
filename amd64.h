@@ -1483,9 +1483,10 @@ static void amd64_emit_lirs_to_asm(AsmEmitter *asm_emitter,
 
     printf("\n------------ Adjacency matrix of interference graph "
            "------------\n\n");
-    pg_adjacency_matrix_print(amd64_emitter->interference_graph.matrix);
+    pg_adjacency_matrix_print(amd64_emitter->interference_graph);
   }
-  asm_sanity_check_interference_graph(amd64_emitter->interference_graph, true);
+  asm_sanity_check_interference_graph(amd64_emitter->interference_graph,
+                                      amd64_emitter->metadata, true);
 
   for (u64 i = 0; i < lirs.len; i++) {
     amd64_lir_to_asm(amd64_emitter, section, PG_SLICE_AT(lirs, i), allocator);

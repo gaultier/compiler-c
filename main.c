@@ -138,18 +138,6 @@ int main(int argc, char *argv[]) {
   IrInstructionSlice irs_slice =
       PG_DYN_SLICE(IrInstructionSlice, ir_emitter.instructions);
 
-  InterferenceGraph interference_graph = {0};
-  if (ir_emitter.metadata.len > 0) {
-    interference_graph =
-        asm_build_interference_graph(ir_emitter.metadata, allocator);
-  }
-
-  if (cli_opts.verbose) {
-    printf("\n------------ Interference graph ------------\n");
-    asm_print_interference_graph(interference_graph, ir_emitter.metadata);
-  }
-  asm_sanity_check_interference_graph(interference_graph, false);
-
   LirEmitter lir_emitter = {
       .metadata = ir_emitter.metadata,
   };
@@ -163,6 +151,19 @@ int main(int argc, char *argv[]) {
   }
   LirInstructionSlice lirs_slice =
       PG_DYN_SLICE(LirInstructionSlice, lir_emitter.instructions);
+
+  InterferenceGraph interference_graph = {0};
+  if (lir_emitter.metadata.len > 0) {
+    interference_graph =
+        asm_build_interference_graph(lir_emitter.metadata, allocator);
+  }
+
+  if (cli_opts.verbose) {
+    printf("\n------------ Interference graph ------------\n");
+    asm_print_interference_graph(interference_graph, lir_emitter.metadata);
+  }
+  asm_sanity_check_interference_graph(interference_graph, lir_emitter.metadata,
+                                      false);
 
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);

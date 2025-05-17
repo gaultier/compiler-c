@@ -5,14 +5,12 @@ typedef struct {
   u32 set;
   u32 len;
 } GprSet;
-typedef struct {
-  IrMetadataDyn metadata;
-  // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
-  // between i and j), stored as a bitfield of the right-upper half (without the
-  // diagonal).
-  // Each row is a memory location (see above field).
-  PgAdjacencyMatrix matrix;
-} InterferenceGraph;
+
+// Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
+// between i and j), stored as a bitfield of the right-upper half (without the
+// diagonal).
+// Each row is a memory location (see above field).
+typedef PgAdjacencyMatrix InterferenceGraph;
 
 typedef struct {
   Register return_value;
@@ -117,9 +115,9 @@ static Register asm_gpr_pop_first_unset(GprSet *set) {
 static void asm_print_interference_graph(InterferenceGraph graph,
                                          IrMetadataDyn metadata) {
 
-  for (u64 row = 0; row < graph.matrix.nodes_count; row++) {
+  for (u64 row = 0; row < graph.nodes_count; row++) {
     for (u64 col = 0; col < row; col++) {
-      bool edge = pg_adjacency_matrix_has_edge(graph.matrix, row, col);
+      bool edge = pg_adjacency_matrix_has_edge(graph, row, col);
       if (!edge) {
         continue;
       }
@@ -135,20 +133,20 @@ static void asm_print_interference_graph(InterferenceGraph graph,
 }
 
 static void asm_sanity_check_interference_graph(InterferenceGraph graph,
+                                                IrMetadataDyn metadata,
                                                 bool colored) {
-  PG_ASSERT(graph.metadata.len <= graph.matrix.nodes_count);
+  PG_ASSERT(metadata.len >= graph.nodes_count);
   if (colored) {
-    PG_ASSERT(graph.metadata.len == graph.matrix.nodes_count);
+    PG_ASSERT(metadata.len == graph.nodes_count);
   }
-  PG_ASSERT(graph.matrix.bitfield_len <= graph.matrix.bitfield.len);
 
-  if (0 == graph.matrix.nodes_count) {
+  if (0 == graph.nodes_count) {
     return;
   }
 
   if (colored) {
-    for (u64 i = 0; i < graph.metadata.len; i++) {
-      MemoryLocation mem_loc = PG_SLICE_AT(graph.metadata, i).memory_location;
+    for (u64 i = 0; i < metadata.len; i++) {
+      MemoryLocation mem_loc = PG_SLICE_AT(metadata, i).memory_location;
       switch (mem_loc.kind) {
       case MEMORY_LOCATION_KIND_STATUS_REGISTER:
       case MEMORY_LOCATION_KIND_REGISTER:
@@ -176,7 +174,7 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
     return graph;
   }
 
-  graph.matrix = pg_adjacency_matrix_make(metadata.len, allocator);
+  graph = pg_adjacency_matrix_make(metadata.len, allocator);
 
   for (u64 i = 0; i < metadata.len; i++) {
     IrMetadata meta = PG_SLICE_AT(metadata, i);
@@ -184,7 +182,7 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
     PG_ASSERT(!meta.tombstone);
 #endif
     PG_ASSERT(meta.lifetime_start.value <= meta.lifetime_end.value);
-    PG_ASSERT(meta.var.id.value);
+    PG_ASSERT(meta.virtual_register.value);
 
     for (u64 j = i + 1; j < metadata.len; j++) {
       IrMetadata it = PG_SLICE_AT(metadata, j);
@@ -207,7 +205,7 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
 
       // Interferes: add an edge between the two nodes.
 
-      pg_adjacency_matrix_add_edge(&graph.matrix, j, i);
+      pg_adjacency_matrix_add_edge(&graph, j, i);
     }
   }
 
@@ -257,21 +255,20 @@ static void
 asm_color_spill_remaining_nodes_in_graph(AsmEmitter *emitter,
                                          InterferenceNodeIndexDyn *stack,
                                          PgString nodes_tombstones_bitfield) {
-  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
-       row++) {
+  for (u64 row = 0; row < emitter->interference_graph.nodes_count; row++) {
     if (pg_bitfield_get(nodes_tombstones_bitfield, row)) {
       continue;
     }
 
-    u64 neighbors_count = pg_adjacency_matrix_count_neighbors(
-        emitter->interference_graph.matrix, row);
+    u64 neighbors_count =
+        pg_adjacency_matrix_count_neighbors(emitter->interference_graph, row);
 
-    pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, row);
+    pg_adjacency_matrix_remove_node(&emitter->interference_graph, row);
     pg_bitfield_set(nodes_tombstones_bitfield, row, true);
 
     InterferenceNodeIndex node_idx = {(u32)row};
     if (!asm_must_spill(*emitter, node_idx, neighbors_count)) {
-      PG_ASSERT(stack->len < emitter->interference_graph.matrix.nodes_count);
+      PG_ASSERT(stack->len < emitter->interference_graph.nodes_count);
       *PG_DYN_PUSH_WITHIN_CAPACITY(stack) = node_idx;
       continue;
     }
@@ -291,8 +288,7 @@ static Register asm_get_free_register(GprSet regs) {
 
 static void asm_color_do_pre_coloring(AsmEmitter *emitter,
                                       PgString tombstones_bitfield) {
-  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
-       row++) {
+  for (u64 row = 0; row < emitter->interference_graph.nodes_count; row++) {
     InterferenceNodeIndex node_idx = {(u32)row};
     IrMetadata *meta = PG_SLICE_AT_PTR(&emitter->metadata, node_idx.value);
     switch (meta->virtual_register.constraint) {
@@ -302,7 +298,7 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
       meta->memory_location.kind = MEMORY_LOCATION_KIND_STATUS_REGISTER;
       meta->memory_location.reg = emitter->map_constraint_to_register(
           emitter, meta->virtual_register.constraint);
-      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix,
+      pg_adjacency_matrix_remove_node(&emitter->interference_graph,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
       break;
@@ -318,7 +314,7 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
       meta->memory_location.kind = MEMORY_LOCATION_KIND_REGISTER;
       meta->memory_location.reg = emitter->map_constraint_to_register(
           emitter, meta->virtual_register.constraint);
-      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix,
+      pg_adjacency_matrix_remove_node(&emitter->interference_graph,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
       break;
@@ -330,14 +326,15 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
 
 [[nodiscard]] static Register
 asm_color_assign_register(InterferenceGraph *graph,
-                          InterferenceNodeIndex node_idx, u32 gprs_count) {
+                          InterferenceNodeIndex node_idx, u32 gprs_count,
+                          IrMetadataDyn metadata) {
   GprSet neighbor_colors = {
       .len = gprs_count,
       .set = 0,
   };
 
   PgAdjacencyMatrixNeighborIterator it =
-      pg_adjacency_matrix_make_neighbor_iterator(graph->matrix, node_idx.value);
+      pg_adjacency_matrix_make_neighbor_iterator(*graph, node_idx.value);
 
   PgAdjacencyMatrixNeighbor neighbor = {0};
   do {
@@ -349,7 +346,7 @@ asm_color_assign_register(InterferenceGraph *graph,
     PG_ASSERT(node_idx.value != neighbor.node);
 
     MemoryLocation neighbor_mem_loc =
-        PG_SLICE_AT(graph->metadata, neighbor.node).memory_location;
+        PG_SLICE_AT(metadata, neighbor.node).memory_location;
     // If a neighbor already has an assigned register, add it to the set.
     {
       if (MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
@@ -368,7 +365,7 @@ asm_color_assign_register(InterferenceGraph *graph,
 
   {
     MemoryLocation *mem_loc =
-        &PG_SLICE_AT(graph->metadata, node_idx.value).memory_location;
+        &PG_SLICE_AT(metadata, node_idx.value).memory_location;
     PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
     mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
     mem_loc->reg = res;
@@ -387,59 +384,56 @@ asm_color_assign_register(InterferenceGraph *graph,
 // TODO: Consider coalescing (see literature).
 static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
                                          PgAllocator *allocator) {
-  if (0 == emitter->interference_graph.matrix.nodes_count) {
+  if (0 == emitter->interference_graph.nodes_count) {
     return;
   }
   PgString node_tombstones_bitfield = pg_string_make(
-      pg_div_ceil(emitter->interference_graph.matrix.nodes_count, 8),
-      allocator);
+      pg_div_ceil(emitter->interference_graph.nodes_count, 8), allocator);
 
   if (verbose) {
     printf("\n------------ Adjacency matrix of interference graph before "
            "pre-coloring"
            "------------\n\n");
-    pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+    pg_adjacency_matrix_print(emitter->interference_graph);
     asm_color_do_pre_coloring(emitter, node_tombstones_bitfield);
 
     printf("\n------------ Adjacency matrix of interference graph after "
            "pre-coloring"
            "------------\n\n");
-    pg_adjacency_matrix_print(emitter->interference_graph.matrix);
+    pg_adjacency_matrix_print(emitter->interference_graph);
   }
 
   InterferenceNodeIndexDyn stack = {0};
-  PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.matrix.nodes_count,
-                    allocator);
+  PG_DYN_ENSURE_CAP(&stack, emitter->interference_graph.nodes_count, allocator);
 
   PgAdjacencyMatrix graph_clone =
-      pg_adjacency_matrix_clone(emitter->interference_graph.matrix, allocator);
+      pg_adjacency_matrix_clone(emitter->interference_graph, allocator);
 
-  for (u64 row = 0; row < emitter->interference_graph.matrix.nodes_count;
-       row++) {
+  for (u64 row = 0; row < emitter->interference_graph.nodes_count; row++) {
     if (pg_bitfield_get(node_tombstones_bitfield, row)) {
       continue;
     }
 
-    u64 neighbors_count = pg_adjacency_matrix_count_neighbors(
-        emitter->interference_graph.matrix, row);
+    u64 neighbors_count =
+        pg_adjacency_matrix_count_neighbors(emitter->interference_graph, row);
 
     InterferenceNodeIndex node_idx = {(u32)row};
 
     if (!asm_must_spill(*emitter, node_idx, neighbors_count)) {
-      PG_ASSERT(stack.len < emitter->interference_graph.matrix.nodes_count);
+      PG_ASSERT(stack.len < emitter->interference_graph.nodes_count);
 
       *PG_DYN_PUSH_WITHIN_CAPACITY(&stack) = node_idx;
 
-      pg_adjacency_matrix_remove_node(&emitter->interference_graph.matrix, row);
+      pg_adjacency_matrix_remove_node(&emitter->interference_graph, row);
       pg_bitfield_set(node_tombstones_bitfield, row, true);
     }
   }
-  PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
+  PG_ASSERT(stack.len <= emitter->interference_graph.nodes_count);
 
   asm_color_spill_remaining_nodes_in_graph(emitter, &stack,
                                            node_tombstones_bitfield);
 
-  PG_ASSERT(stack.len <= emitter->interference_graph.matrix.nodes_count);
+  PG_ASSERT(stack.len <= emitter->interference_graph.nodes_count);
 
   u64 stack_len = stack.len;
   for (u64 _i = 0; _i < stack_len; _i++) {
@@ -474,8 +468,8 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
           continue;
         }
 
-        pg_adjacency_matrix_add_edge(&emitter->interference_graph.matrix,
-                                     neighbor.row, neighbor.col);
+        pg_adjacency_matrix_add_edge(&emitter->interference_graph, neighbor.row,
+                                     neighbor.col);
       } while (neighbor.has_value);
 
       LirVirtualRegisterConstraint constraint =
@@ -483,8 +477,9 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
               .virtual_register.constraint;
       PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == constraint);
 
-      Register reg = asm_color_assign_register(&emitter->interference_graph,
-                                               node_idx, emitter->gprs_count);
+      Register reg =
+          asm_color_assign_register(&emitter->interference_graph, node_idx,
+                                    emitter->gprs_count, emitter->metadata);
       PG_ASSERT(reg.value);
     }
   }
