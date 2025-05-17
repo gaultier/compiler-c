@@ -73,7 +73,7 @@ static void lir_print_memory_location(MemoryLocation loc) {
   case MEMORY_LOCATION_KIND_STACK: {
     printf("[");
     lir_print_register(
-        (VirtualRegister){.constraint = LIR_VIRT_REG_CONSTRAINT_BASE_POINTER});
+        (VirtualRegister){.constraint = VREG_CONSTRAINT_BASE_POINTER});
     i32 offset = loc.base_pointer_offset;
     printf("%" PRIi32, offset);
     printf("]");
@@ -334,8 +334,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
       IrOperand val = PG_SLICE_AT(ir_ins.operands, j);
       VirtualRegisterConstraint virt_reg_constraint =
           (0 == j)
-              ? LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM
-              : (VirtualRegisterConstraint)(LIR_VIRT_REG_CONSTRAINT_SYSCALL0 +
+              ? VREG_CONSTRAINT_SYSCALL_NUM
+              : (VirtualRegisterConstraint)(VREG_CONSTRAINT_SYSCALL0 +
                                                j - 1);
       PG_SLICE_AT(emitter->metadata, val.meta_idx.value)
           .virtual_register.constraint = virt_reg_constraint;
@@ -461,7 +461,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(ir_ins.meta_idx.value);
 
     PG_SLICE_AT(emitter->metadata, ir_ins.meta_idx.value)
-        .virtual_register.constraint = LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS;
+        .virtual_register.constraint = VREG_CONSTRAINT_CONDITION_FLAGS;
 
     IrOperand ir_lhs = PG_SLICE_AT(ir_ins.operands, 0);
     IrOperand ir_rhs = PG_SLICE_AT(ir_ins.operands, 1);

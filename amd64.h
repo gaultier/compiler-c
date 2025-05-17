@@ -1479,21 +1479,21 @@ amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
   (void)asm_emitter;
 
   switch (constraint) {
-  case LIR_VIRT_REG_CONSTRAINT_NONE:
+  case VREG_CONSTRAINT_NONE:
     return (Register){0};
-  case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
+  case VREG_CONSTRAINT_CONDITION_FLAGS:
     return amd64_rflags;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
+  case VREG_CONSTRAINT_SYSCALL_NUM:
+  case VREG_CONSTRAINT_SYSCALL_RET:
     return amd64_rax;
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
-  case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
+  case VREG_CONSTRAINT_SYSCALL0:
+  case VREG_CONSTRAINT_SYSCALL1:
+  case VREG_CONSTRAINT_SYSCALL2:
+  case VREG_CONSTRAINT_SYSCALL3:
+  case VREG_CONSTRAINT_SYSCALL4:
+  case VREG_CONSTRAINT_SYSCALL5:
     return PG_SLICE_AT(amd64_arch.syscall_calling_convention,
-                       constraint - LIR_VIRT_REG_CONSTRAINT_SYSCALL0);
+                       constraint - VREG_CONSTRAINT_SYSCALL0);
   default:
     PG_ASSERT(0);
   }

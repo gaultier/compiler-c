@@ -307,9 +307,9 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
     InterferenceNodeIndex node_idx = {(u32)row};
     Metadata *meta = PG_SLICE_AT_PTR(&emitter->metadata, node_idx.value);
     switch (meta->virtual_register.constraint) {
-    case LIR_VIRT_REG_CONSTRAINT_NONE:
+    case VREG_CONSTRAINT_NONE:
       break;
-    case LIR_VIRT_REG_CONSTRAINT_CONDITION_FLAGS:
+    case VREG_CONSTRAINT_CONDITION_FLAGS:
       meta->memory_location.kind = MEMORY_LOCATION_KIND_STATUS_REGISTER;
       meta->memory_location.reg = emitter->map_constraint_to_register(
           emitter, meta->virtual_register.constraint);
@@ -318,14 +318,14 @@ static void asm_color_do_pre_coloring(AsmEmitter *emitter,
       pg_bitfield_set(tombstones_bitfield, row, true);
       break;
 
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL_NUM:
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL_RET:
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL0:
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL1:
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL2:
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL3:
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL4:
-    case LIR_VIRT_REG_CONSTRAINT_SYSCALL5:
+    case VREG_CONSTRAINT_SYSCALL_NUM:
+    case VREG_CONSTRAINT_SYSCALL_RET:
+    case VREG_CONSTRAINT_SYSCALL0:
+    case VREG_CONSTRAINT_SYSCALL1:
+    case VREG_CONSTRAINT_SYSCALL2:
+    case VREG_CONSTRAINT_SYSCALL3:
+    case VREG_CONSTRAINT_SYSCALL4:
+    case VREG_CONSTRAINT_SYSCALL5:
       meta->memory_location.kind = MEMORY_LOCATION_KIND_REGISTER;
       meta->memory_location.reg = emitter->map_constraint_to_register(
           emitter, meta->virtual_register.constraint);
@@ -491,7 +491,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter, bool verbose,
       VirtualRegisterConstraint constraint =
           PG_SLICE_AT(emitter->metadata, node_idx.value)
               .virtual_register.constraint;
-      PG_ASSERT(LIR_VIRT_REG_CONSTRAINT_NONE == constraint);
+      PG_ASSERT(VREG_CONSTRAINT_NONE == constraint);
 
       Register reg =
           asm_color_assign_register(&emitter->interference_graph, node_idx,
