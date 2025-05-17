@@ -10,7 +10,7 @@
 - [ ] codegen: macho format
 - [x] codegen: move graph coloring to LIR/ASM phase with the target data as input
 - [ ] cli: choose target(s)
-- [ ] lang: boolean operators (==, <, etc)
+- [x] lang: boolean operator ==
 - [ ] lang: deref
 - [ ] lang: else branch
 - [ ] lang: comments
@@ -24,5 +24,5 @@
 - [x] spill registers
 - [ ] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
 - [x] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
-- [ ] lang: builtin assert
+- [x] lang: builtin assert
 - [ ] codegen: link with libc & call linker
