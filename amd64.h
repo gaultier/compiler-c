@@ -209,6 +209,9 @@ static void amd64_add_instruction(PgAnyDyn *instructions_any,
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit storing code (push).
 static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
+  if (AST_NODE_FLAG_FN_NO_FRAME_POINTERS & section->flags) {
+    return;
+  }
 
   Amd64Instruction ins_push = {
       .kind = AMD64_INSTRUCTION_KIND_PUSH,
@@ -239,6 +242,10 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit loading code (pop).
 static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
+  if (AST_NODE_FLAG_FN_NO_FRAME_POINTERS & section->flags) {
+    return;
+  }
+
   Amd64Instruction ins_pop = {
       .kind = AMD64_INSTRUCTION_KIND_POP,
       .lhs =
@@ -1533,7 +1540,7 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
       .name = fn_def.name,
       .flags = fn_def.flags,
   };
-  amd64_emit_epilog(&section, allocator);
+  amd64_emit_prolog(&section, allocator);
 
   Amd64Instruction stack_sub = {
       .kind = AMD64_INSTRUCTION_KIND_SUB,
@@ -1597,7 +1604,7 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
         ->tombstone = true;
 #endif
   }
-  amd64_emit_prolog(&section, allocator);
+  amd64_emit_epilog(&section, allocator);
 
   return section;
 }

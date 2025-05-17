@@ -26,6 +26,7 @@ PG_DYN(AstNode) AstNodeDyn;
 typedef enum {
   AST_NODE_FLAG_NONE = 0,
   AST_NODE_FLAG_GLOBAL = 1 << 0,
+  AST_NODE_FLAG_FN_NO_FRAME_POINTERS = 1 << 1,
 } AstNodeFlag;
 
 struct AstNode {
@@ -677,6 +678,7 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     fn_exit->kind = AST_NODE_KIND_FN_DEFINITION;
     fn_exit->identifier = PG_S("__builtin_exit");
+    fn_exit->flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
 
     AstNode *syscall =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
@@ -701,6 +703,7 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     fn_die->kind = AST_NODE_KIND_FN_DEFINITION;
     fn_die->identifier = PG_S("__builtin_die");
+    fn_die->flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
 
     AstNode *syscall =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
