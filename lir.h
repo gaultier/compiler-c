@@ -264,7 +264,7 @@ static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
                                        origin, allocator);
   } break;
   case IR_OPERAND_KIND_LABEL:
-  case IR_OPERAND_KIND_LABEL_ID:
+  case IR_OPERAND_KIND_LABEL_NAME:
   case IR_OPERAND_KIND_NONE:
   default:
     PG_ASSERT(0);
@@ -290,7 +290,7 @@ static LirOperand lir_ir_operand_to_lir_operand(IrOperand ir_op) {
         .kind = LIR_OPERAND_KIND_LABEL,
         .label = ir_op.label,
     };
-  case IR_OPERAND_KIND_LABEL_ID:
+  case IR_OPERAND_KIND_LABEL_NAME:
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_LABEL_ID,
         .jump_label_id = ir_op.jump_label_id,
@@ -427,7 +427,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
     IrOperand branch_else = PG_SLICE_AT(ir_ins.operands, 1);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_NAME == branch_else.kind);
 
     LirInstruction ins_je = {
         .kind = LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
@@ -447,7 +447,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
     IrOperand op = PG_SLICE_AT(ir_ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == op.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_NAME == op.kind);
 
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_JUMP,

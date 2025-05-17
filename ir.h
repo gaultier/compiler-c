@@ -34,6 +34,7 @@ typedef enum {
   IR_OPERAND_KIND_VAR,
   IR_OPERAND_KIND_LABEL,
   IR_OPERAND_KIND_LABEL_ID,
+  IR_OPERAND_KIND_LABEL_NAME,
 } IrOperandKind;
 
 // Unresolved.
@@ -64,8 +65,9 @@ struct IrOperand {
   union {
     u64 n64;
     IrMetadataIndex meta_idx;
-    LabelId jump_label_id; // IR_OPERAND_KIND_LABEL_ID.
-    Label label;           // IR_OPERAND_KIND_LABEL.
+    LabelId jump_label_id;     // IR_OPERAND_KIND_LABEL_ID.
+    LabelName jump_label_name; // IR_OPERAND_KIND_LABEL_NAME.
+    Label label;               // IR_OPERAND_KIND_LABEL.
   };
 };
 
@@ -368,9 +370,11 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     if (!pg_string_is_empty(node.identifier)) {
 
       Label label = {.name.value = node.identifier};
-      if (pg_string_eq(node.identifier, PG_S("__builtin_exit"))) {
+      if (pg_string_eq(node.identifier,
+                       emitter->label_program_epilog_exit.name.value)) {
         label.id = emitter->label_program_epilog_exit.id;
-      } else if (pg_string_eq(node.identifier, PG_S("__builtin_die"))) {
+      } else if (pg_string_eq(node.identifier,
+                              emitter->label_program_epilog_die.name.value)) {
         label.id = emitter->label_program_epilog_die.id;
       }
 
@@ -475,8 +479,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
 
       IrOperand jump_target = {
-          .kind = IR_OPERAND_KIND_LABEL_ID,
-          .jump_label_id = emitter->label_program_epilog_die.id,
+          .kind = IR_OPERAND_KIND_LABEL_NAME,
+          .jump_label_name = emitter->label_program_epilog_die.name,
       };
       PG_ASSERT(jump_target.label.id.value);
       *PG_DYN_PUSH(&ins_jump_if_false.operands, allocator) = jump_target;
@@ -606,10 +610,7 @@ static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
 
   *PG_DYN_PUSH(&emitter->metadata, allocator) = (IrMetadata){0}; // Dummy.
 
-  emitter->label_program_epilog_die.id = ir_emitter_next_label_id(emitter);
   emitter->label_program_epilog_die.name.value = PG_S("__builtin_die");
-
-  emitter->label_program_epilog_exit.id = ir_emitter_next_label_id(emitter);
   emitter->label_program_epilog_exit.name.value = PG_S("__builtin_exit");
 
   (void)ir_emit_ast_node(node, emitter, errors, allocator);
@@ -985,6 +986,11 @@ static void ir_print_operand(IrOperand op, IrMetadataDyn metadata) {
   case IR_OPERAND_KIND_LABEL_ID:
     PG_ASSERT(op.jump_label_id.value);
     printf(".%" PRIu32 "", op.jump_label_id.value);
+    break;
+  case IR_OPERAND_KIND_LABEL_NAME:
+    PG_ASSERT(op.jump_label_name.value.len);
+    printf(".%.*s:\n", (i32)op.jump_label_name.value.len,
+           op.jump_label_name.value.data);
     break;
   default:
     PG_ASSERT(0);
