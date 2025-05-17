@@ -127,9 +127,9 @@ static void asm_print_interference_graph(InterferenceGraph graph,
 
       IrMetadata a_meta = PG_SLICE_AT(metadata, row);
       IrMetadata b_meta = PG_SLICE_AT(metadata, col);
-      ir_print_var(a_meta.var, a_meta.identifier);
+      ir_print_var(a_meta);
       printf(" -> ");
-      ir_print_var(b_meta.var, b_meta.identifier);
+      ir_print_var(b_meta);
       printf("\n");
     }
   }
@@ -198,7 +198,7 @@ static InterferenceGraph asm_build_interference_graph(IrMetadataDyn metadata,
       PG_ASSERT(!it.tombstone);
 #endif
 
-      PG_ASSERT(meta.var.id.value != it.var.id.value);
+      PG_ASSERT(meta.virtual_register.value != it.virtual_register.value);
 
       // Interferes with no one (unused).
       if (it.lifetime_start.value == it.lifetime_end.value) {
