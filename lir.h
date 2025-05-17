@@ -13,7 +13,7 @@ PG_SLICE(InterferenceNodeIndex) InterferenceNodeIndexSlice;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
 typedef struct {
-  LabelId label_id;
+  Label label;
   u64 code_address;
 } LabelAddress;
 PG_SLICE(LabelAddress) LabelAddressSlice;
@@ -38,7 +38,6 @@ typedef enum {
   LIR_OPERAND_KIND_VIRTUAL_REGISTER,
   LIR_OPERAND_KIND_IMMEDIATE,
   LIR_OPERAND_KIND_LABEL,
-  LIR_OPERAND_KIND_LABEL_ID,
 } LirOperandKind;
 
 typedef struct {
@@ -46,8 +45,7 @@ typedef struct {
   union {
     IrMetadataIndex meta_idx;
     u64 immediate;
-    LabelId jump_label_id; // LIR_OPERAND_KIND_LABEL_ID.
-    Label label;           // LIR_OPERAND_KIND_LABEL.
+    Label label; // LIR_OPERAND_KIND_LABEL.
   };
 } LirOperand;
 PG_SLICE(LirOperand) LirOperandSlice;
@@ -106,16 +104,8 @@ static void lir_print_operand(LirOperand op, IrMetadataDyn metadata) {
     printf("%" PRIu64, op.immediate);
     break;
   case LIR_OPERAND_KIND_LABEL:
-    PG_ASSERT(op.label.id.value);
-    PG_ASSERT(op.label.name.value.len);
-
-    printf(".%u-%.*s:\n", op.label.id.value, (i32)op.label.name.value.len,
-           op.label.name.value.data);
-
-    break;
-  case LIR_OPERAND_KIND_LABEL_ID:
-    PG_ASSERT(op.jump_label_id.value);
-    printf(".%" PRIu32, op.jump_label_id.value);
+    PG_ASSERT(op.label.value.len);
+    printf("%.*s", (i32)op.label.value.len, op.label.value.data);
     break;
   default:
     PG_ASSERT(0);
@@ -250,8 +240,6 @@ static void lir_emit_copy_to_virt_reg(LirEmitter *emitter, IrOperand src_op,
                                        origin, allocator);
   } break;
   case IR_OPERAND_KIND_LABEL:
-  case IR_OPERAND_KIND_LABEL_NAME:
-  case IR_OPERAND_KIND_LABEL_ID:
   case IR_OPERAND_KIND_NONE:
   default:
     PG_ASSERT(0);
@@ -277,13 +265,7 @@ static LirOperand lir_ir_operand_to_lir_operand(IrOperand ir_op) {
         .kind = LIR_OPERAND_KIND_LABEL,
         .label = ir_op.label,
     };
-  case IR_OPERAND_KIND_LABEL_ID:
-    return (LirOperand){
-        .kind = LIR_OPERAND_KIND_LABEL_ID,
-        .jump_label_id = ir_op.jump_label_id,
-    };
   case IR_OPERAND_KIND_NONE:
-  case IR_OPERAND_KIND_LABEL_NAME:
   default:
     PG_ASSERT(0);
   }
@@ -415,7 +397,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
     IrOperand branch_else = PG_SLICE_AT(ir_ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == branch_else.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
 
     LirInstruction ins_je = {
         .kind = LIR_INSTRUCTION_KIND_JUMP_IF_EQ,
@@ -423,8 +405,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     };
 
     LirOperand ins_je_op = {
-        .kind = LIR_OPERAND_KIND_LABEL_ID,
-        .jump_label_id = branch_else.jump_label_id,
+        .kind = LIR_OPERAND_KIND_LABEL,
+        .label = branch_else.label,
     };
     *PG_DYN_PUSH(&ins_je.operands, allocator) = ins_je_op;
 
@@ -435,7 +417,7 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     PG_ASSERT(0 == ir_ins.meta_idx.value);
 
     IrOperand op = PG_SLICE_AT(ir_ins.operands, 0);
-    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == op.kind);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
 
     LirInstruction ins = {
         .kind = LIR_INSTRUCTION_KIND_JUMP,
@@ -443,8 +425,8 @@ static void lir_emit_instruction(LirEmitter *emitter, IrInstruction ir_ins,
     };
 
     LirOperand lir_op = {
-        .kind = LIR_OPERAND_KIND_LABEL_ID,
-        .jump_label_id = op.jump_label_id,
+        .kind = LIR_OPERAND_KIND_LABEL,
+        .label = op.label,
     };
     *PG_DYN_PUSH(&ins.operands, allocator) = lir_op;
 

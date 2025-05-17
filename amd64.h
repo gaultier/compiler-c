@@ -8,7 +8,6 @@ typedef enum {
   AMD64_OPERAND_KIND_IMMEDIATE,
   AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
   AMD64_OPERAND_KIND_LABEL,
-  AMD64_OPERAND_KIND_LABEL_ID,
 } Amd64OperandKind;
 
 typedef struct {
@@ -24,7 +23,6 @@ typedef struct {
     Register reg;
     u64 immediate;
     Amd64EffectiveAddress effective_address;
-    LabelId jump_label_id;
     Label label;
   };
 } Amd64Operand;
@@ -272,16 +270,10 @@ static void amd64_print_operand(Amd64Operand op) {
     printf("%s%" PRIi32 "]", op.effective_address.displacement >= 0 ? "+" : "",
            op.effective_address.displacement);
   } break;
-  case AMD64_OPERAND_KIND_LABEL_ID:
-    PG_ASSERT(op.jump_label_id.value);
-    printf(".%" PRIu32, op.jump_label_id.value);
-    break;
   case AMD64_OPERAND_KIND_LABEL:
-    PG_ASSERT(op.label.id.value);
-    PG_ASSERT(op.label.name.value.len);
+    PG_ASSERT(op.label.value.len);
 
-    printf(".%u ; %.*s", op.label.id.value, (i32)op.label.name.value.len,
-           op.label.name.value.data);
+    printf("%.*s", (i32)op.label.value.len, op.label.value.data);
     break;
   default:
     PG_ASSERT(0);
@@ -839,8 +831,8 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
                                         AsmProgram *program,
                                         PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP_IF_EQ == instruction.kind);
-  PG_ASSERT(AMD64_OPERAND_KIND_LABEL_ID == instruction.lhs.kind);
-  PG_ASSERT(instruction.lhs.jump_label_id.value);
+  PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
+  PG_ASSERT(instruction.lhs.label.value.len);
 
   u8 opcode1 = 0x0f;
   *PG_DYN_PUSH(sb, allocator) = opcode1;
@@ -849,7 +841,7 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
   *PG_DYN_PUSH(sb, allocator) = opcode2;
 
   *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
-      .label_id = instruction.lhs.jump_label_id,
+      .label = instruction.lhs.label,
       .code_address = sb->len,
   };
 
@@ -862,14 +854,14 @@ static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
                                          AsmProgram *program,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP == instruction.kind);
-  PG_ASSERT(AMD64_OPERAND_KIND_LABEL_ID == instruction.lhs.kind);
-  PG_ASSERT(instruction.lhs.jump_label_id.value);
+  PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
+  PG_ASSERT(instruction.lhs.label.value.len);
 
   u8 opcode = 0xe9;
   *PG_DYN_PUSH(sb, allocator) = opcode;
 
   *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
-      .label_id = instruction.lhs.jump_label_id,
+      .label = instruction.lhs.label,
       .code_address = sb->len,
   };
 
@@ -981,12 +973,11 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     break;
 
   case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
-    PG_ASSERT(instruction.lhs.label.id.value);
-    PG_ASSERT(instruction.lhs.label.name.value.len);
+    PG_ASSERT(instruction.lhs.label.value.len);
 
     *PG_DYN_PUSH(&asm_emitter->program.label_addresses, allocator) =
         (LabelAddress){
-            .label_id = instruction.lhs.label.id,
+            .label = instruction.lhs.label,
             .code_address = sb->len,
         };
     break;
@@ -1074,18 +1065,10 @@ amd64_convert_lir_operand_to_amd64_operand(Amd64Emitter *emitter,
         .immediate = lir_op.immediate,
     };
   case LIR_OPERAND_KIND_LABEL: {
-    PG_ASSERT(lir_op.label.id.value);
-    PG_ASSERT(lir_op.label.name.value.len);
+    PG_ASSERT(lir_op.label.value.len);
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_LABEL,
         .label = lir_op.label,
-    };
-  }
-  case LIR_OPERAND_KIND_LABEL_ID: {
-    PG_ASSERT(lir_op.jump_label_id.value);
-    return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_LABEL_ID,
-        .jump_label_id = lir_op.jump_label_id,
     };
   }
   case LIR_OPERAND_KIND_NONE:
@@ -1344,8 +1327,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(1 == lir.operands.len);
 
     LirOperand op = PG_SLICE_AT(lir.operands, 0);
-    PG_ASSERT(LIR_OPERAND_KIND_LABEL_ID == op.kind);
-    PG_ASSERT(op.jump_label_id.value);
+    PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
+    PG_ASSERT(op.label.value.len);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
@@ -1362,8 +1345,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand op = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.id.value);
-    PG_ASSERT(op.label.name.value.len);
+    PG_ASSERT(op.label.value.len);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
@@ -1379,7 +1361,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand op = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.jump_label_id.value);
+    PG_ASSERT(op.label.value.len);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
@@ -1585,22 +1567,22 @@ static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   for (u64 i = 0; i < asm_emitter->program.jumps_to_backpatch.len; i++) {
     LabelAddress jump_to_backpatch =
         PG_SLICE_AT(asm_emitter->program.jumps_to_backpatch, i);
-    PG_ASSERT(jump_to_backpatch.label_id.value > 0);
+    PG_ASSERT(jump_to_backpatch.label.value.len);
     PG_ASSERT(jump_to_backpatch.code_address > 0);
     PG_ASSERT(jump_to_backpatch.code_address <= sb->len - 1);
 
     LabelAddress label = {0};
     for (u64 j = 0; j < asm_emitter->program.label_addresses.len; j++) {
       label = PG_SLICE_AT(asm_emitter->program.label_addresses, j);
-      PG_ASSERT(label.label_id.value > 0);
+      PG_ASSERT(label.label.value.len);
       PG_ASSERT(label.code_address <= sb->len - 1);
 
-      if (label.label_id.value == jump_to_backpatch.label_id.value) {
+      if (pg_string_eq(label.label.value, jump_to_backpatch.label.value)) {
         break;
       }
     }
-    PG_ASSERT(label.label_id.value > 0);
-    PG_ASSERT(label.label_id.value == jump_to_backpatch.label_id.value);
+    PG_ASSERT(label.label.value.len);
+    PG_ASSERT(pg_string_eq(label.label.value, jump_to_backpatch.label.value));
 
     u8 *jump_displacement_encoded =
         PG_SLICE_AT_PTR(sb, jump_to_backpatch.code_address);
