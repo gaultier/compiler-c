@@ -152,6 +152,7 @@ static const Architecture amd64_arch = {
     .syscall_ret = amd64_rax,
     .stack_pointer = amd64_rsp,
     .base_pointer = amd64_rbp,
+    .gprs = amd64_register_allocator_gprs_slice,
 };
 
 typedef enum {
@@ -1706,7 +1707,7 @@ static AsmEmitter *amd64_make_asm_emitter(LirEmitter *lir_emitter,
 
   amd64_emitter->lir_emitter = lir_emitter;
 
-  amd64_emitter->gprs_count = amd64_register_allocator_gprs_slice.len;
+  amd64_emitter->arch = amd64_arch;
   amd64_emitter->program.file_path = exe_path;
   amd64_emitter->program.vm_start = 1 << 22;
   // TODO: rodata.
