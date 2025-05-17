@@ -135,7 +135,8 @@ static void ast_print(AstNode node, u32 left_width) {
     break;
 
   case AST_NODE_KIND_FN_DEFINITION:
-    printf("FnDef\n");
+    printf("FnDefinition(%.*s,\n", (i32)node.identifier.len,
+           node.identifier.data);
     for (u64 i = 0; i < node.operands.len; i++) {
       ast_print(PG_SLICE_AT(node.operands, i), left_width + 2);
     }
@@ -666,10 +667,10 @@ static AstNode *ast_parse_declaration(LexTokenSlice tokens, ErrorDyn *errors,
 static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
 
   {
-    AstNode *block_exit =
+    AstNode *fn_exit =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-    block_exit->kind = AST_NODE_KIND_BLOCK;
-    block_exit->identifier = PG_S("__builtin_exit");
+    fn_exit->kind = AST_NODE_KIND_FN_DEFINITION;
+    fn_exit->identifier = PG_S("__builtin_exit");
 
     AstNode *syscall =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
@@ -685,15 +686,15 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
     op1->n64 = 0;
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
 
-    *PG_DYN_PUSH(&block_exit->operands, allocator) = *syscall;
+    *PG_DYN_PUSH(&fn_exit->operands, allocator) = *syscall;
 
-    *PG_DYN_PUSH(&parent->operands, allocator) = *block_exit;
+    *PG_DYN_PUSH(&parent->operands, allocator) = *fn_exit;
   }
   {
-    AstNode *block_die =
+    AstNode *fn_die =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-    block_die->kind = AST_NODE_KIND_BLOCK;
-    block_die->identifier = PG_S("__builtin_die");
+    fn_die->kind = AST_NODE_KIND_FN_DEFINITION;
+    fn_die->identifier = PG_S("__builtin_die");
 
     AstNode *syscall =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
@@ -709,9 +710,9 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
     op1->n64 = 1;
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
 
-    *PG_DYN_PUSH(&block_die->operands, allocator) = *syscall;
+    *PG_DYN_PUSH(&fn_die->operands, allocator) = *syscall;
 
-    *PG_DYN_PUSH(&parent->operands, allocator) = *block_die;
+    *PG_DYN_PUSH(&parent->operands, allocator) = *fn_die;
   }
 }
 
@@ -721,8 +722,10 @@ static AstNode *ast_emit(LexTokenSlice tokens, ErrorDyn *errors,
   AstNode *root = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
   root->kind = AST_NODE_KIND_BLOCK;
 
-  AstNode *main = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-  main->kind = AST_NODE_KIND_BLOCK;
+  AstNode *fn_start =
+      pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
+  fn_start->kind = AST_NODE_KIND_FN_DEFINITION;
+  fn_start->identifier = PG_S("_start");
 
   for (u64 tokens_idx = 0; tokens_idx < tokens.len;) {
     LexTokenSlice remaining = PG_SLICE_RANGE_START(tokens, tokens_idx);
@@ -744,12 +747,12 @@ static AstNode *ast_emit(LexTokenSlice tokens, ErrorDyn *errors,
 
     PG_ASSERT(statement);
 
-    *PG_DYN_PUSH(&main->operands, allocator) = *statement;
+    *PG_DYN_PUSH(&fn_start->operands, allocator) = *statement;
 
     tokens_idx += tokens_consumed;
   }
 
-  *PG_DYN_PUSH(&root->operands, allocator) = *main;
+  *PG_DYN_PUSH(&root->operands, allocator) = *fn_start;
 
   ast_emit_program_epilog(root, allocator);
 
