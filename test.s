@@ -3,21 +3,16 @@
 
 .globl _start
 _start:
-mov rbp, rsp
-sub rbp, 64
+mov rax, 0
+cmp rax, 0
+je .die
 
-cmp qword ptr [rbp-8], 0
-
-mov rcx, 9
-mov r11, 10
-
-mov rax, 1
-mov rdi, 1
-mov r15, 478560413032
-mov qword ptr [rbp-8], r15
-mov rdx, 5
+.exit:
+mov rax, 60
+mov rdi, 0
 syscall
 
+.die:
 mov rax, 60
-mov rdi, r11
+mov rdi, 1
 syscall

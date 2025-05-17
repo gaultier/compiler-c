@@ -447,7 +447,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       IrOperand cond = ir_emit_ast_node(operand, emitter, errors, allocator);
       *PG_DYN_PUSH(&ins_cmp.operands, allocator) = cond;
       *PG_DYN_PUSH(&ins_cmp.operands, allocator) =
-          (IrOperand){.kind = IR_OPERAND_KIND_U64, .n64 = 1};
+          (IrOperand){.kind = IR_OPERAND_KIND_U64, .n64 = 0};
       *PG_DYN_PUSH(&emitter->instructions, allocator) = ins_cmp;
     }
 
