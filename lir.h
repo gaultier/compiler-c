@@ -13,7 +13,7 @@ PG_SLICE(InterferenceNodeIndex) InterferenceNodeIndexSlice;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
 typedef struct {
-  LabelId label;
+  LabelId label_id;
   u64 code_address;
 } LabelAddress;
 PG_SLICE(LabelAddress) LabelAddressSlice;
