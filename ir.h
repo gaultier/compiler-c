@@ -607,7 +607,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   }
 }
 
-static void ir_resolve_label_names(IrEmitter *emitter) {
+static void ir_resolve_jump_label_names_to_ids(IrEmitter *emitter) {
   for (u64 i = 0; i < emitter->instructions.len; i++) {
     IrInstruction ins = PG_SLICE_AT(emitter->instructions, i);
     // Only interested in jumps.
@@ -665,7 +665,7 @@ static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
 
   (void)ir_emit_ast_node(node, emitter, errors, allocator);
 
-  ir_resolve_label_names(emitter);
+  ir_resolve_jump_label_names_to_ids(emitter);
 }
 
 #if 0
