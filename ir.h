@@ -114,10 +114,6 @@ PG_SLICE(MemoryLocation) MemoryLocationSlice;
 PG_DYN(MemoryLocation) MemoryLocationDyn;
 
 typedef struct {
-  u32 value;
-} MemoryLocationIndex;
-
-typedef struct {
   IrInstructionIndex lifetime_start, lifetime_end;
   VirtualRegister virtual_register;
   MemoryLocation memory_location;
@@ -149,15 +145,14 @@ static Label ir_emitter_next_label_name(IrEmitter *emitter,
   return id;
 }
 
-[[nodiscard]] static MetadataIndex
-ir_metadata_last_idx(MetadataDyn metadata) {
+[[nodiscard]] static MetadataIndex ir_metadata_last_idx(MetadataDyn metadata) {
   PG_ASSERT(metadata.len > 0);
   return (MetadataIndex){(u32)metadata.len - 1};
 }
 
 [[nodiscard]]
 static MetadataIndex ir_make_metadata(MetadataDyn *metadata,
-                                        PgAllocator *allocator) {
+                                      PgAllocator *allocator) {
   Metadata res = {0};
   res.virtual_register.value = (u32)metadata->len;
 
@@ -175,13 +170,13 @@ static void ir_metadata_start_lifetime(MetadataDyn metadata,
 
 [[nodiscard]]
 static MetadataIndex ir_metadata_ptr_to_idx(MetadataDyn metadata,
-                                              Metadata *meta) {
+                                            Metadata *meta) {
   return (MetadataIndex){(u32)(meta - metadata.data)};
 }
 
 [[nodiscard]]
 static Metadata *ir_find_metadata_by_identifier(MetadataDyn metadata,
-                                                  PgString identifier) {
+                                                PgString identifier) {
   for (u64 i = 0; i < metadata.len; i++) {
     Metadata *meta = PG_SLICE_AT_PTR(&metadata, i);
     if (pg_string_eq(meta->identifier, identifier)) {

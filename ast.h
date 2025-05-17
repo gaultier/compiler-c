@@ -146,11 +146,8 @@ static AstNode *ast_parse_statement(LexTokenSlice tokens, ErrorDyn *errors,
 static AstNode *ast_parse_declaration(LexTokenSlice tokens, ErrorDyn *errors,
                                       u64 *tokens_consumed,
                                       PgAllocator *allocator);
-#if 0
 static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
                                   u64 *tokens_consumed, PgAllocator *allocator);
-#endif
-
 static AstNode *ast_parse_var_decl(LexTokenSlice tokens, ErrorDyn *errors,
                                    u64 *tokens_consumed,
                                    PgAllocator *allocator) {
@@ -387,11 +384,9 @@ static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
                                u64 *tokens_consumed, PgAllocator *allocator) {
   AstNode *res = nullptr;
 
-#if 0
   if ((res = ast_parse_syscall(tokens, errors, tokens_consumed, allocator))) {
     return res;
   }
-#endif
 
   if ((res =
            ast_parse_assignment(tokens, errors, tokens_consumed, allocator))) {
@@ -400,7 +395,6 @@ static AstNode *ast_parse_expr(LexTokenSlice tokens, ErrorDyn *errors,
   return nullptr;
 }
 
-#if 0
 static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
                                   u64 *tokens_consumed,
                                   PgAllocator *allocator) {
@@ -423,7 +417,7 @@ static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
     LexToken token_left_paren = PG_SLICE_AT(tokens, *tokens_consumed);
     if (LEX_TOKEN_KIND_PAREN_LEFT != token_left_paren.kind) {
       *PG_DYN_PUSH(errors, allocator) = (Error){
-          .kind = ERROR_KIND_PARSE_SYSCALL_MISSING_LEFT_PAREN,
+          .kind = ERROR_KIND_PARSE_MISSING_PAREN_LEFT,
           .origin = token_left_paren.origin,
       };
       return nullptr;
@@ -475,7 +469,7 @@ static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
     LexToken token_right_paren = PG_SLICE_AT(tokens, *tokens_consumed);
     if (LEX_TOKEN_KIND_PAREN_RIGHT != token_right_paren.kind) {
       *PG_DYN_PUSH(errors, allocator) = (Error){
-          .kind = ERROR_KIND_PARSE_SYSCALL_MISSING_RIGHT_PAREN,
+          .kind = ERROR_KIND_PARSE_MISSING_PAREN_RIGHT,
           .origin = token_right_paren.origin,
       };
       return nullptr;
@@ -491,7 +485,6 @@ static AstNode *ast_parse_syscall(LexTokenSlice tokens, ErrorDyn *errors,
 
   return res;
 }
-#endif
 
 static AstNode *ast_parse_block(LexTokenSlice tokens, ErrorDyn *errors,
                                 u64 *tokens_consumed, PgAllocator *allocator) {
