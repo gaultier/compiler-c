@@ -340,17 +340,14 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     ins.meta_idx = meta_idx;
     *PG_DYN_PUSH(&emitter->instructions, allocator) = ins;
 
-    // FIXME
-#if 0
     IrInstructionIndex ins_idx = {(u32)(emitter->instructions.len - 1)};
     for (u64 i = 0; i < node.operands.len; i++) {
       IrOperand val = PG_SLICE_AT(ins.operands, i);
       if (IR_OPERAND_KIND_VAR == val.kind) {
-        IrVar var = val.var;
-        ir_var_extend_lifetime_on_use(emitter->metadata, var, ins_idx);
+        ir_metadata_extend_lifetime_on_use(emitter->metadata, val.meta_idx,
+                                           ins_idx);
       }
     }
-#endif
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .meta_idx = meta_idx};
   }
