@@ -1188,11 +1188,12 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
     MemoryLocation dst_mem_loc =
         PG_SLICE_AT(emitter->metadata, dst.meta_idx.value).memory_location;
-    MemoryLocation src_mem_loc =
-        PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
 
     // Easy case: `sete rax` or `sete [rbp-8]`
     if (LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind) {
+      MemoryLocation src_mem_loc =
+          PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
+
       if (MEMORY_LOCATION_KIND_STATUS_REGISTER == src_mem_loc.kind) {
         Amd64Instruction ins = {
             .kind = AMD64_INSTRUCTION_KIND_SET_IF_EQ,
@@ -1246,6 +1247,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     }
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
+    MemoryLocation src_mem_loc =
+        PG_SLICE_AT(emitter->metadata, src.meta_idx.value).memory_location;
 
     // Easy case: at least one memory location is a register.
     if ((MEMORY_LOCATION_KIND_REGISTER == dst_mem_loc.kind ||
