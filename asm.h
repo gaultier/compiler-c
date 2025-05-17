@@ -210,7 +210,8 @@ static Register asm_get_free_register(GprSet regs, Architecture arch) {
 
 static void asm_color_do_precoloring(AsmEmitter *emitter,
                                      LirFnDefinition *fn_def,
-                                     PgString tombstones_bitfield, GprSet *set,
+                                     PgString tombstones_bitfield,
+                                     GprSet *gprs_precolored_set,
                                      bool verbose) {
   // Dummy.
   pg_bitfield_set(tombstones_bitfield, 0, true);
@@ -247,7 +248,15 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
 #if 0
       PG_ASSERT(!asm_gpr_set_has(*set, meta->memory_location.reg.value));
 #endif
-      asm_gpr_set_add(set, meta->memory_location.reg.value);
+      Register reg = {0};
+      for (u32 k = 0; k < emitter->arch.gprs.len; k++) {
+        reg = PG_SLICE_AT(emitter->arch.gprs, k);
+        if (reg.value == meta->memory_location.reg.value) {
+          asm_gpr_set_add(gprs_precolored_set, k);
+          break;
+        }
+      }
+      PG_ASSERT(reg.value);
 
       if (verbose) {
         printf("asm: precoloring assigned register: ");
