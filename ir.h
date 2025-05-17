@@ -607,6 +607,53 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   }
 }
 
+static void ir_resolve_label_names(IrEmitter *emitter) {
+  for (u64 i = 0; i < emitter->instructions.len; i++) {
+    IrInstruction ins = PG_SLICE_AT(emitter->instructions, i);
+    // Only interested in jumps.
+    if (!(IR_INSTRUCTION_KIND_JUMP_IF_FALSE == ins.kind ||
+          IR_INSTRUCTION_KIND_JUMP == ins.kind)) {
+      continue;
+    }
+
+    PG_ASSERT(ins.operands.len > 0);
+    IrOperand *op = PG_SLICE_AT_PTR(&ins.operands, 0);
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_NAME == op->kind ||
+              IR_OPERAND_KIND_LABEL_ID == op->kind);
+
+    // Only interested in label names.
+    if (!(IR_OPERAND_KIND_LABEL_NAME == op->kind)) {
+      continue;
+    }
+    LabelName needle_label_name = op->jump_label_name;
+    PG_ASSERT(needle_label_name.value.len);
+
+    for (u64 j = 0; j < emitter->instructions.len; j++) {
+      IrInstruction it = PG_SLICE_AT(emitter->instructions, j);
+      if (!(IR_INSTRUCTION_KIND_LABEL_DEFINITION == it.kind)) {
+        continue;
+      }
+
+      PG_ASSERT(it.operands.len > 0);
+
+      IrOperand it_op = PG_SLICE_AT(it.operands, 0);
+      PG_ASSERT(IR_OPERAND_KIND_LABEL == it_op.kind);
+      LabelName it_label_name = it_op.label.name;
+      PG_ASSERT(it_label_name.value.len);
+      PG_ASSERT(it_op.label.id.value);
+
+      if (pg_string_eq(it_label_name.value, needle_label_name.value)) {
+        op->kind = IR_OPERAND_KIND_LABEL_ID;
+        op->jump_label_id = it_op.label.id;
+        break;
+      }
+    }
+
+    PG_ASSERT(IR_OPERAND_KIND_LABEL_ID == op->kind);
+    PG_ASSERT(op->jump_label_id.value);
+  }
+}
+
 static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
                             PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_BLOCK == node.kind);
@@ -617,6 +664,8 @@ static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
   emitter->label_program_epilog_exit.name.value = PG_S("__builtin_exit");
 
   (void)ir_emit_ast_node(node, emitter, errors, allocator);
+
+  ir_resolve_label_names(emitter);
 }
 
 #if 0
