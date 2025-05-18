@@ -50,6 +50,7 @@ static const Register amd64_rflags = {17};
 static const Register amd64_register_allocator_gprs[] = {
     amd64_rax,
     amd64_rdi,
+    amd64_rsi,
     amd64_rdx,
     amd64_rcx,
     amd64_r8,
