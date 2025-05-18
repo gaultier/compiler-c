@@ -23,7 +23,7 @@ typedef struct AstNode AstNode;
 PG_SLICE(AstNode) AstNodeSlice;
 PG_DYN(AstNode) AstNodeDyn;
 
-typedef enum {
+typedef enum [[clang::flag_enum]] {
   AST_NODE_FLAG_NONE = 0,
   AST_NODE_FLAG_GLOBAL = 1 << 0,
   AST_NODE_FLAG_FN_NO_FRAME_POINTERS = 1 << 1,
