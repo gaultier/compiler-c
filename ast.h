@@ -32,8 +32,10 @@ typedef enum {
 struct AstNode {
   AstNodeKind kind;
   AstNodeDyn operands;
-  u64 n64;
-  PgString identifier;
+  union {
+    u64 n64;
+    PgString identifier;
+  } u;
   Origin origin;
   LexTokenKind token_kind;
   AstNodeFlag flags;
@@ -50,11 +52,11 @@ static void ast_print(AstNode node, u32 left_width) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_U64:
-    printf("U64(%" PRIu64 ")\n", node.n64);
+    printf("U64(%" PRIu64 ")\n", node.u.n64);
     break;
   case AST_NODE_KIND_IDENTIFIER:
-    printf("Identifier(%.*s)\n", (i32)node.identifier.len,
-           node.identifier.data);
+    printf("Identifier(%.*s)\n", (i32)node.u.identifier.len,
+           node.u.identifier.data);
     break;
   case AST_NODE_KIND_ADDRESS_OF:
     printf("AddressOf(\n");
@@ -117,7 +119,8 @@ static void ast_print(AstNode node, u32 left_width) {
   case AST_NODE_KIND_VAR_DEFINITION:
     PG_ASSERT(1 == node.operands.len);
 
-    printf("VarDecl(%.*s\n", (i32)node.identifier.len, node.identifier.data);
+    printf("VarDecl(%.*s\n", (i32)node.u.identifier.len,
+           node.u.identifier.data);
     ast_print(PG_SLICE_AT(node.operands, 0), left_width + 2);
     for (u64 i = 0; i < left_width; i++) {
       putchar(' ');
@@ -142,8 +145,8 @@ static void ast_print(AstNode node, u32 left_width) {
     break;
 
   case AST_NODE_KIND_FN_DEFINITION:
-    printf("FnDefinition(%.*s,\n", (i32)node.identifier.len,
-           node.identifier.data);
+    printf("FnDefinition(%.*s,\n", (i32)node.u.identifier.len,
+           node.u.identifier.data);
     for (u64 i = 0; i < node.operands.len; i++) {
       ast_print(PG_SLICE_AT(node.operands, i), left_width + 2);
     }
@@ -235,7 +238,7 @@ static AstNode *ast_parse_var_decl(LexTokenSlice tokens, ErrorDyn *errors,
   AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
   res->kind = AST_NODE_KIND_VAR_DEFINITION;
   res->origin = token_first.origin;
-  res->identifier = token_first.s;
+  res->u.identifier = token_first.s;
   *PG_DYN_PUSH(&res->operands, allocator) = *rhs;
 
   return res;
@@ -257,7 +260,7 @@ static AstNode *ast_parse_primary(LexTokenSlice tokens, ErrorDyn *errors,
     PgParseNumberResult parse_res = pg_string_parse_u64(first.s);
     PG_ASSERT(parse_res.present);
     PG_ASSERT(pg_string_is_empty(parse_res.remaining));
-    res->n64 = parse_res.n;
+    res->u.n64 = parse_res.n;
 
     return res;
   }
@@ -266,7 +269,7 @@ static AstNode *ast_parse_primary(LexTokenSlice tokens, ErrorDyn *errors,
     AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     res->origin = first.origin;
     res->kind = AST_NODE_KIND_IDENTIFIER;
-    res->identifier = first.s;
+    res->u.identifier = first.s;
 
     return res;
   }
@@ -655,7 +658,7 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
     AstNode *fn_exit =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     fn_exit->kind = AST_NODE_KIND_FN_DEFINITION;
-    fn_exit->identifier = PG_S("__builtin_exit");
+    fn_exit->u.identifier = PG_S("__builtin_exit");
     fn_exit->flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
 
     AstNode *syscall =
@@ -664,12 +667,12 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
 
     AstNode *op0 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     op0->kind = AST_NODE_KIND_U64;
-    op0->n64 = 60; // FIXME: Only on Linux amd64.
+    op0->u.n64 = 60; // FIXME: Only on Linux amd64.
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op0;
 
     AstNode *op1 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     op1->kind = AST_NODE_KIND_U64;
-    op1->n64 = 0;
+    op1->u.n64 = 0;
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
 
     *PG_DYN_PUSH(&fn_exit->operands, allocator) = *syscall;
@@ -680,7 +683,7 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
     AstNode *fn_die =
         pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     fn_die->kind = AST_NODE_KIND_FN_DEFINITION;
-    fn_die->identifier = PG_S("__builtin_die");
+    fn_die->u.identifier = PG_S("__builtin_die");
     fn_die->flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
 
     AstNode *syscall =
@@ -689,12 +692,12 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
 
     AstNode *op0 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     op0->kind = AST_NODE_KIND_U64;
-    op0->n64 = 60; // FIXME: Only on Linux amd64.
+    op0->u.n64 = 60; // FIXME: Only on Linux amd64.
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op0;
 
     AstNode *op1 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     op1->kind = AST_NODE_KIND_U64;
-    op1->n64 = 1;
+    op1->u.n64 = 1;
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
 
     *PG_DYN_PUSH(&fn_die->operands, allocator) = *syscall;
@@ -712,7 +715,7 @@ static AstNode *ast_emit(LexTokenSlice tokens, ErrorDyn *errors,
   AstNode *fn_start =
       pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
   fn_start->kind = AST_NODE_KIND_FN_DEFINITION;
-  fn_start->identifier = PG_S("_start");
+  fn_start->u.identifier = PG_S("_start");
   fn_start->flags = AST_NODE_FLAG_GLOBAL;
 
   for (u64 tokens_idx = 0; tokens_idx < tokens.len;) {

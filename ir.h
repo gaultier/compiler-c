@@ -228,7 +228,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     };
     *PG_DYN_PUSH(&ins.operands, allocator) = (IrOperand){
         .kind = IR_OPERAND_KIND_U64,
-        .u.n64 = node.n64,
+        .u.n64 = node.u.n64,
     };
 
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
@@ -351,9 +351,9 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .u.meta_idx = meta_idx};
   }
   case AST_NODE_KIND_BLOCK: {
-    if (!pg_string_is_empty(node.identifier)) {
+    if (!pg_string_is_empty(node.u.identifier)) {
 
-      Label label = {.value = node.identifier};
+      Label label = {.value = node.u.identifier};
 
       IrInstruction ir_label = {
           .kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION,
@@ -373,11 +373,11 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     return (IrOperand){0};
   }
   case AST_NODE_KIND_FN_DEFINITION: {
-    PG_ASSERT(!pg_string_is_empty(node.identifier));
+    PG_ASSERT(!pg_string_is_empty(node.u.identifier));
 
     PG_ASSERT(!fn_def);
     IrFnDefinition fn_def_real = (IrFnDefinition){
-        .name = node.identifier,
+        .name = node.u.identifier,
         .flags = node.flags,
     };
     fn_def = &fn_def_real;
@@ -393,14 +393,15 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   }
   case AST_NODE_KIND_VAR_DEFINITION: {
     PG_ASSERT(1 == node.operands.len);
-    PG_ASSERT(!pg_string_is_empty(node.identifier));
+    PG_ASSERT(!pg_string_is_empty(node.u.identifier));
 
     AstNode rhs_node = PG_SLICE_AT(node.operands, 0);
     IrOperand rhs =
         ir_emit_ast_node(rhs_node, emitter, fn_def, errors, allocator);
 
     MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
-    PG_SLICE_AT(fn_def->metadata, meta_idx.value).identifier = node.identifier;
+    PG_SLICE_AT(fn_def->metadata, meta_idx.value).identifier =
+        node.u.identifier;
     ir_metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
@@ -424,7 +425,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
 
   case AST_NODE_KIND_IDENTIFIER: {
     Metadata *meta =
-        ir_find_metadata_by_identifier(fn_def->metadata, node.identifier);
+        ir_find_metadata_by_identifier(fn_def->metadata, node.u.identifier);
 
     if (!meta) {
       *PG_DYN_PUSH(errors, allocator) = (Error){
