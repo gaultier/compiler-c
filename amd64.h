@@ -1054,7 +1054,7 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   switch (lir_op.kind) {
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
     MemoryLocation mem_loc =
-        PG_SLICE_AT(metadata, lir_op.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, lir_op.u.meta_idx.value).memory_location;
     switch (mem_loc.kind) {
     case MEMORY_LOCATION_KIND_REGISTER: {
       PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
@@ -1105,13 +1105,13 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   case LIR_OPERAND_KIND_IMMEDIATE:
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-        .immediate = lir_op.immediate,
+        .immediate = lir_op.u.immediate,
     };
   case LIR_OPERAND_KIND_LABEL: {
-    PG_ASSERT(lir_op.label.value.len);
+    PG_ASSERT(lir_op.u.label.value.len);
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_LABEL,
-        .label = lir_op.label,
+        .label = lir_op.u.label,
     };
   }
   case LIR_OPERAND_KIND_NONE:
@@ -1159,7 +1159,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
     MemoryLocation lhs_mem_loc =
-        PG_SLICE_AT(metadata, lhs.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, lhs.u.meta_idx.value).memory_location;
 
     // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
     if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
@@ -1217,7 +1217,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
 
     MemoryLocation lhs_mem_loc =
-        PG_SLICE_AT(metadata, lhs.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, lhs.u.meta_idx.value).memory_location;
 
     PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind &&
               "todo: load/store");
@@ -1242,12 +1242,12 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == dst.kind);
     MemoryLocation dst_mem_loc =
-        PG_SLICE_AT(metadata, dst.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, dst.u.meta_idx.value).memory_location;
 
     // Easy case: `sete rax` or `sete [rbp-8]`
     if (LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind) {
       MemoryLocation src_mem_loc =
-          PG_SLICE_AT(metadata, src.meta_idx.value).memory_location;
+          PG_SLICE_AT(metadata, src.u.meta_idx.value).memory_location;
 
       if (MEMORY_LOCATION_KIND_STATUS_REGISTER == src_mem_loc.kind) {
         Amd64Instruction ins = {
@@ -1308,7 +1308,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
     MemoryLocation src_mem_loc =
-        PG_SLICE_AT(metadata, src.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, src.u.meta_idx.value).memory_location;
 
     // Easy case: at least one memory location is a register.
     if ((MEMORY_LOCATION_KIND_REGISTER == dst_mem_loc.kind ||
@@ -1390,7 +1390,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand op = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.value.len);
+    PG_ASSERT(op.u.label.value.len);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
@@ -1408,7 +1408,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand op = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.value.len);
+    PG_ASSERT(op.u.label.value.len);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
@@ -1425,7 +1425,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     LirOperand op = PG_SLICE_AT(lir.operands, 0);
     PG_ASSERT(LIR_OPERAND_KIND_LABEL == op.kind);
-    PG_ASSERT(op.label.value.len);
+    PG_ASSERT(op.u.label.value.len);
 
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
@@ -1442,7 +1442,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
     {
       LirOperand res = PG_SLICE_AT(lir.operands, 0);
-      Metadata res_meta = PG_SLICE_AT(metadata, res.meta_idx.value);
+      Metadata res_meta = PG_SLICE_AT(metadata, res.u.meta_idx.value);
       PG_ASSERT(MEMORY_LOCATION_KIND_STATUS_REGISTER ==
                 res_meta.memory_location.kind);
     }
@@ -1471,7 +1471,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == src.kind);
 
     MemoryLocation src_mem_loc =
-        PG_SLICE_AT(metadata, src.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, src.u.meta_idx.value).memory_location;
 
     PG_ASSERT(MEMORY_LOCATION_KIND_STACK == src_mem_loc.kind);
 
