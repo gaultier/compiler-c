@@ -103,21 +103,6 @@ static bool asm_gpr_set_has_idx(GprSet set, u32 idx) {
   return set.indices_occupied_bitfield & (1 << idx);
 }
 
-[[maybe_unused]] [[nodiscard]]
-static bool asm_gpr_set_has(GprSet set, Register needle) {
-  u32 idx = -1U;
-  for (u32 i = 0; i < set.registers.len; i++) {
-    Register reg = PG_SLICE_AT(set.registers, i);
-    if (reg.value == needle.value) {
-      idx = i;
-      break;
-    }
-  }
-  PG_ASSERT(-1U != idx);
-
-  return asm_gpr_set_has_idx(set, idx);
-}
-
 [[nodiscard]]
 static u32 asm_gpr_pop_first_unset_idx(GprSet *set) {
   PG_ASSERT(set->registers.len > 0);
