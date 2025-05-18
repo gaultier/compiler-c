@@ -77,7 +77,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
         rodata_size += sizeof(u64);
         break;
       case ASM_CONSTANT_KIND_BYTES:
-        rodata_size += constant.bytes.len;
+        rodata_size += constant.u.bytes.len;
         break;
       default:
         PG_ASSERT(0);
@@ -256,10 +256,10 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
     case ASM_CONSTANT_KIND_NONE:
       PG_ASSERT(0);
     case ASM_CONSTANT_KIND_U64:
-      pg_byte_buffer_append_u64_within_capacity(&sb, constant.n64);
+      pg_byte_buffer_append_u64_within_capacity(&sb, constant.u.n64);
       break;
     case ASM_CONSTANT_KIND_BYTES:
-      PG_DYN_APPEND_SLICE(&sb, constant.bytes, allocator);
+      PG_DYN_APPEND_SLICE(&sb, constant.u.bytes, allocator);
       break;
     default:
       PG_ASSERT(0);

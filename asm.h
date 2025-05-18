@@ -40,7 +40,7 @@ typedef struct {
   union {
     u64 n64;
     PgString bytes;
-  };
+  } u;
 } AsmConstant;
 PG_SLICE(AsmConstant) AsmConstantSlice;
 PG_DYN(AsmConstant) AsmConstantDyn;
