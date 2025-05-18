@@ -2,8 +2,8 @@
 #include "lir.h"
 
 typedef struct {
-  u32 set;
-  u32 len;
+  u32 indices_occupied_bitfield;
+  RegisterSlice registers;
 } GprSet;
 
 typedef struct {
@@ -76,29 +76,67 @@ struct AsmEmitter {
   ASM_EMITTER_FIELDS
 };
 
-static void asm_gpr_set_add(GprSet *set, u32 val) {
-  PG_ASSERT(set->len > 0);
-  PG_ASSERT(val < set->len);
-  set->set |= 1 << val;
+static void asm_gpr_set_add_idx(GprSet *set, u32 idx) {
+  PG_ASSERT(set->registers.len > 0);
+  PG_ASSERT(idx < set->registers.len);
+  PG_ASSERT(pg_div_ceil(idx, 8) <= sizeof(set->indices_occupied_bitfield));
+  set->indices_occupied_bitfield |= 1 << idx;
+}
+
+static void asm_gpr_set_add(GprSet *set, Register elem) {
+  Register reg = {0};
+  for (u32 i = 0; i < set->registers.len; i++) {
+    reg = PG_SLICE_AT(set->registers, i);
+    if (reg.value == elem.value) {
+      asm_gpr_set_add_idx(set, i);
+      return;
+    }
+  }
+  PG_ASSERT(0);
 }
 
 [[nodiscard]]
-static bool asm_gpr_set_has(GprSet set, u32 val) {
-  PG_ASSERT(set.len > 0);
-  PG_ASSERT(val < set.len);
-  return set.set & (1 << val);
+static bool asm_gpr_set_has_idx(GprSet set, u32 idx) {
+  PG_ASSERT(set.registers.len > 0);
+  PG_ASSERT(idx < set.registers.len);
+  PG_ASSERT(pg_div_ceil(idx, 8) <= sizeof(set.indices_occupied_bitfield));
+  return set.indices_occupied_bitfield & (1 << idx);
 }
 
 [[nodiscard]]
-static u32 asm_gpr_pop_first_unset(GprSet *set) {
-  PG_ASSERT(set->len > 0);
+static bool asm_gpr_set_has(GprSet set, Register needle) {
+  u32 idx = -1U;
+  for (u32 i = 0; i < set.registers.len; i++) {
+    Register reg = PG_SLICE_AT(set.registers, i);
+    if (reg.value == needle.value) {
+      idx = i;
+      break;
+    }
+  }
+  PG_ASSERT(-1U != idx);
 
-  u32 first_set_bit = (u32)__builtin_ffs((int)~set->set);
+  return asm_gpr_set_has_idx(set, idx);
+}
+
+[[nodiscard]]
+static u32 asm_gpr_pop_first_unset_idx(GprSet *set) {
+  PG_ASSERT(set->registers.len > 0);
+
+  u32 first_set_bit = (u32)__builtin_ffs((int)~set->indices_occupied_bitfield);
   PG_ASSERT(first_set_bit);
+  // `__builtin_ffs` returns a 1-indexed result.
+  first_set_bit -= 1;
 
-  asm_gpr_set_add(set, first_set_bit - 1);
+  PG_ASSERT(first_set_bit < set->registers.len);
 
-  return first_set_bit - 1;
+  asm_gpr_set_add_idx(set, first_set_bit);
+
+  return first_set_bit;
+}
+
+[[nodiscard]]
+static Register asm_gpr_pop_first_unset(GprSet *set) {
+  return PG_SLICE_AT(set->registers, asm_gpr_pop_first_unset_idx(set));
 }
 
 static void asm_sanity_check_interference_graph(InterferenceGraph graph,
@@ -200,12 +238,10 @@ static void asm_color_spill_remaining_nodes_in_graph(
   }
 }
 
-static Register asm_get_free_register(GprSet regs, Architecture arch) {
+static Register asm_get_free_register(GprSet *gpr_set) {
   // TODO: Smarter free register selection.
   // E.g. favor caller-saved registers, etc.
-  u32 idx = asm_gpr_pop_first_unset(&regs);
-  Register reg = PG_SLICE_AT(arch.gprs, idx);
-  return reg;
+  return asm_gpr_pop_first_unset(gpr_set);
 }
 
 static void asm_color_do_precoloring(AsmEmitter *emitter,
@@ -248,15 +284,7 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
 #if 0
       PG_ASSERT(!asm_gpr_set_has(*set, meta->memory_location.reg.value));
 #endif
-      Register reg = {0};
-      for (u32 k = 0; k < emitter->arch.gprs.len; k++) {
-        reg = PG_SLICE_AT(emitter->arch.gprs, k);
-        if (reg.value == meta->memory_location.reg.value) {
-          asm_gpr_set_add(gprs_precolored_set, k);
-          break;
-        }
-      }
-      PG_ASSERT(reg.value);
+      asm_gpr_set_add(gprs_precolored_set, meta->memory_location.reg);
 
       if (verbose) {
         printf("asm: precoloring assigned register: ");
@@ -273,18 +301,13 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
 }
 
 [[nodiscard]] static Register
-asm_color_assign_register(InterferenceGraph *graph,
-                          InterferenceNodeIndex node_idx, Architecture arch,
+asm_color_assign_register(InterferenceGraph graph_clone,
+                          InterferenceNodeIndex node_idx,
                           GprSet gprs_precolored, MetadataDyn metadata) {
-  PG_ASSERT(arch.gprs.len == gprs_precolored.len);
-
-  GprSet neighbor_colors = {
-      .len = (u32)arch.gprs.len,
-      .set = gprs_precolored.set,
-  };
+  GprSet neighbor_colors = gprs_precolored;
 
   PgAdjacencyMatrixNeighborIterator it =
-      pg_adjacency_matrix_make_neighbor_iterator(*graph, node_idx.value);
+      pg_adjacency_matrix_make_neighbor_iterator(graph_clone, node_idx.value);
 
   PgAdjacencyMatrixNeighbor neighbor = {0};
   do {
@@ -301,14 +324,13 @@ asm_color_assign_register(InterferenceGraph *graph,
     {
       if (MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
         PG_ASSERT(neighbor_mem_loc.reg.value);
-        PG_ASSERT(
-            !asm_gpr_set_has(neighbor_colors, neighbor_mem_loc.reg.value));
-        asm_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg.value - 1);
+        PG_ASSERT(!asm_gpr_set_has(neighbor_colors, neighbor_mem_loc.reg));
+        asm_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg);
       }
     }
   } while (neighbor.has_value);
 
-  Register res = asm_get_free_register(neighbor_colors, arch);
+  Register res = asm_get_free_register(&neighbor_colors);
   PG_ASSERT(res.value);
 
   // Update memory location.
@@ -341,6 +363,9 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
   PgString node_tombstones_bitfield = pg_string_make(
       pg_div_ceil(fn_def->interference_graph.nodes_count, 8), allocator);
 
+  PgAdjacencyMatrix graph_clone =
+      pg_adjacency_matrix_clone(fn_def->interference_graph, allocator);
+
   if (verbose) {
     printf("\n------------ Adjacency matrix of interference graph before "
            "pre-coloring %.*s"
@@ -349,8 +374,8 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
     pg_adjacency_matrix_print(fn_def->interference_graph);
   }
   GprSet gprs_precolored = {
-      .len = (u32)emitter->arch.gprs.len,
-      .set = 0,
+      .indices_occupied_bitfield = 0,
+      .registers = emitter->arch.gprs,
   };
   asm_color_do_precoloring(emitter, fn_def, node_tombstones_bitfield,
                            &gprs_precolored, verbose);
@@ -369,9 +394,6 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
 
   InterferenceNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, fn_def->interference_graph.nodes_count, allocator);
-
-  PgAdjacencyMatrix graph_clone =
-      pg_adjacency_matrix_clone(fn_def->interference_graph, allocator);
 
   for (u64 row = 0; row < fn_def->interference_graph.nodes_count; row++) {
     if (pg_bitfield_get(node_tombstones_bitfield, row)) {
@@ -442,8 +464,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
       PG_ASSERT(VREG_CONSTRAINT_NONE == constraint);
 
       Register reg = asm_color_assign_register(
-          &fn_def->interference_graph, node_idx, emitter->arch, gprs_precolored,
-          fn_def->metadata);
+          graph_clone, node_idx, gprs_precolored, fn_def->metadata);
       PG_ASSERT(reg.value);
 
       if (verbose) {
