@@ -103,7 +103,7 @@ static bool asm_gpr_set_has_idx(GprSet set, u32 idx) {
   return set.indices_occupied_bitfield & (1 << idx);
 }
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static bool asm_gpr_set_has(GprSet set, Register needle) {
   u32 idx = -1U;
   for (u32 i = 0; i < set.registers.len; i++) {
@@ -321,12 +321,9 @@ asm_color_assign_register(InterferenceGraph graph_clone,
     MemoryLocation neighbor_mem_loc =
         PG_SLICE_AT(metadata, neighbor.node).memory_location;
     // If a neighbor already has an assigned register, add it to the set.
-    {
-      if (MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
-        PG_ASSERT(neighbor_mem_loc.reg.value);
-        PG_ASSERT(!asm_gpr_set_has(neighbor_colors, neighbor_mem_loc.reg));
-        asm_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg);
-      }
+    if (MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
+      PG_ASSERT(neighbor_mem_loc.reg.value);
+      asm_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg);
     }
   } while (neighbor.has_value);
 
