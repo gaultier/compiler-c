@@ -1058,24 +1058,24 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     switch (mem_loc.kind) {
     case MEMORY_LOCATION_KIND_REGISTER: {
       PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
-      PG_ASSERT(mem_loc.reg.value);
+      PG_ASSERT(mem_loc.u.reg.value);
 
       return (Amd64Operand){
           .kind = AMD64_OPERAND_KIND_REGISTER,
-          .reg = mem_loc.reg,
+          .reg = mem_loc.u.reg,
       };
     }
     case MEMORY_LOCATION_KIND_STATUS_REGISTER:
       PG_ASSERT(0 && "todo");
       break;
     case MEMORY_LOCATION_KIND_STACK: {
-      PG_ASSERT(mem_loc.base_pointer_offset);
+      PG_ASSERT(mem_loc.u.base_pointer_offset);
       return (Amd64Operand){
           .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
           .effective_address =
               {
                   .base = amd64_rbp,
-                  .displacement = -mem_loc.base_pointer_offset,
+                  .displacement = -mem_loc.u.base_pointer_offset,
               },
       };
     }
@@ -1363,7 +1363,8 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                   .effective_address =
                       {
                           .base = amd64_rbp,
-                          .displacement = -(i32)dst_mem_loc.base_pointer_offset,
+                          .displacement =
+                              -(i32)dst_mem_loc.u.base_pointer_offset,
                       },
               },
           .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,

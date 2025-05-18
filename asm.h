@@ -132,10 +132,10 @@ static void asm_sanity_check_interference_graph(InterferenceGraph graph,
       switch (mem_loc.kind) {
       case MEMORY_LOCATION_KIND_STATUS_REGISTER:
       case MEMORY_LOCATION_KIND_REGISTER:
-        PG_ASSERT(mem_loc.reg.value);
+        PG_ASSERT(mem_loc.u.reg.value);
         break;
       case MEMORY_LOCATION_KIND_STACK:
-        PG_ASSERT(mem_loc.base_pointer_offset != 0);
+        PG_ASSERT(mem_loc.u.base_pointer_offset != 0);
         break;
       case MEMORY_LOCATION_KIND_NONE:
       default:
@@ -183,7 +183,7 @@ static void asm_spill_node(LirFnDefinition *fn_def,
   u32 rbp_offset = asm_reserve_stack_slot(
       &fn_def->stack_base_pointer_offset,
       &fn_def->stack_base_pointer_max_offset, sizeof(u64) /*FIXME*/);
-  mem_loc->base_pointer_offset = (i32)rbp_offset;
+  mem_loc->u.base_pointer_offset = (i32)rbp_offset;
 }
 
 // TODO: Better strategy to pick which virtual registers to spill.
@@ -237,7 +237,7 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
       break;
     case VREG_CONSTRAINT_CONDITION_FLAGS:
       meta->memory_location.kind = MEMORY_LOCATION_KIND_STATUS_REGISTER;
-      meta->memory_location.reg = emitter->map_constraint_to_register(
+      meta->memory_location.u.reg = emitter->map_constraint_to_register(
           emitter, meta->virtual_register.constraint);
       pg_adjacency_matrix_remove_node(&fn_def->interference_graph,
                                       node_idx.value);
@@ -253,7 +253,7 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
     case VREG_CONSTRAINT_SYSCALL4:
     case VREG_CONSTRAINT_SYSCALL5:
       meta->memory_location.kind = MEMORY_LOCATION_KIND_REGISTER;
-      meta->memory_location.reg = emitter->map_constraint_to_register(
+      meta->memory_location.u.reg = emitter->map_constraint_to_register(
           emitter, meta->virtual_register.constraint);
       pg_adjacency_matrix_remove_node(&fn_def->interference_graph,
                                       node_idx.value);
@@ -261,13 +261,13 @@ static void asm_color_do_precoloring(AsmEmitter *emitter,
 #if 0
       PG_ASSERT(!asm_gpr_set_has(*set, meta->memory_location.reg.value));
 #endif
-      asm_gpr_set_add(gprs_precolored_set, meta->memory_location.reg);
+      asm_gpr_set_add(gprs_precolored_set, meta->memory_location.u.reg);
 
       if (verbose) {
         printf("asm: precoloring assigned register: ");
         metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
         printf(" -> ");
-        emitter->print_register(meta->memory_location.reg);
+        emitter->print_register(meta->memory_location.u.reg);
         printf("\n");
       }
       break;
@@ -299,8 +299,8 @@ asm_color_assign_register(InterferenceGraph graph_clone,
         PG_SLICE_AT(metadata, neighbor.node).memory_location;
     // If a neighbor already has an assigned register, add it to the set.
     if (MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
-      PG_ASSERT(neighbor_mem_loc.reg.value);
-      asm_gpr_set_add(&neighbor_colors, neighbor_mem_loc.reg);
+      PG_ASSERT(neighbor_mem_loc.u.reg.value);
+      asm_gpr_set_add(&neighbor_colors, neighbor_mem_loc.u.reg);
     }
   } while (neighbor.has_value);
 
@@ -314,7 +314,7 @@ asm_color_assign_register(InterferenceGraph graph_clone,
         &PG_SLICE_AT(metadata, node_idx.value).memory_location;
     PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
     mem_loc->kind = MEMORY_LOCATION_KIND_REGISTER;
-    mem_loc->reg = res;
+    mem_loc->u.reg = res;
   }
   return res;
 }
@@ -476,7 +476,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
 
         if (MEMORY_LOCATION_KIND_REGISTER == node_mem_loc.kind &&
             MEMORY_LOCATION_KIND_REGISTER == neighbor_mem_loc.kind) {
-          PG_ASSERT(node_mem_loc.reg.value != neighbor_mem_loc.reg.value);
+          PG_ASSERT(node_mem_loc.u.reg.value != neighbor_mem_loc.u.reg.value);
         }
 
       } while (neighbor.has_value);

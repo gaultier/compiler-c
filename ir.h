@@ -108,7 +108,7 @@ typedef struct {
 #if 0
      u64 memory_address;
 #endif
-  };
+  } u;
 } MemoryLocation;
 PG_SLICE(MemoryLocation) MemoryLocationSlice;
 PG_DYN(MemoryLocation) MemoryLocationDyn;
@@ -1039,7 +1039,7 @@ static void metadata_print_meta(Metadata meta) {
       break;
     case MEMORY_LOCATION_KIND_STACK: {
       printf("[sp");
-      i32 offset = meta.memory_location.base_pointer_offset;
+      i32 offset = meta.memory_location.u.base_pointer_offset;
       printf("-%" PRIi32 "]", offset);
     } break;
 #if 0
