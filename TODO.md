@@ -26,3 +26,4 @@
 - [x] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
 - [x] lang: builtin assert
 - [ ] codegen: link with libc & call linker
+- [ ] codegen: make graph coloring more debuggable and track register pressure metric
