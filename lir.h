@@ -229,7 +229,7 @@ static void lir_emit_copy_immediate_to_virt_reg(LirFnDefinition *fn_def,
 
   LirOperand rhs = {
       .kind = LIR_OPERAND_KIND_IMMEDIATE,
-      .immediate = src_op.n64,
+      .immediate = src_op.u.n64,
   };
   *PG_DYN_PUSH_WITHIN_CAPACITY(&ins.operands) = rhs;
 
@@ -245,7 +245,7 @@ static void lir_emit_copy_to_virt_reg(LirFnDefinition *fn_def, IrOperand src_op,
                                         allocator);
     break;
   case IR_OPERAND_KIND_VAR: {
-    lir_emit_copy_virt_reg_to_virt_reg(fn_def, src_op.meta_idx, dst_meta_idx,
+    lir_emit_copy_virt_reg_to_virt_reg(fn_def, src_op.u.meta_idx, dst_meta_idx,
                                        origin, allocator);
   } break;
   case IR_OPERAND_KIND_LABEL:
@@ -261,18 +261,18 @@ static LirOperand lir_ir_operand_to_lir_operand(IrOperand ir_op) {
   case IR_OPERAND_KIND_U64:
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_IMMEDIATE,
-        .immediate = ir_op.n64,
+        .immediate = ir_op.u.n64,
     };
   case IR_OPERAND_KIND_VAR: {
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .meta_idx = ir_op.meta_idx,
+        .meta_idx = ir_op.u.meta_idx,
     };
   }
   case IR_OPERAND_KIND_LABEL:
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_LABEL,
-        .label = ir_op.label,
+        .label = ir_op.u.label,
     };
   case IR_OPERAND_KIND_NONE:
   default:
@@ -349,7 +349,7 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
           (0 == j)
               ? VREG_CONSTRAINT_SYSCALL_NUM
               : (VirtualRegisterConstraint)(VREG_CONSTRAINT_SYSCALL0 + j - 1);
-      PG_SLICE_AT(fn_def->metadata, val.meta_idx.value)
+      PG_SLICE_AT(fn_def->metadata, val.u.meta_idx.value)
           .virtual_register.constraint = virt_reg_constraint;
     }
 
@@ -367,10 +367,10 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
     IrOperand lhs_ir_op = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_VAR == lhs_ir_op.kind);
 
-    PG_SLICE_AT(fn_def->metadata, lhs_ir_op.meta_idx.value)
+    PG_SLICE_AT(fn_def->metadata, lhs_ir_op.u.meta_idx.value)
         .virtual_register.addressable = true;
 
-    PG_ASSERT(lhs_ir_op.meta_idx.value != ir_ins.meta_idx.value);
+    PG_ASSERT(lhs_ir_op.u.meta_idx.value != ir_ins.meta_idx.value);
 
     LirInstruction lir_ins = {
         .kind = LIR_INSTRUCTION_KIND_ADDRESS_OF,
@@ -382,7 +382,7 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
     };
     LirOperand rhs_lir_op = {
         .kind = LIR_OPERAND_KIND_VIRTUAL_REGISTER,
-        .meta_idx = lhs_ir_op.meta_idx,
+        .meta_idx = lhs_ir_op.u.meta_idx,
     };
     *PG_DYN_PUSH(&lir_ins.operands, allocator) = lhs_lir_op;
     *PG_DYN_PUSH(&lir_ins.operands, allocator) = rhs_lir_op;
@@ -402,7 +402,7 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
 
     LirOperand ins_je_op = {
         .kind = LIR_OPERAND_KIND_LABEL,
-        .label = branch_else.label,
+        .label = branch_else.u.label,
     };
     *PG_DYN_PUSH(&ins_je.operands, allocator) = ins_je_op;
 
@@ -422,7 +422,7 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
 
     LirOperand lir_op = {
         .kind = LIR_OPERAND_KIND_LABEL,
-        .label = op.label,
+        .label = op.u.label,
     };
     *PG_DYN_PUSH(&ins.operands, allocator) = lir_op;
 
@@ -442,7 +442,7 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
 
     LirOperand lir_op = {
         .kind = LIR_OPERAND_KIND_LABEL,
-        .label = op.label,
+        .label = op.u.label,
     };
     *PG_DYN_PUSH(&ins.operands, allocator) = lir_op;
 
