@@ -6,4 +6,5 @@ for f in *.unicorn; do
   echo "$f"
   ./main.bin "$f"
   ./"$(basename $f)".bin
+  valgrind ./"$(basename $f)".bin
 done
