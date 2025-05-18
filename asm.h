@@ -96,14 +96,6 @@ static void asm_gpr_set_add(GprSet *set, Register elem) {
 }
 
 [[nodiscard]]
-static bool asm_gpr_set_has_idx(GprSet set, u32 idx) {
-  PG_ASSERT(set.registers.len > 0);
-  PG_ASSERT(idx < set.registers.len);
-  PG_ASSERT(pg_div_ceil(idx, 8) <= sizeof(set.indices_occupied_bitfield));
-  return set.indices_occupied_bitfield & (1 << idx);
-}
-
-[[nodiscard]]
 static u32 asm_gpr_pop_first_unset_idx(GprSet *set) {
   PG_ASSERT(set->registers.len > 0);
 
