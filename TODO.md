@@ -2,7 +2,7 @@
 - [ ] generate dwarf debug information
 - [ ] ir: optimization: show diff output in each step, like git diff
 - [ ] control flow graph
-- [ ] data flow analysis (track r/w var uses)
+- [ ] data flow analysis (track r/w var uses including pointer aliasing) -> may require types first!
 - [ ] simple alias analysis (type-based, conservative)
 - [ ] codegen: aarch64
 - [ ] codegen: riscv
