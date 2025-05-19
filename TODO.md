@@ -29,3 +29,4 @@
 - [ ] codegen: link with libc & call linker
 - [ ] codegen: make graph coloring more debuggable and track register pressure metric
 - [x] errors: report all errors
+- [ ] test: consider bytecode vm to test correctness
