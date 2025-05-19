@@ -153,3 +153,12 @@ static void error_print(Error err) {
   err_print_src_span(err.src, err.src_span);
   printf("\n");
 }
+
+[[nodiscard]]
+static int err_compare_errors_by_origin_offset(const void *v_a,
+                                               const void *v_b) {
+  const Error *a = v_a;
+  const Error *b = v_b;
+
+  return a->origin.file_offset_start < b->origin.file_offset_start ? -1 : 1;
+}

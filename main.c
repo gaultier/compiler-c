@@ -146,6 +146,8 @@ int main(int argc, char *argv[]) {
   return 0;
 
 err:
+  qsort(errors.data, errors.len, sizeof(Error),
+        err_compare_errors_by_origin_offset);
   for (u64 i = 0; i < errors.len; i++) {
     Error err = PG_SLICE_AT(errors, i);
     origin_print(err.origin);
