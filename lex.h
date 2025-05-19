@@ -5,7 +5,7 @@
 
 typedef enum {
   LEX_TOKEN_KIND_NONE,
-  LEX_TOKEN_KIND_LITERAL_U64,
+  LEX_TOKEN_KIND_LITERAL_NUMBER,
   LEX_TOKEN_KIND_PLUS,
   LEX_TOKEN_KIND_PAREN_LEFT,
   LEX_TOKEN_KIND_PAREN_RIGHT,
@@ -287,7 +287,7 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
     return;
   }
 
-  lex_add_token(lexer, LEX_TOKEN_KIND_LITERAL_U64, origin, allocator);
+  lex_add_token(lexer, LEX_TOKEN_KIND_LITERAL_NUMBER, origin, allocator);
   PG_DYN_LAST_PTR(&lexer->tokens)->s = lit;
 }
 
@@ -425,7 +425,7 @@ static void lex_tokens_print(LexTokenSlice tokens) {
     switch (token.kind) {
     case LEX_TOKEN_KIND_NONE:
       PG_ASSERT(0);
-    case LEX_TOKEN_KIND_LITERAL_U64:
+    case LEX_TOKEN_KIND_LITERAL_NUMBER:
       printf("LiteralU64 %.*s\n", (i32)token.s.len, token.s.data);
       break;
     case LEX_TOKEN_KIND_PLUS:

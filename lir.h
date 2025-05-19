@@ -213,7 +213,7 @@ static void lir_emit_copy_immediate_to_virt_reg(LirFnDefinition *fn_def,
                                                 Origin origin,
                                                 PgAllocator *allocator) {
   // TODO: Expand when more immediate types are available.
-  PG_ASSERT(IR_OPERAND_KIND_U64 == src_op.kind);
+  PG_ASSERT(IR_OPERAND_KIND_NUMBER == src_op.kind);
 
   LirInstruction ins = {
       .kind = LIR_INSTRUCTION_KIND_MOV,
@@ -240,7 +240,7 @@ static void lir_emit_copy_to_virt_reg(LirFnDefinition *fn_def, IrOperand src_op,
                                       MetadataIndex dst_meta_idx, Origin origin,
                                       PgAllocator *allocator) {
   switch (src_op.kind) {
-  case IR_OPERAND_KIND_U64:
+  case IR_OPERAND_KIND_NUMBER:
     lir_emit_copy_immediate_to_virt_reg(fn_def, src_op, dst_meta_idx, origin,
                                         allocator);
     break;
@@ -258,7 +258,7 @@ static void lir_emit_copy_to_virt_reg(LirFnDefinition *fn_def, IrOperand src_op,
 [[nodiscard]]
 static LirOperand lir_ir_operand_to_lir_operand(IrOperand ir_op) {
   switch (ir_op.kind) {
-  case IR_OPERAND_KIND_U64:
+  case IR_OPERAND_KIND_NUMBER:
     return (LirOperand){
         .kind = LIR_OPERAND_KIND_IMMEDIATE,
         .u.immediate = ir_op.u.n64,
@@ -300,7 +300,7 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
 
     IrOperand rhs_ir_val = PG_SLICE_AT(ir_ins.operands, 1);
     PG_ASSERT(IR_OPERAND_KIND_VAR == rhs_ir_val.kind ||
-              IR_OPERAND_KIND_U64 == rhs_ir_val.kind);
+              IR_OPERAND_KIND_NUMBER == rhs_ir_val.kind);
 
     LirOperand rhs_op = lir_ir_operand_to_lir_operand(rhs_ir_val);
     LirInstruction ins = {
@@ -325,7 +325,7 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
 
     IrOperand src_ir_val = PG_SLICE_AT(ir_ins.operands, 0);
     PG_ASSERT(IR_OPERAND_KIND_VAR == src_ir_val.kind ||
-              IR_OPERAND_KIND_U64 == src_ir_val.kind);
+              IR_OPERAND_KIND_NUMBER == src_ir_val.kind);
 
     lir_emit_copy_to_virt_reg(fn_def, src_ir_val, ir_ins.meta_idx,
                               ir_ins.origin, allocator);

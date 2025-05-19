@@ -20,7 +20,7 @@ typedef struct {
 
 typedef enum {
   IR_OPERAND_KIND_NONE,
-  IR_OPERAND_KIND_U64,
+  IR_OPERAND_KIND_NUMBER,
   IR_OPERAND_KIND_VAR,
   IR_OPERAND_KIND_LABEL,
 } IrOperandKind;
@@ -216,7 +216,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
-  case AST_NODE_KIND_U64: {
+  case AST_NODE_KIND_NUMBER: {
     MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
     ir_metadata_start_lifetime(
         fn_def->metadata, meta_idx,
@@ -228,7 +228,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
         .meta_idx = meta_idx,
     };
     *PG_DYN_PUSH(&ins.operands, allocator) = (IrOperand){
-        .kind = IR_OPERAND_KIND_U64,
+        .kind = IR_OPERAND_KIND_NUMBER,
         .u.n64 = node.u.n64,
     };
 
@@ -465,7 +465,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
           ir_emit_ast_node(operand, emitter, fn_def, errors, allocator);
       *PG_DYN_PUSH(&ins_cmp.operands, allocator) = cond;
       *PG_DYN_PUSH(&ins_cmp.operands, allocator) =
-          (IrOperand){.kind = IR_OPERAND_KIND_U64, .u.n64 = 0};
+          (IrOperand){.kind = IR_OPERAND_KIND_NUMBER, .u.n64 = 0};
       *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins_cmp;
     }
 
@@ -963,7 +963,7 @@ static void ir_print_operand(IrOperand op, MetadataDyn metadata) {
   switch (op.kind) {
   case IR_OPERAND_KIND_NONE:
     PG_ASSERT(0);
-  case IR_OPERAND_KIND_U64:
+  case IR_OPERAND_KIND_NUMBER:
     printf("%" PRIu64, op.u.n64);
     break;
   case IR_OPERAND_KIND_VAR: {
@@ -1183,7 +1183,7 @@ static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
 
       IrOperand cond = PG_SLICE_AT(ins.operands, 1);
       PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
-                IR_OPERAND_KIND_U64 == cond.kind);
+                IR_OPERAND_KIND_NUMBER == cond.kind);
 
       printf("jump_if_false(");
       ir_print_operand(cond, fn_def.metadata);

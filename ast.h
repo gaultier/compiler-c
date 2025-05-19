@@ -3,7 +3,7 @@
 
 typedef enum {
   AST_NODE_KIND_NONE,
-  AST_NODE_KIND_U64,
+  AST_NODE_KIND_NUMBER,
   AST_NODE_KIND_IDENTIFIER,
   AST_NODE_KIND_ADD,
   AST_NODE_KIND_BLOCK,
@@ -95,7 +95,7 @@ static void ast_print(AstNode node, u32 left_width) {
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
-  case AST_NODE_KIND_U64:
+  case AST_NODE_KIND_NUMBER:
     printf("U64(%" PRIu64 ")\n", node.u.n64);
     break;
   case AST_NODE_KIND_IDENTIFIER:
@@ -278,12 +278,12 @@ static AstNode *ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
 
 static AstNode *ast_parse_primary(AstParser *parser, PgAllocator *allocator) {
   LexToken first = ast_match_token_kind1_or_kind2(
-      parser, LEX_TOKEN_KIND_LITERAL_U64, LEX_TOKEN_KIND_IDENTIFIER);
+      parser, LEX_TOKEN_KIND_LITERAL_NUMBER, LEX_TOKEN_KIND_IDENTIFIER);
 
-  if (LEX_TOKEN_KIND_LITERAL_U64 == first.kind) {
+  if (LEX_TOKEN_KIND_LITERAL_NUMBER == first.kind) {
     AstNode *res = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
     res->origin = first.origin;
-    res->kind = AST_NODE_KIND_U64;
+    res->kind = AST_NODE_KIND_NUMBER;
     PgParseNumberResult parse_res = pg_string_parse_u64(first.s);
     PG_ASSERT(parse_res.present);
     PG_ASSERT(pg_string_is_empty(parse_res.remaining));
@@ -637,12 +637,12 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
     syscall->kind = AST_NODE_KIND_SYSCALL;
 
     AstNode *op0 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-    op0->kind = AST_NODE_KIND_U64;
+    op0->kind = AST_NODE_KIND_NUMBER;
     op0->u.n64 = 60; // FIXME: Only on Linux amd64.
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op0;
 
     AstNode *op1 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-    op1->kind = AST_NODE_KIND_U64;
+    op1->kind = AST_NODE_KIND_NUMBER;
     op1->u.n64 = 0;
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
 
@@ -662,12 +662,12 @@ static void ast_emit_program_epilog(AstNode *parent, PgAllocator *allocator) {
     syscall->kind = AST_NODE_KIND_SYSCALL;
 
     AstNode *op0 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-    op0->kind = AST_NODE_KIND_U64;
+    op0->kind = AST_NODE_KIND_NUMBER;
     op0->u.n64 = 60; // FIXME: Only on Linux amd64.
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op0;
 
     AstNode *op1 = pg_alloc(allocator, sizeof(AstNode), _Alignof(AstNode), 1);
-    op1->kind = AST_NODE_KIND_U64;
+    op1->kind = AST_NODE_KIND_NUMBER;
     op1->u.n64 = 1;
     *PG_DYN_PUSH(&syscall->operands, allocator) = *op1;
 
