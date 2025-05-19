@@ -25,11 +25,6 @@ typedef enum {
   IR_OPERAND_KIND_LABEL,
 } IrOperandKind;
 
-// Unresolved.
-typedef struct {
-  PgString value;
-} Label;
-
 typedef struct IrOperand IrOperand;
 PG_SLICE(IrOperand) IrOperandSlice;
 PG_DYN(IrOperand) IrOperandDyn;

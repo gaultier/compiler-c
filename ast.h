@@ -26,12 +26,18 @@ typedef enum [[clang::flag_enum]] {
   AST_NODE_FLAG_FN_NO_FRAME_POINTERS = 1 << 1,
 } AstNodeFlag;
 
+// Unresolved.
+typedef struct {
+  PgString value;
+} Label;
+
 struct AstNode {
   AstNodeKind kind;
   union {
     u64 n64;             // NUmber literal.
     PgString identifier; // Variable name.
     u64 args_count;      // Function.
+    Label label;
   } u;
   Origin origin;
   LexTokenKind token_kind;
@@ -43,7 +49,19 @@ typedef struct {
   u64 tokens_consumed;
   ErrorDyn *errors;
   AstNodeDyn nodes;
+
+  // Gets incremented.
+  u32 label_id;
+
 } AstParser;
+
+[[nodiscard]]
+static Label ast_next_label_name(AstParser *parser, PgAllocator *allocator) {
+  Label id = {
+      .value = pg_u64_to_string(++parser->label_id, allocator),
+  };
+  return id;
+}
 
 static void ast_add_error(AstParser *parser, ErrorKind error_kind,
                           Origin origin, PgAllocator *allocator) {
@@ -512,6 +530,15 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
                   ast_current_or_last_token(*parser).origin, allocator);
     return false;
   }
+
+  Label branch_if_cont_label = ast_next_label_name(parser, allocator);
+  Label branch_else_label = ast_next_label_name(parser, allocator);
+
+  AstNode jump_if_false = {0};
+  jump_if_false.kind = AST_NODE_KIND_JUMP_IF_FALSE;
+  jump_if_false.u.label = branch_else_label;
+  ast_push(parser, jump_if_false, allocator);
+  u32 jump_if_false_idx = (u32)parser->nodes.len - 1;
 
   if (!ast_parse_block(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK,
