@@ -117,7 +117,7 @@ static AstNode ast_pop_first(AstNodeDyn nodes, u64 *idx) {
 }
 
 static void ast_print(AstNodeDyn nodes, u32 left_width) {
-  for (u64 i = 0; i < nodes.len;) {
+  for (u64 i = 0; i < nodes.len; i++) {
     AstNode node = PG_SLICE_AT(nodes, i);
 
     for (u64 j = 0; j < left_width; j++) {
@@ -324,23 +324,22 @@ static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_PLUS);
-  if (!token.kind) {
-    return true;
+  for (;;) {
+    LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_PLUS);
+    if (!token.kind) {
+      return true;
+    }
+
+    if (!ast_parse_factor(parser, allocator)) {
+      ast_add_error(parser, ERROR_KIND_PARSE_FACTOR_MISSING_RHS,
+                    ast_current_or_last_token(*parser).origin, allocator);
+      return false;
+    }
+    AstNode node = {0};
+    node.origin = token.origin;
+    node.kind = AST_NODE_KIND_ADD;
+    ast_push(parser, node, allocator);
   }
-
-  if (!ast_parse_term(parser, allocator)) {
-    ast_add_error(parser, ERROR_KIND_PARSE_FACTOR_MISSING_RHS,
-                  ast_current_or_last_token(*parser).origin, allocator);
-    return false;
-  }
-
-  AstNode node = {0};
-  node.origin = token.origin;
-  node.kind = AST_NODE_KIND_ADD;
-  ast_push(parser, node, allocator);
-
-  return true;
 }
 
 [[nodiscard]]
