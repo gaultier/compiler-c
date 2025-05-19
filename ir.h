@@ -526,7 +526,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .u.meta_idx = meta_idx};
   }
 
-  case AST_NODE_KIND_IF: {
+  case AST_NODE_KIND_JUMP_IF_FALSE: {
     PG_ASSERT(2 == node.operands.len);
     IrOperand cond = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
                                       fn_def, errors, allocator);

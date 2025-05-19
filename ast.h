@@ -9,7 +9,8 @@ typedef enum {
   AST_NODE_KIND_BLOCK,
   AST_NODE_KIND_VAR_DEFINITION,
   AST_NODE_KIND_ADDRESS_OF,
-  AST_NODE_KIND_IF,
+  AST_NODE_KIND_JUMP_IF_FALSE,
+  AST_NODE_KIND_JUMP,
   AST_NODE_KIND_COMPARISON,
   AST_NODE_KIND_BUILTIN_ASSERT,
   AST_NODE_KIND_SYSCALL,
@@ -156,10 +157,12 @@ static void ast_print(AstNodeDyn nodes, u32 left_width) {
       printf("VarDecl %.*s\n", (i32)node.u.identifier.len,
              node.u.identifier.data);
       break;
-    case AST_NODE_KIND_IF:
-      printf("If\n");
+    case AST_NODE_KIND_JUMP_IF_FALSE:
+      printf("JumpIfFalse\n");
       break;
-
+    case AST_NODE_KIND_JUMP:
+      printf("Jump\n");
+      break;
     case AST_NODE_KIND_FN_DEFINITION:
       printf("FnDefinition %.*s\n", (i32)node.u.identifier.len,
              node.u.identifier.data);
@@ -340,6 +343,7 @@ static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
     node.kind = AST_NODE_KIND_ADD;
     ast_push(parser, node, allocator);
   }
+  return false;
 }
 
 [[nodiscard]]
@@ -519,7 +523,7 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
 
   AstNode node = {0};
   node.origin = token_first.origin;
-  node.kind = AST_NODE_KIND_IF;
+  node.kind = AST_NODE_KIND_JUMP_IF_FALSE;
   ast_push(parser, node, allocator);
 
   return true;

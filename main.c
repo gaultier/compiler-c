@@ -87,11 +87,13 @@ int main(int argc, char *argv[]) {
     ast_print(parser.nodes, 0);
   }
 
+#if 0
   TypeChecker type_checker = types_make_type_checker(allocator);
   (void)type_checker; // TODO
 
   IrEmitter ir_emitter = {.parser = parser};
-  ir_emit_program(&ir_emitter, &errors, allocator);
+  ir_emit_program(&ir_emitter, *parser.root, &errors, allocator);
+#endif
   if (errors.len) {
     goto err;
   }
