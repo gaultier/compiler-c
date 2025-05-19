@@ -30,3 +30,5 @@
 - [ ] codegen: make graph coloring more debuggable and track register pressure metric
 - [x] errors: report all errors
 - [ ] test: consider bytecode vm to test correctness
+- [ ] test: split files with expected errors from valid files
+- [ ] test: consider checking output of compiled binary
