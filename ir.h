@@ -49,7 +49,6 @@ struct IrOperand {
 
 typedef struct {
   IrInstructionKind kind;
-  IrOperandDyn operands;
   LexTokenKind token_kind;
   Origin origin;
   // Result var. Not always present.
@@ -602,14 +601,15 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
   }
 }
 
-static void ir_emit_program(IrEmitter *emitter, AstNode node, ErrorDyn *errors,
+static void ir_emit_program(IrEmitter *emitter, ErrorDyn *errors,
                             PgAllocator *allocator) {
-  PG_ASSERT(AST_NODE_KIND_BLOCK == node.kind);
-
+  // TODO: have parser record function names.
   emitter->label_program_epilog_die.value = PG_S("__builtin_die");
   emitter->label_program_epilog_exit.value = PG_S("__builtin_exit");
 
-  (void)ir_emit_ast_node(node, emitter, nullptr, errors, allocator);
+  for (u64 i = 0; i < emitter->parser.nodes.len; i++) {
+    (void)ir_emit_ast_node(emitter, nullptr, errors, allocator);
+  }
 }
 
 #if 0

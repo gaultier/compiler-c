@@ -2,9 +2,9 @@
 #if 0
 #include "amd64.h"
 #include "elf.h"
+#endif
 #include "ir.h"
 #include "type_check.h"
-#endif
 
 typedef struct {
   bool verbose;
@@ -87,13 +87,11 @@ int main(int argc, char *argv[]) {
     ast_print(parser.nodes, 0);
   }
 
-#if 0
   TypeChecker type_checker = types_make_type_checker(allocator);
   (void)type_checker; // TODO
 
   IrEmitter ir_emitter = {.parser = parser};
-  ir_emit_program(&ir_emitter, *parser.root, &errors, allocator);
-#endif
+  ir_emit_program(&ir_emitter, &errors, allocator);
   if (errors.len) {
     goto err;
   }
