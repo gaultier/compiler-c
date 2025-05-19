@@ -5,6 +5,7 @@
 #include "ir.h"
 #include "lex.h"
 #include "submodules/cstd/lib.c"
+#include "type_check.h"
 
 typedef struct {
   bool verbose;
@@ -86,6 +87,9 @@ int main(int argc, char *argv[]) {
     printf("\n------------ AST ------------\n");
     ast_print(*parser.root, 0);
   }
+
+  TypeChecker type_checker = types_make_type_checker(allocator);
+  (void)type_checker; // TODO
 
   IrEmitter ir_emitter = {.parser = parser};
   ir_emit_program(&ir_emitter, *parser.root, &errors, allocator);

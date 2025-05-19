@@ -32,7 +32,9 @@ types_make_type_checker(PgAllocator *allocator) {
   return type_checker;
 }
 
-[[nodiscard]] static Type type_find_by_name(TypeDyn types, PgString name) {
+[[maybe_unused]] // TODO: use
+[[nodiscard]] static Type
+type_find_by_name(TypeDyn types, PgString name) {
   for (u64 i = 0; i < types.len; i++) {
     Type it = PG_SLICE_AT(types, i);
     if (pg_string_eq(it.name, name)) {
