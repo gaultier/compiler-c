@@ -1,11 +1,10 @@
-#include "amd64.h"
 #include "ast.h"
+#if 0
+#include "amd64.h"
 #include "elf.h"
-#include "error.h"
 #include "ir.h"
-#include "lex.h"
-#include "submodules/cstd/lib.c"
 #include "type_check.h"
+#endif
 
 typedef struct {
   bool verbose;
@@ -85,18 +84,21 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ AST ------------\n");
-    ast_print(*parser.root, 0);
+    ast_print(parser.nodes, 0);
   }
 
+#if 0
   TypeChecker type_checker = types_make_type_checker(allocator);
   (void)type_checker; // TODO
 
   IrEmitter ir_emitter = {.parser = parser};
   ir_emit_program(&ir_emitter, *parser.root, &errors, allocator);
+#endif
   if (errors.len) {
     goto err;
   }
 
+#if 0
   if (cli_opts.verbose) {
     printf("\n------------ IR ------------\n");
     ir_emitter_print_fn_definitions(ir_emitter);
@@ -142,6 +144,7 @@ int main(int argc, char *argv[]) {
             asm_emitter->program.file_path.data, err_write);
     return 1;
   }
+#endif
 
   if (cli_opts.verbose) {
     printf("arena: use=%lu available=%lu\n", pg_arena_mem_use(arena),

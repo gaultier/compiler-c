@@ -142,6 +142,8 @@ typedef struct {
   // Gets incremented.
   u32 label_id;
 
+  u32 node_idx;
+
   Label label_program_epilog_die;
   Label label_program_epilog_exit;
 } IrEmitter;
@@ -210,9 +212,8 @@ static void ir_metadata_extend_lifetime_on_use(MetadataDyn metadata,
 }
 
 [[nodiscard]]
-static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
-                                  IrFnDefinition *fn_def, ErrorDyn *errors,
-                                  PgAllocator *allocator) {
+static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
+                                  ErrorDyn *errors, PgAllocator *allocator) {
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
@@ -245,6 +246,7 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
     // %1 = 2
     // %2 = 3 + 4
     // %3 = %2 + %1
+
     PG_ASSERT(2 == node.operands.len);
     IrOperand lhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 0), emitter,
                                      fn_def, errors, allocator);

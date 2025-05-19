@@ -89,25 +89,32 @@ static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
 }
 
 [[nodiscard]]
-static AstNode ast_peek_top(AstNodeDyn nodes) {
+static AstNode ast_peek_first(AstNodeDyn nodes) {
   AstNode res = {0};
 
   if (0 == nodes.len) {
     return res;
   }
 
-  return PG_SLICE_LAST(nodes);
+  return PG_SLICE_AT(nodes, 0);
 }
 
-#if 0
+[[maybe_unused]] // TODO
 [[nodiscard]]
-static AstNode ast_pop(AstNodeDyn nodes) {
-  AstNode res = ast_peek_top(nodes);
+static AstNode ast_pop_first(AstNodeDyn nodes, u64 *idx) {
+  PG_ASSERT(idx);
+
+  AstNode res = {0};
+
+  if (*idx >= nodes.len) {
+    return res;
+  }
+
+  res = PG_SLICE_AT(nodes, *idx);
   *idx += 1;
 
   return res;
 }
-#endif
 
 static void ast_print(AstNodeDyn nodes, u32 left_width) {
   for (u64 i = 0; i < nodes.len;) {
@@ -292,7 +299,7 @@ static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  if (AST_NODE_KIND_IDENTIFIER != ast_peek_top(parser->nodes).kind) {
+  if (AST_NODE_KIND_IDENTIFIER != ast_peek_first(parser->nodes).kind) {
     ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
                   ast_current_or_last_token(*parser).origin, allocator);
     return false;
@@ -319,7 +326,7 @@ static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
 
   LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_PLUS);
   if (!token.kind) {
-    return false;
+    return true;
   }
 
   if (!ast_parse_term(parser, allocator)) {
@@ -350,7 +357,7 @@ static bool ast_parse_equality(AstParser *parser, PgAllocator *allocator) {
   LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_EQUAL_EQUAL);
   // TODO: `!=`.
   if (!token.kind) {
-    return false;
+    return true;
   }
 
   if (!ast_parse_equality(parser, allocator)) {
