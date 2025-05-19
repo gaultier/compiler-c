@@ -14,10 +14,6 @@ typedef enum {
   IR_INSTRUCTION_KIND_SYSCALL,
 } IrInstructionKind;
 
-typedef struct {
-  u32 value;
-} IrInstructionIndex;
-
 typedef enum {
   IR_OPERAND_KIND_NONE,
   IR_OPERAND_KIND_NUMBER,
@@ -28,10 +24,6 @@ typedef enum {
 typedef struct IrOperand IrOperand;
 PG_SLICE(IrOperand) IrOperandSlice;
 PG_DYN(IrOperand) IrOperandDyn;
-
-typedef struct {
-  u32 value;
-} MetadataIndex;
 
 struct IrOperand {
   IrOperandKind kind;
@@ -57,78 +49,6 @@ typedef struct {
 PG_SLICE(IrInstruction) IrInstructionSlice;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
-typedef enum {
-  VREG_CONSTRAINT_NONE,
-  VREG_CONSTRAINT_CONDITION_FLAGS,
-  VREG_CONSTRAINT_SYSCALL_NUM,
-  VREG_CONSTRAINT_SYSCALL0,
-  VREG_CONSTRAINT_SYSCALL1,
-  VREG_CONSTRAINT_SYSCALL2,
-  VREG_CONSTRAINT_SYSCALL3,
-  VREG_CONSTRAINT_SYSCALL4,
-  VREG_CONSTRAINT_SYSCALL5,
-  VREG_CONSTRAINT_SYSCALL_RET,
-} VirtualRegisterConstraint;
-
-typedef struct {
-  u32 value;
-  VirtualRegisterConstraint constraint;
-  bool addressable;
-} VirtualRegister;
-PG_SLICE(VirtualRegister) VirtualRegisterSlice;
-PG_DYN(VirtualRegister) VirtualRegisterDyn;
-
-typedef struct {
-  u32 value;
-} Register;
-PG_SLICE(Register) RegisterSlice;
-PG_DYN(Register) RegisterDyn;
-
-typedef enum {
-  MEMORY_LOCATION_KIND_NONE,
-  MEMORY_LOCATION_KIND_REGISTER,
-  MEMORY_LOCATION_KIND_STACK,
-  MEMORY_LOCATION_KIND_STATUS_REGISTER,
-#if 0
-  MEMORY_LOCATION_KIND_MEMORY,
-#endif
-} MemoryLocationKind;
-
-typedef struct {
-  MemoryLocationKind kind;
-  union {
-    Register reg;
-    i32 base_pointer_offset;
-#if 0
-     u64 memory_address;
-#endif
-  } u;
-} MemoryLocation;
-PG_SLICE(MemoryLocation) MemoryLocationSlice;
-PG_DYN(MemoryLocation) MemoryLocationDyn;
-
-typedef struct {
-  IrInstructionIndex lifetime_start, lifetime_end;
-  VirtualRegister virtual_register;
-  MemoryLocation memory_location;
-  PgString identifier;
-#if 0
-  bool tombstone;
-#endif
-} Metadata;
-PG_DYN(Metadata) MetadataDyn;
-
-typedef struct {
-  PgString name;
-  AstNodeFlag flags;
-
-  // TODO: Arguments.
-
-  IrInstructionDyn instructions;
-  MetadataDyn metadata;
-} IrFnDefinition;
-PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
-
 typedef struct {
   AstParser parser;
   IrFnDefinitionDyn fn_definitions;
@@ -152,38 +72,37 @@ static Label ir_emitter_next_label_name(IrEmitter *emitter,
   return id;
 }
 
-[[nodiscard]] static MetadataIndex ir_metadata_last_idx(MetadataDyn metadata) {
+[[nodiscard]] static MetadataIndex metadata_last_idx(MetadataDyn metadata) {
   PG_ASSERT(metadata.len > 0);
   return (MetadataIndex){(u32)metadata.len - 1};
 }
 
 [[nodiscard]]
-static MetadataIndex ir_make_metadata(MetadataDyn *metadata,
-                                      PgAllocator *allocator) {
+static MetadataIndex metadata_make(MetadataDyn *metadata,
+                                   PgAllocator *allocator) {
   Metadata res = {0};
   res.virtual_register.value = (u32)metadata->len;
 
   *PG_DYN_PUSH(metadata, allocator) = res;
 
-  return ir_metadata_last_idx(*metadata);
+  return metadata_last_idx(*metadata);
 }
 
-static void ir_metadata_start_lifetime(MetadataDyn metadata,
-                                       MetadataIndex meta_idx,
-                                       IrInstructionIndex ins_idx) {
+static void metadata_start_lifetime(MetadataDyn metadata,
+                                    MetadataIndex meta_idx,
+                                    IrInstructionIndex ins_idx) {
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_start = ins_idx;
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 }
 
 [[nodiscard]]
-static MetadataIndex ir_metadata_ptr_to_idx(MetadataDyn metadata,
-                                            Metadata *meta) {
+static MetadataIndex metadata_ptr_to_idx(MetadataDyn metadata, Metadata *meta) {
   return (MetadataIndex){(u32)(meta - metadata.data)};
 }
 
 [[nodiscard]]
-static Metadata *ir_find_metadata_by_identifier(MetadataDyn metadata,
-                                                PgString identifier) {
+static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
+                                             PgString identifier) {
   for (u64 i = 0; i < metadata.len; i++) {
     Metadata *meta = PG_SLICE_AT_PTR(&metadata, i);
     if (pg_string_eq(meta->identifier, identifier)) {
@@ -193,9 +112,9 @@ static Metadata *ir_find_metadata_by_identifier(MetadataDyn metadata,
   return nullptr;
 }
 
-static void ir_metadata_extend_lifetime_on_use(MetadataDyn metadata,
-                                               MetadataIndex meta_idx,
-                                               IrInstructionIndex ins_idx) {
+static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
+                                            MetadataIndex meta_idx,
+                                            IrInstructionIndex ins_idx) {
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 
   // TODO: Variable pointed to needs to live at least as long as the pointer to
@@ -212,8 +131,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_NUMBER: {
-    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
-    ir_metadata_start_lifetime(
+    MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
+    metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
@@ -247,8 +166,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     IrOperand rhs = ir_emit_ast_node(PG_SLICE_AT(node.operands, 1), emitter,
                                      fn_def, errors, allocator);
 
-    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
-    ir_metadata_start_lifetime(
+    MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
+    metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
@@ -265,12 +184,12 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
         PG_SLICE_AT(fn_def->metadata, meta_idx.value).lifetime_start;
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_metadata_extend_lifetime_on_use(fn_def->metadata, lhs.u.meta_idx,
-                                         ins_idx);
+      metadata_extend_lifetime_on_use(fn_def->metadata, lhs.u.meta_idx,
+                                      ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
-                                         ins_idx);
+      metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
+                                      ins_idx);
     }
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .u.meta_idx = meta_idx};
@@ -284,8 +203,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
                                      fn_def, errors, allocator);
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
-    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
-    ir_metadata_start_lifetime(
+    MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
+    metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
@@ -303,12 +222,12 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
-      ir_metadata_extend_lifetime_on_use(fn_def->metadata, lhs.u.meta_idx,
-                                         ins_idx);
+      metadata_extend_lifetime_on_use(fn_def->metadata, lhs.u.meta_idx,
+                                      ins_idx);
     }
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
-                                         ins_idx);
+      metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
+                                      ins_idx);
     }
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .u.meta_idx = meta_idx};
@@ -324,8 +243,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
       *PG_DYN_PUSH(&operands, allocator) = operand;
     }
 
-    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
-    ir_metadata_start_lifetime(
+    MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
+    metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
@@ -396,10 +315,10 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     IrOperand rhs =
         ir_emit_ast_node(rhs_node, emitter, fn_def, errors, allocator);
 
-    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
+    MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
     PG_SLICE_AT(fn_def->metadata, meta_idx.value).identifier =
         node.u.identifier;
-    ir_metadata_start_lifetime(
+    metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
@@ -413,8 +332,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
 
     IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
-                                         ins_idx);
+      metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
+                                      ins_idx);
     }
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .u.meta_idx = meta_idx};
@@ -434,17 +353,17 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
       return (IrOperand){0};
     }
 
-    MetadataIndex meta_idx = ir_metadata_ptr_to_idx(fn_def->metadata, meta);
+    MetadataIndex meta_idx = metadata_ptr_to_idx(fn_def->metadata, meta);
 
     IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
-    ir_metadata_extend_lifetime_on_use(fn_def->metadata, meta_idx, ins_idx);
+    metadata_extend_lifetime_on_use(fn_def->metadata, meta_idx, ins_idx);
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .u.meta_idx = meta_idx};
   }
   case AST_NODE_KIND_BUILTIN_ASSERT: {
     PG_ASSERT(1 == node.operands.len);
-    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
-    ir_metadata_start_lifetime(
+    MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
+    metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
@@ -493,8 +412,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
 
     IrOperand rhs =
         ir_emit_ast_node(operand, emitter, fn_def, errors, allocator);
-    MetadataIndex meta_idx = ir_make_metadata(&fn_def->metadata, allocator);
-    ir_metadata_start_lifetime(
+    MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
+    metadata_start_lifetime(
         fn_def->metadata, meta_idx,
         (IrInstructionIndex){(u32)fn_def->instructions.len});
 
@@ -508,8 +427,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
 
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
       IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
-      ir_metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
-                                         ins_idx);
+      metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
+                                      ins_idx);
     } else {
       *PG_DYN_PUSH(errors, allocator) = (Error){
           .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
@@ -543,8 +462,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     IrInstructionIndex ir_cond_jump_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == cond.kind) {
-      ir_metadata_extend_lifetime_on_use(fn_def->metadata, cond.u.meta_idx,
-                                         ir_cond_jump_idx);
+      metadata_extend_lifetime_on_use(fn_def->metadata, cond.u.meta_idx,
+                                      ir_cond_jump_idx);
     }
 
     // 'then' branch.

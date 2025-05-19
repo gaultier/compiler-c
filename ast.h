@@ -33,6 +33,10 @@ typedef struct {
   PgString value;
 } Label;
 
+typedef struct {
+  u32 value;
+} MetadataIndex;
+
 struct AstNode {
   AstNodeKind kind;
   union {
@@ -41,10 +45,88 @@ struct AstNode {
     u64 args_count;      // Function.
     Label label;
   } u;
+  MetadataIndex meta_idx;
   Origin origin;
   LexTokenKind token_kind;
   AstNodeFlag flags;
 };
+
+typedef enum {
+  VREG_CONSTRAINT_NONE,
+  VREG_CONSTRAINT_CONDITION_FLAGS,
+  VREG_CONSTRAINT_SYSCALL_NUM,
+  VREG_CONSTRAINT_SYSCALL0,
+  VREG_CONSTRAINT_SYSCALL1,
+  VREG_CONSTRAINT_SYSCALL2,
+  VREG_CONSTRAINT_SYSCALL3,
+  VREG_CONSTRAINT_SYSCALL4,
+  VREG_CONSTRAINT_SYSCALL5,
+  VREG_CONSTRAINT_SYSCALL_RET,
+} VirtualRegisterConstraint;
+
+typedef struct {
+  u32 value;
+  VirtualRegisterConstraint constraint;
+  bool addressable;
+} VirtualRegister;
+PG_DYN(VirtualRegister) VirtualRegisterDyn;
+
+typedef struct {
+  u32 value;
+} Register;
+PG_SLICE(Register) RegisterSlice;
+PG_DYN(Register) RegisterDyn;
+
+typedef enum {
+  MEMORY_LOCATION_KIND_NONE,
+  MEMORY_LOCATION_KIND_REGISTER,
+  MEMORY_LOCATION_KIND_STACK,
+  MEMORY_LOCATION_KIND_STATUS_REGISTER,
+#if 0
+  MEMORY_LOCATION_KIND_MEMORY,
+#endif
+} MemoryLocationKind;
+
+typedef struct {
+  MemoryLocationKind kind;
+  union {
+    Register reg;
+    i32 base_pointer_offset;
+#if 0
+     u64 memory_address;
+#endif
+  } u;
+} MemoryLocation;
+PG_SLICE(MemoryLocation) MemoryLocationSlice;
+PG_DYN(MemoryLocation) MemoryLocationDyn;
+
+typedef struct {
+  u32 value;
+} IrInstructionIndex;
+
+typedef struct {
+  IrInstructionIndex lifetime_start, lifetime_end;
+  VirtualRegister virtual_register;
+  MemoryLocation memory_location;
+  PgString identifier;
+#if 0
+  bool tombstone;
+#endif
+} Metadata;
+PG_DYN(Metadata) MetadataDyn;
+
+#if 0
+typedef struct {
+  PgString name;
+  AstNodeFlag flags;
+
+  // TODO: Arguments.
+
+  IrInstructionDyn instructions;
+  MetadataDyn metadata;
+} IrFnDefinition;
+PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
+#endif
 
 typedef struct {
   Lexer lexer;
