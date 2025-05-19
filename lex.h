@@ -280,7 +280,8 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
       PG_SLICE_RANGE(lexer->it.s, origin.file_offset_start, lexer->it.idx);
   PG_ASSERT(lit.len > 0);
 
-  if (1 > lit.len && '0' == PG_SLICE_AT(lit, 0)) {
+  bool starts_with_zero = '0' == PG_SLICE_AT(lit, 0);
+  if (starts_with_zero) {
     lex_add_error(lexer, ERROR_KIND_INVALID_LITERAL_NUMBER, allocator);
     PG_DYN_LAST(*lexer->errors).src_span = lit;
     return;

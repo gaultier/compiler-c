@@ -136,6 +136,7 @@ typedef struct {
 PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
 
 typedef struct {
+  AstParser parser;
   IrFnDefinitionDyn fn_definitions;
 
   // Gets incremented.
@@ -431,6 +432,8 @@ static IrOperand ir_emit_ast_node(AstNode node, IrEmitter *emitter,
       *PG_DYN_PUSH(errors, allocator) = (Error){
           .kind = ERROR_KIND_UNDEFINED_VAR,
           .origin = node.origin,
+          .src = emitter->parser.lexer.src,
+          .src_span = node.u.identifier,
       };
       return (IrOperand){0};
     }

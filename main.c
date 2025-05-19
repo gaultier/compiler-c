@@ -72,15 +72,6 @@ int main(int argc, char *argv[]) {
   ErrorDyn errors = {0};
   Lexer lexer = lex_make_lexer(file_path, file_read_res.res, &errors);
   lex(&lexer, allocator);
-  if (errors.len) {
-    for (u64 i = 0; i < errors.len; i++) {
-      Error err = PG_SLICE_AT(errors, i);
-      origin_print(err.origin);
-      printf(" Error: ");
-      error_print(err);
-    }
-    return 1;
-  }
 
   if (cli_opts.verbose) {
     printf("\n------------ Lex tokens ------------\n");
@@ -90,31 +81,16 @@ int main(int argc, char *argv[]) {
 
   AstParser parser = {.lexer = lexer, .errors = &errors};
   ast_emit(&parser, allocator);
-  if (errors.len) {
-    for (u64 i = 0; i < errors.len; i++) {
-      Error err = PG_SLICE_AT(errors, i);
-      origin_print(err.origin);
-      printf(" Error: ");
-      error_print(err);
-    }
-    return 1;
-  }
 
   if (cli_opts.verbose) {
     printf("\n------------ AST ------------\n");
     ast_print(*parser.root, 0);
   }
 
-  IrEmitter ir_emitter = {0};
+  IrEmitter ir_emitter = {.parser = parser};
   ir_emit_program(&ir_emitter, *parser.root, &errors, allocator);
   if (errors.len) {
-    for (u64 i = 0; i < errors.len; i++) {
-      Error err = PG_SLICE_AT(errors, i);
-      origin_print(err.origin);
-      printf(" Error: ");
-      error_print(err);
-    }
-    return 1;
+    goto err;
   }
 
   if (cli_opts.verbose) {
@@ -167,4 +143,13 @@ int main(int argc, char *argv[]) {
     printf("arena: use=%lu available=%lu\n", pg_arena_mem_use(arena),
            pg_arena_mem_available(arena));
   }
+
+err:
+  for (u64 i = 0; i < errors.len; i++) {
+    Error err = PG_SLICE_AT(errors, i);
+    origin_print(err.origin);
+    printf(" Error: ");
+    error_print(err);
+  }
+  return 1;
 }
