@@ -16,6 +16,7 @@ typedef enum {
   AST_NODE_KIND_SYSCALL,
   AST_NODE_KIND_FN_DEFINITION,
   AST_NODE_KIND_LABEL_DEFINITION,
+  AST_NODE_KIND_LABEL,
 } AstNodeKind;
 
 typedef struct AstNode AstNode;
@@ -188,6 +189,10 @@ static void ast_print(AstNodeDyn nodes, u32 left_width) {
       break;
     case AST_NODE_KIND_LABEL_DEFINITION:
       printf("LabelDefinition %.*s\n", (i32)node.u.label.value.len,
+             node.u.label.value.data);
+      break;
+    case AST_NODE_KIND_LABEL:
+      printf("Label %.*s\n", (i32)node.u.label.value.len,
              node.u.label.value.data);
       break;
     case AST_NODE_KIND_NONE:
@@ -539,10 +544,17 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
   Label branch_else_label = ast_next_label_name(parser, allocator);
   Label branch_if_cont_label = ast_next_label_name(parser, allocator);
 
-  AstNode jump_if_false = {0};
-  jump_if_false.kind = AST_NODE_KIND_JUMP_IF_FALSE;
-  jump_if_false.u.label = branch_else_label;
-  ast_push(parser, jump_if_false, allocator);
+  {
+    AstNode jump_else_label = {0};
+    jump_else_label.kind = AST_NODE_KIND_LABEL;
+    jump_else_label.u.label = branch_else_label;
+    ast_push(parser, jump_else_label, allocator);
+
+    AstNode jump_if_false = {0};
+    jump_if_false.kind = AST_NODE_KIND_JUMP_IF_FALSE;
+    jump_if_false.u.label = branch_else_label;
+    ast_push(parser, jump_if_false, allocator);
+  }
 
   if (!ast_parse_block(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK,
@@ -550,22 +562,29 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  AstNode jump = {0};
-  jump.kind = AST_NODE_KIND_JUMP;
-  jump.u.label = branch_if_cont_label;
-  ast_push(parser, jump, allocator);
+  {
+    AstNode jump_if_cont_label = {0};
+    jump_if_cont_label.kind = AST_NODE_KIND_LABEL;
+    jump_if_cont_label.u.label = branch_if_cont_label;
+    ast_push(parser, jump_if_cont_label, allocator);
 
-  AstNode jump_else_label = {0};
-  jump_else_label.kind = AST_NODE_KIND_LABEL_DEFINITION;
-  jump_else_label.u.label = branch_else_label;
-  ast_push(parser, jump, allocator);
+    AstNode jump = {0};
+    jump.kind = AST_NODE_KIND_JUMP;
+    jump.u.label = branch_if_cont_label;
+    ast_push(parser, jump, allocator);
+  }
+
+  AstNode jump_else_label_def = {0};
+  jump_else_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
+  jump_else_label_def.u.label = branch_else_label;
+  ast_push(parser, jump_else_label_def, allocator);
 
   // TODO: optional else.
 
-  AstNode jump_if_cont_label = {0};
-  jump_if_cont_label.kind = AST_NODE_KIND_LABEL_DEFINITION;
-  jump_if_cont_label.u.label = branch_if_cont_label;
-  ast_push(parser, jump, allocator);
+  AstNode jump_if_cont_label_def = {0};
+  jump_if_cont_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
+  jump_if_cont_label_def.u.label = branch_if_cont_label;
+  ast_push(parser, jump_if_cont_label_def, allocator);
 
   return true;
 }
