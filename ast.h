@@ -186,6 +186,10 @@ static void ast_print(AstNodeDyn nodes, u32 left_width) {
       printf("FnDefinition %.*s\n", (i32)node.u.identifier.len,
              node.u.identifier.data);
       break;
+    case AST_NODE_KIND_LABEL_DEFINITION:
+      printf("LabelDefinition %.*s\n", (i32)node.u.label.value.len,
+             node.u.label.value.data);
+      break;
     case AST_NODE_KIND_NONE:
     default:
       PG_ASSERT(0);

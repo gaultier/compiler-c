@@ -2,9 +2,9 @@
 #if 0
 #include "amd64.h"
 #include "elf.h"
-#endif
 #include "ir.h"
 #include "type_check.h"
+#endif
 
 typedef struct {
   bool verbose;
