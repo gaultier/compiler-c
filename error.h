@@ -1,12 +1,13 @@
 #pragma once
 
 #include "origin.h"
+
 typedef enum {
   ERROR_KIND_NONE,
-  ERROR_KIND_LEX_UNKNOWN_TOKEN,
-  ERROR_KIND_LEX_INVALID_UTF8,
-  ERROR_KIND_LEX_INVALID_LITERAL_NUMBER,
-  ERROR_KIND_LEX_INVALID_KEYWORD,
+  ERROR_KIND_UNKNOWN_TOKEN,
+  ERROR_KIND_INVALID_UTF8,
+  ERROR_KIND_INVALID_LITERAL_NUMBER,
+  ERROR_KIND_INVALID_KEYWORD,
   ERROR_KIND_PARSE_MISSING_PAREN_LEFT,
   ERROR_KIND_PARSE_MISSING_PAREN_RIGHT,
   ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA,
@@ -31,86 +32,115 @@ typedef enum {
 typedef struct {
   ErrorKind kind;
   Origin origin;
+  PgString src_span;
+  PgString src;
 } Error;
-PG_SLICE(Error) ErrorSlice;
 PG_DYN(Error) ErrorDyn;
+
+static void err_print_src_span(PgString src, PgString src_span) {
+  PG_ASSERT(src.data < src_span.data);
+
+  i64 start = src_span.data - src.data;
+  while (start > 0 && '\n' != PG_SLICE_AT(src, start)) {
+    start -= 1;
+  }
+  PG_ASSERT(start >= 0);
+  PG_ASSERT((u64)start < src.len);
+
+  u64 end = (u64)src_span.data - (u64)src.data + src_span.len;
+  while (end < src.len && '\n' != PG_SLICE_AT(src, end)) {
+    end += 1;
+  }
+  PG_ASSERT((u64)start < end);
+  PG_ASSERT(end < src.len);
+
+  // TODO: Limit context length?
+
+  PgString to_print = PG_SLICE_RANGE(src, (u64)start, end);
+
+  printf("%.*s", (i32)to_print.len, to_print.data);
+}
 
 static void error_print(Error err) {
   switch (err.kind) {
   case ERROR_KIND_NONE:
     PG_ASSERT(0);
-  case ERROR_KIND_LEX_UNKNOWN_TOKEN:
-    printf("unknown token\n");
+  case ERROR_KIND_UNKNOWN_TOKEN:
+    printf("unknown token");
     break;
-  case ERROR_KIND_LEX_INVALID_UTF8:
-    printf("invalid utf8\n");
+  case ERROR_KIND_INVALID_UTF8:
+    printf("invalid utf8");
     break;
-  case ERROR_KIND_LEX_INVALID_LITERAL_NUMBER:
-    printf("invalid number literal\n");
+  case ERROR_KIND_INVALID_LITERAL_NUMBER:
+    printf("invalid number literal");
     break;
-  case ERROR_KIND_LEX_INVALID_KEYWORD:
-    printf("invalid keyword\n");
+  case ERROR_KIND_INVALID_KEYWORD:
+    printf("invalid keyword");
     break;
   case ERROR_KIND_PARSE_MISSING_PAREN_LEFT:
-    printf("missing left parenthesis\n");
+    printf("missing left parenthesis");
     break;
   case ERROR_KIND_PARSE_MISSING_PAREN_RIGHT:
-    printf("missing right parenthesis\n");
+    printf("missing right parenthesis");
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA:
-    printf("missing comma in syscall arguments\n");
+    printf("missing comma in syscall arguments");
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND:
-    printf("missing syscall argument\n");
+    printf("missing syscall argument");
     break;
   case ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS:
-    printf("missing second operand in binary operation\n");
+    printf("missing second operand in binary operation");
     break;
   case ERROR_KIND_PARSE_STATEMENT:
-    printf("failed to parse statement\n");
+    printf("failed to parse statement");
     break;
   case ERROR_KIND_PARSE_VAR_DECL_MISSING_COLON_EQUAL:
-    printf("missing := in variable declaration after variable name\n");
+    printf("missing := in variable declaration after variable name");
     break;
   case ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE:
-    printf("missing value in variable declaration after :=\n");
+    printf("missing value in variable declaration after :=");
     break;
   case ERROR_KIND_PARSE_FACTOR_MISSING_RHS:
-    printf("missing right operand in -/+ operation\n");
+    printf("missing right operand in -/+ operation");
     break;
   case ERROR_KIND_PARSE_EQUALITY_MISSING_RHS:
-    printf("missing right operand in !=/= comparison\n");
+    printf("missing right operand in !=/= comparison");
     break;
   case ERROR_KIND_PARSE_UNARY_MISSING_RHS:
-    printf("missing right operand in !/-/& operation\n");
+    printf("missing right operand in !/-/& operation");
     break;
   case ERROR_KIND_UNDEFINED_VAR:
-    printf("undefined variable\n");
+    printf("undefined variable");
     break;
   case ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER:
-    printf("trying to take address of something that is not a variable\n");
+    printf("trying to take address of something that is not a variable");
     break;
   case ERROR_KIND_PARSE_IF_MISSING_CONDITION:
-    printf("missing if condition\n");
+    printf("missing if condition");
     break;
   case ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK:
-    printf("missing if-then block\n");
+    printf("missing if-then block");
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_LEFT:
-    printf("missing '{' at the start of block\n");
+    printf("missing '{' at the start of block");
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT:
-    printf("missing '}' at the end of block\n");
+    printf("missing '}' at the end of block");
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT:
-    printf("missing statement in block\n");
+    printf("missing statement in block");
     break;
   case ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION:
-    printf("missing assert expression\n");
+    printf("missing assert expression");
     break;
   default:
     PG_ASSERT(0);
   }
+
+  printf(": ");
+  err_print_src_span(err.src, err.src_span);
+  printf("\n");
 }
 
 static void error_add(ErrorDyn *errors, ErrorKind error_kind, Origin origin,
