@@ -115,19 +115,6 @@ typedef struct {
 } Metadata;
 PG_DYN(Metadata) MetadataDyn;
 
-#if 0
-typedef struct {
-  PgString name;
-  AstNodeFlag flags;
-
-  // TODO: Arguments.
-
-  IrInstructionDyn instructions;
-  MetadataDyn metadata;
-} IrFnDefinition;
-PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
-#endif
-
 typedef struct {
   Lexer lexer;
   u64 tokens_consumed;

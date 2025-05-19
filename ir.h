@@ -50,6 +50,17 @@ PG_SLICE(IrInstruction) IrInstructionSlice;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
 typedef struct {
+  PgString name;
+  AstNodeFlag flags;
+
+  // TODO: Arguments.
+
+  IrInstructionDyn instructions;
+  MetadataDyn metadata;
+} IrFnDefinition;
+PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
+
+typedef struct {
   AstParser parser;
   IrFnDefinitionDyn fn_definitions;
 
