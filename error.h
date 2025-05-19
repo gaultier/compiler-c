@@ -40,25 +40,34 @@ PG_DYN(Error) ErrorDyn;
 static void err_print_src_span(PgString src, PgString src_span) {
   PG_ASSERT(src.data < src_span.data);
 
-  i64 start = src_span.data - src.data;
+  u64 excerpt_start = (u64)(src_span.data - src.data);
+  u64 excerpt_end = (u64)src_span.data - (u64)src.data + src_span.len;
+  i64 start = (i64)excerpt_start;
+
   while (start > 0 && '\n' != PG_SLICE_AT(src, start)) {
     start -= 1;
   }
   PG_ASSERT(start >= 0);
   PG_ASSERT((u64)start < src.len);
 
-  u64 end = (u64)src_span.data - (u64)src.data + src_span.len;
+  u64 end = excerpt_end;
   while (end < src.len && '\n' != PG_SLICE_AT(src, end)) {
     end += 1;
   }
   PG_ASSERT((u64)start < end);
   PG_ASSERT(end < src.len);
+  PG_ASSERT((u64)start <= excerpt_start);
+  PG_ASSERT(excerpt_end <= end);
 
   // TODO: Limit context length?
 
-  PgString to_print = PG_SLICE_RANGE(src, (u64)start, end);
+  PgString excerpt_before = PG_SLICE_RANGE(src, (u64)start, excerpt_start);
+  PgString excerpt = PG_SLICE_RANGE(src, excerpt_start, excerpt_end);
+  PgString excerpt_after = PG_SLICE_RANGE(src, excerpt_end, end);
 
-  printf("%.*s", (i32)to_print.len, to_print.data);
+  printf("%.*s", (i32)excerpt_before.len, excerpt_before.data);
+  printf("\x1B[4m%.*s\x1B[0m", (i32)excerpt.len, excerpt.data);
+  printf("%.*s", (i32)excerpt_after.len, excerpt_after.data);
 }
 
 static void error_print(Error err) {
