@@ -55,6 +55,16 @@ static void ast_add_error(AstParser *parser, ErrorKind error_kind,
       .src_span = PG_SLICE_RANGE(parser->lexer.src, origin.file_offset_start,
                                  origin.file_offset_start + 1),
   };
+
+  // Skip to the next newline to avoid having cascading errors.
+
+  for (; parser->tokens_consumed < parser->lexer.tokens.len;
+       parser->tokens_consumed++) {
+    LexToken token = PG_SLICE_AT(parser->lexer.tokens, parser->tokens_consumed);
+    if (token.origin.line > origin.line) {
+      break;
+    }
+  }
 }
 
 // Best effort to find the closest token when doing error reporting.
@@ -685,7 +695,7 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
     AstNode *statement = ast_parse_declaration(parser, allocator);
 
     if (!statement) {
-      break;
+      continue;
     }
 
     PG_ASSERT(statement);
