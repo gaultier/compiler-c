@@ -607,8 +607,8 @@ static void ir_emit_program(IrEmitter *emitter, ErrorDyn *errors,
   emitter->label_program_epilog_die.value = PG_S("__builtin_die");
   emitter->label_program_epilog_exit.value = PG_S("__builtin_exit");
 
-  for (u64 i = 0; i < emitter->parser.nodes.len; i++) {
-    (void)ir_emit_ast_node(emitter, nullptr, errors, allocator);
+  for (u64 i = 0; i < emitter->parser.nodes.len) {
+    (void)ir_emit_ast_node(emitter, &i, nullptr, errors, allocator);
   }
 }
 
