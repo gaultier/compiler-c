@@ -61,9 +61,11 @@ static void err_print_src_span(PgString src, PgString src_span) {
 
   // TODO: Limit context length?
 
-  PgString excerpt_before = PG_SLICE_RANGE(src, (u64)start, excerpt_start);
+  PgString excerpt_before =
+      pg_string_trim_space_left(PG_SLICE_RANGE(src, (u64)start, excerpt_start));
   PgString excerpt = PG_SLICE_RANGE(src, excerpt_start, excerpt_end);
-  PgString excerpt_after = PG_SLICE_RANGE(src, excerpt_end, end);
+  PgString excerpt_after =
+      pg_string_trim_space_right(PG_SLICE_RANGE(src, excerpt_end, end));
 
   printf("%.*s", (i32)excerpt_before.len, excerpt_before.data);
   printf("\x1B[4m%.*s\x1B[0m", (i32)excerpt.len, excerpt.data);
@@ -150,12 +152,4 @@ static void error_print(Error err) {
   printf(": ");
   err_print_src_span(err.src, err.src_span);
   printf("\n");
-}
-
-static void error_add(ErrorDyn *errors, ErrorKind error_kind, Origin origin,
-                      PgAllocator *allocator) {
-  *PG_DYN_PUSH(errors, allocator) = (Error){
-      .kind = error_kind,
-      .origin = origin,
-  };
 }

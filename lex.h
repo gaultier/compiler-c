@@ -38,7 +38,7 @@ typedef struct {
   LexTokenDyn tokens;
   PgUtf8Iterator it;
 
-  ErrorDyn errors;
+  ErrorDyn *errors;
   bool err_mode;
 } Lexer;
 
@@ -149,7 +149,7 @@ static bool lex_match_rune_1_or_2(Lexer *lexer, PgRune rune1, PgRune rune2,
 static void lex_add_error(Lexer *lexer, ErrorKind error_kind,
                           PgAllocator *allocator) {
   Origin origin = lex_lexer_origin(*lexer);
-  *PG_DYN_PUSH(&lexer->errors, allocator) = (Error){
+  *PG_DYN_PUSH(lexer->errors, allocator) = (Error){
       .kind = error_kind,
       .origin = origin,
       .src = lexer->src,
@@ -282,7 +282,7 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
 
   if (1 > lit.len && '0' == PG_SLICE_AT(lit, 0)) {
     lex_add_error(lexer, ERROR_KIND_INVALID_LITERAL_NUMBER, allocator);
-    PG_DYN_LAST(lexer->errors).src_span = lit;
+    PG_DYN_LAST(*lexer->errors).src_span = lit;
     return;
   }
 
@@ -291,13 +291,15 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
 }
 
 [[nodiscard]]
-static Lexer lex_make_lexer(PgString file_path, PgString src) {
+static Lexer lex_make_lexer(PgString file_path, PgString src,
+                            ErrorDyn *errors) {
   Lexer lexer = {0};
   lexer.file_path = file_path;
   lexer.src = src;
   lexer.line = 1;
   lexer.column = 1;
   lexer.it = pg_make_utf8_iterator(src);
+  lexer.errors = errors;
 
   return lexer;
 }
@@ -379,7 +381,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
       if (!lex_match_rune_1_and_2(lexer, ':', '=', LEX_TOKEN_KIND_COLON_EQUAL,
                                   allocator)) {
         lex_add_error(lexer, ERROR_KIND_UNKNOWN_TOKEN, allocator);
-        PG_DYN_LAST(lexer->errors).src_span =
+        PG_DYN_LAST(*lexer->errors).src_span =
             PG_SLICE_RANGE(lexer->src, lexer->it.idx, lexer->it.idx + 1);
       }
 

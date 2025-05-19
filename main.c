@@ -69,25 +69,27 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  Lexer lexer = lex_make_lexer(file_path, file_read_res.res);
+  ErrorDyn errors = {0};
+  Lexer lexer = lex_make_lexer(file_path, file_read_res.res, &errors);
   lex(&lexer, allocator);
-  if (lexer.errors.len) {
-    for (u64 i = 0; i < lexer.errors.len; i++) {
-      Error err = PG_SLICE_AT(lexer.errors, i);
+  if (errors.len) {
+    for (u64 i = 0; i < errors.len; i++) {
+      Error err = PG_SLICE_AT(errors, i);
       origin_print(err.origin);
       printf(" Error: ");
       error_print(err);
     }
     return 1;
   }
-  LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, lexer.tokens);
+
   if (cli_opts.verbose) {
     printf("\n------------ Lex tokens ------------\n");
+    LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, lexer.tokens);
     lex_tokens_print(tokens_slice);
   }
 
-  ErrorDyn errors = {0};
-  AstNode *root = ast_emit(tokens_slice, &errors, allocator);
+  AstParser parser = {.lexer = lexer, .errors = &errors};
+  ast_emit(&parser, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
@@ -100,11 +102,11 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ AST ------------\n");
-    ast_print(*root, 0);
+    ast_print(*parser.root, 0);
   }
 
   IrEmitter ir_emitter = {0};
-  ir_emit_program(&ir_emitter, *root, &errors, allocator);
+  ir_emit_program(&ir_emitter, *parser.root, &errors, allocator);
   if (errors.len) {
     for (u64 i = 0; i < errors.len; i++) {
       Error err = PG_SLICE_AT(errors, i);
