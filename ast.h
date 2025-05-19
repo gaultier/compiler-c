@@ -1,8 +1,5 @@
 #pragma once
-#include "error.h"
 #include "lex.h"
-#include "origin.h"
-#include "submodules/cstd/lib.c"
 
 typedef enum {
   AST_NODE_KIND_NONE,
