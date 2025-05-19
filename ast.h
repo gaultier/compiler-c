@@ -324,7 +324,7 @@ static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  for (;;) {
+  for (u64 _i = parser->tokens_consumed; _i < parser->lexer.tokens.len; _i++) {
     LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_PLUS);
     if (!token.kind) {
       return true;
@@ -353,25 +353,25 @@ static bool ast_parse_equality(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_EQUAL_EQUAL);
-  // TODO: `!=`.
-  if (!token.kind) {
-    return true;
+  for (u64 _i = parser->tokens_consumed; _i < parser->lexer.tokens.len; _i++) {
+    LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_EQUAL_EQUAL);
+    // TODO: `!=`.
+    if (!token.kind) {
+      return true;
+    }
+    if (!ast_parse_comparison(parser, allocator)) {
+      ast_add_error(parser, ERROR_KIND_PARSE_EQUALITY_MISSING_RHS,
+                    ast_current_or_last_token(*parser).origin, allocator);
+      return false;
+    }
+
+    AstNode node = {0};
+    node.origin = token.origin;
+    node.kind = AST_NODE_KIND_COMPARISON;
+    node.token_kind = token.kind;
+    ast_push(parser, node, allocator);
   }
-
-  if (!ast_parse_equality(parser, allocator)) {
-    ast_add_error(parser, ERROR_KIND_PARSE_EQUALITY_MISSING_RHS,
-                  ast_current_or_last_token(*parser).origin, allocator);
-    return false;
-  }
-
-  AstNode node = {0};
-  node.origin = token.origin;
-  node.kind = AST_NODE_KIND_COMPARISON;
-  node.token_kind = token.kind;
-  ast_push(parser, node, allocator);
-
-  return true;
+  return false;
 }
 
 [[nodiscard]]
