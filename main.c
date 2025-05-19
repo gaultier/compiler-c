@@ -143,6 +143,7 @@ int main(int argc, char *argv[]) {
     printf("arena: use=%lu available=%lu\n", pg_arena_mem_use(arena),
            pg_arena_mem_available(arena));
   }
+  return 0;
 
 err:
   for (u64 i = 0; i < errors.len; i++) {

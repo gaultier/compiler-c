@@ -1,10 +1,17 @@
 #!/bin/sh
 set -e
 
-./build.sh debug_sanitizer
+WITH_VALGRIND="${WITH_VALGRIND:-0}"
+
+./build.sh debug
 for f in *.unicorn; do
   echo "$f"
-  ./main.bin "$f"
-  ./"$(basename $f)".bin
-  valgrind ./"$(basename $f)".bin
+  if [ "$WITH_VALGRIND" -eq 1 ]; then
+    valgrind --quiet ./main.bin "$f"
+    valgrind --quiet ./"$(basename $f)".bin
+  else
+   ./main.bin "$f"
+   ./"$(basename $f)".bin
+  fi
+
 done
