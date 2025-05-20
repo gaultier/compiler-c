@@ -132,7 +132,10 @@ int main(int argc, char *argv[]) {
 #endif
 
   InterferenceGraph graph = reg_build_interference_graph(metadata, allocator);
-  reg_print_interference_graph(graph, metadata);
+  if (cli_opts.verbose) {
+    printf("\n------------ Interference graph ------------\n");
+    reg_print_interference_graph(graph, metadata);
+  }
 
 #if 0
   PgString base_path = pg_path_base_name(file_path);
