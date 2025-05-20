@@ -1,12 +1,6 @@
 #pragma once
 #include "ast.h"
 
-// Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
-// between i and j), stored as a bitfield of the right-upper half (without the
-// diagonal).
-// Each row is a memory location (see above field).
-typedef PgAdjacencyMatrix InterferenceGraph;
-
 // On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
 // register arguments.
 static const u64 max_syscall_args_count = 6;

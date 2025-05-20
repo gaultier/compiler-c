@@ -131,12 +131,20 @@ typedef struct {
 
 } AstParser;
 
+// Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
+// between i and j), stored as a bitfield of the right-upper half (without the
+// diagonal).
+// Each row is a memory location (see above field).
+typedef PgAdjacencyMatrix InterferenceGraph;
+
 typedef struct {
   MetadataDyn metadata;
   AstNodeIndex node_start, node_end;
 
   u32 stack_base_pointer_offset;
   u32 stack_base_pointer_offset_max;
+
+  InterferenceGraph interference_graph;
 } FnDefinition;
 PG_DYN(FnDefinition) FnDefinitionDyn;
 
@@ -1186,12 +1194,18 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
   return fn_defs;
 }
 
+[[nodiscard]] static PgString ast_fn_name(FnDefinition fn_def,
+                                          AstNodeDyn nodes) {
+  AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
+  return fn_node.u.identifier;
+}
+
 static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
+    PgString fn_name = ast_fn_name(fn_def, nodes);
 
-    printf("%.*s:\n", (i32)fn_node.u.identifier.len, fn_node.u.identifier.data);
+    printf("%.*s:\n", (i32)fn_name.len, fn_name.data);
 
     for (u32 j = 0; j < fn_def.metadata.len; j++) {
       Metadata meta = PG_SLICE_AT(fn_def.metadata, j);
