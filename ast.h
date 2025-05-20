@@ -1022,10 +1022,10 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
   case AST_NODE_KIND_NUMBER:
   case AST_NODE_KIND_ADD:
   case AST_NODE_KIND_COMPARISON:
+  case AST_NODE_KIND_ADDRESS_OF:
   case AST_NODE_KIND_SYSCALL:
     return true;
 
-  case AST_NODE_KIND_ADDRESS_OF:
   case AST_NODE_KIND_JUMP:
   case AST_NODE_KIND_FN_DEFINITION:
   case AST_NODE_KIND_VAR_DEFINITION:
@@ -1045,6 +1045,7 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
 static void ast_stack_push(AstNodeIndexDyn *stack, AstNodeIndex node_idx,
                            PgAllocator *allocator) {
   *PG_DYN_PUSH(stack, allocator) = node_idx;
+  printf("[D001] push node_idx=%u stack_len=%lu\n", node_idx.value, stack->len);
 }
 
 [[nodiscard]]
@@ -1052,6 +1053,7 @@ static AstNodeIndex ast_stack_pop(AstNodeIndexDyn *stack) {
   PG_ASSERT(stack->len);
   AstNodeIndex res = PG_SLICE_LAST(*stack);
   stack->len -= 1;
+  printf("[D001] pop node_idx=%u stack_len=%lu\n", res.value, stack->len);
   return res;
 }
 
@@ -1097,9 +1099,7 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
         ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, node->origin,
                       allocator);
         PG_DYN_LAST(*parser->errors).src_span = node->u.identifier;
-        break;
       }
-
     } break;
       // No metadata.
     case AST_NODE_KIND_LABEL_DEFINITION:
@@ -1125,7 +1125,7 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
       if (!(stack.len >= args_count)) {
         ast_add_error(parser, ERROR_KIND_WRONG_ARGS_COUNT, node->origin,
                       allocator);
-        break;
+        continue;
       }
       for (u32 j = 0; j < args_count; j++) {
         AstNodeIndex top_idx = ast_stack_pop(&stack);
@@ -1135,7 +1135,7 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
             !ast_node_is_addressable(top)) {
           ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
                         node->origin, allocator);
-          break;
+          continue;
         }
 
         metadata_extend_lifetime_on_use(metadata, top.meta_idx, ins_idx);
