@@ -1082,7 +1082,8 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
     AstNodeIndex node_idx = {i};
     bool is_expr = ast_node_is_expr(*node);
 
-    FnDefinition *fn_def = PG_SLICE_AT_PTR(&fn_defs, fn_idx);
+    FnDefinition *fn_def =
+        fn_idx < fn_defs.len ? PG_SLICE_AT_PTR(&fn_defs, fn_idx) : nullptr;
 
     if (is_expr) {
       node->meta_idx = metadata_make(&fn_def->metadata, allocator);
