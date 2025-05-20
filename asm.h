@@ -511,12 +511,12 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
     AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
 
-    InterferenceGraph graph =
+    fn_def.interference_graph =
         reg_build_interference_graph(fn_def.metadata, allocator);
     if (verbose) {
       printf("\n------------ Interference graph %.*s ------------\n",
              (i32)fn_node.u.identifier.len, fn_node.u.identifier.data);
-      reg_print_interference_graph(graph, fn_def.metadata);
+      reg_print_interference_graph(fn_def.interference_graph, fn_def.metadata);
     }
 
     asm_sanity_check_interference_graph(fn_def.interference_graph,
