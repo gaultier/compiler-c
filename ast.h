@@ -200,23 +200,6 @@ static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
   *PG_DYN_PUSH(&parser->nodes, allocator) = node;
 }
 
-[[maybe_unused]] // TODO
-[[nodiscard]]
-static AstNode ast_pop_first(AstNodeDyn nodes, u64 *idx) {
-  PG_ASSERT(idx);
-
-  AstNode res = {0};
-
-  if (*idx >= nodes.len) {
-    return res;
-  }
-
-  res = PG_SLICE_AT(nodes, *idx);
-  *idx += 1;
-
-  return res;
-}
-
 static void print_var(Metadata meta) {
   if (0 == meta.virtual_register.value) {
     return;
@@ -1123,6 +1106,10 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
     } break;
 
     case AST_NODE_KIND_FN_DEFINITION: {
+      if (fn_def) {
+        fn_def->node_end = node_idx;
+      }
+
       FnDefinition fn_def_new = {.node_start = node_idx};
       // TODO: Still needed?
       *PG_DYN_PUSH(&fn_def_new.metadata, allocator) = (Metadata){0}; // Dummy.
