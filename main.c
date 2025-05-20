@@ -1,4 +1,5 @@
 #include "ast.h"
+#include "register_alloc.h"
 #if 0
 #include "amd64.h"
 #include "elf.h"
@@ -128,7 +129,12 @@ int main(int argc, char *argv[]) {
     printf("\n------------ LIR ------------\n");
     lir_emitter_print_fn_definitions(lir_emitter);
   }
+#endif
 
+  InterferenceGraph graph = reg_build_interference_graph(metadata, allocator);
+  reg_print_interference_graph(graph, metadata);
+
+#if 0
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter =

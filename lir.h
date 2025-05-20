@@ -12,13 +12,6 @@ typedef struct {
 PG_SLICE(InterferenceNodeIndex) InterferenceNodeIndexSlice;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
-typedef struct {
-  Label label;
-  u64 code_address;
-} LabelAddress;
-PG_SLICE(LabelAddress) LabelAddressSlice;
-PG_DYN(LabelAddress) LabelAddressDyn;
-
 typedef enum {
   LIR_INSTRUCTION_KIND_NONE,
   LIR_INSTRUCTION_KIND_ADD,
@@ -57,12 +50,6 @@ typedef struct {
   LexTokenKind token_kind;
 } LirInstruction;
 PG_DYN(LirInstruction) LirInstructionDyn;
-
-// Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
-// between i and j), stored as a bitfield of the right-upper half (without the
-// diagonal).
-// Each row is a memory location (see above field).
-typedef PgAdjacencyMatrix InterferenceGraph;
 
 typedef struct {
   PgString name;
@@ -481,86 +468,6 @@ static void lir_emit_instruction(LirFnDefinition *fn_def, IrInstruction ir_ins,
   case IR_INSTRUCTION_KIND_NONE:
   default:
     PG_ASSERT(0);
-  }
-}
-
-[[nodiscard]]
-static InterferenceGraph lir_build_interference_graph(MetadataDyn metadata,
-                                                      PgAllocator *allocator) {
-  InterferenceGraph graph = {0};
-
-  if (1 == metadata.len) {
-    return graph;
-  }
-
-  graph = pg_adjacency_matrix_make(metadata.len, allocator);
-  PG_ASSERT(metadata.len == graph.nodes_count);
-
-  for (u64 i = 0; i < metadata.len; i++) {
-    Metadata meta = PG_SLICE_AT(metadata, i);
-#if 0
-    PG_ASSERT(!meta.tombstone);
-#endif
-    PG_ASSERT(meta.lifetime_start.value <= meta.lifetime_end.value);
-    PG_ASSERT(i == 0 || meta.virtual_register.value);
-
-    // Interferes with no one (unused).
-    if (meta.lifetime_start.value == meta.lifetime_end.value) {
-      continue;
-    }
-
-    for (u64 j = i + 1; j < metadata.len; j++) {
-      Metadata it = PG_SLICE_AT(metadata, j);
-      PG_ASSERT(it.lifetime_start.value <= it.lifetime_end.value);
-#if 0
-      PG_ASSERT(!it.tombstone);
-#endif
-
-      PG_ASSERT(meta.virtual_register.value != it.virtual_register.value);
-
-      // Interferes with no one (unused).
-      if (it.lifetime_start.value == it.lifetime_end.value) {
-        continue;
-      }
-
-      // `it` strictly before `meta`.
-      if (it.lifetime_end.value < meta.lifetime_start.value) {
-        continue;
-      }
-
-      // `it` strictly after `meta`.
-      if (meta.lifetime_end.value < it.lifetime_start.value) {
-        continue;
-      }
-
-      // Interferes: add an edge between the two nodes.
-
-      pg_adjacency_matrix_add_edge(&graph, j, i);
-    }
-  }
-
-  return graph;
-}
-
-static void lir_print_interference_graph(InterferenceGraph graph,
-                                         MetadataDyn metadata) {
-
-  printf("nodes_count=%lu\n\n", graph.nodes_count);
-
-  for (u64 row = 0; row < graph.nodes_count; row++) {
-    for (u64 col = 0; col < row; col++) {
-      bool edge = pg_adjacency_matrix_has_edge(graph, row, col);
-      if (!edge) {
-        continue;
-      }
-
-      Metadata a_meta = PG_SLICE_AT(metadata, row);
-      Metadata b_meta = PG_SLICE_AT(metadata, col);
-      ir_print_var(a_meta);
-      printf(" -> ");
-      ir_print_var(b_meta);
-      printf("\n");
-    }
   }
 }
 

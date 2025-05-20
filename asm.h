@@ -1,5 +1,6 @@
 #pragma once
-#include "lir.h"
+#include "ast.h"
+#include "register_alloc.h"
 
 typedef struct {
   u32 indices_occupied_bitfield;
@@ -46,6 +47,12 @@ PG_SLICE(AsmConstant) AsmConstantSlice;
 PG_DYN(AsmConstant) AsmConstantDyn;
 
 typedef struct {
+  Label label;
+  u64 code_address;
+} LabelAddress;
+PG_DYN(LabelAddress) LabelAddressDyn;
+
+typedef struct {
   AsmCodeSectionDyn text;
   AsmConstantDyn rodata;
   u64 vm_start;
@@ -58,9 +65,9 @@ typedef struct {
 typedef struct AsmEmitter AsmEmitter;
 
 #define ASM_EMITTER_FIELDS                                                     \
-  void (*emit_fn_definitions)(AsmEmitter * asm_emitter,                        \
-                              LirFnDefinitionDyn fn_definitions, bool verbose, \
-                              PgAllocator *allocator);                         \
+  /* void (*emit_fn_definitions)(AsmEmitter * asm_emitter,                     \
+                              FnDefinitionDyn fn_definitions, bool verbose,    \
+                              PgAllocator *allocator); */                      \
   Pgu8Slice (*encode_program_text)(AsmEmitter * asm_emitter,                   \
                                    PgAllocator * allocator);                   \
   void (*print_program)(AsmEmitter asm_emitter);                               \
@@ -69,7 +76,7 @@ typedef struct AsmEmitter AsmEmitter;
   void (*print_register)(Register reg);                                        \
                                                                                \
   Architecture arch;                                                           \
-  LirEmitter *lir_emitter;                                                     \
+  /* LirEmitter *lir_emitter; */                                               \
   AsmProgram program;
 
 struct AsmEmitter {
@@ -160,7 +167,7 @@ static u32 asm_reserve_stack_slot(u32 *stack_base_pointer_offset,
 }
 
 [[nodiscard]]
-static bool asm_must_spill(AsmEmitter emitter, LirFnDefinition fn_def,
+static bool asm_must_spill(AsmEmitter emitter, FnDefinition fn_def,
                            InterferenceNodeIndex node_idx,
                            u64 neighbors_count) {
   bool virt_reg_addressable =
