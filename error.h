@@ -20,7 +20,7 @@ typedef enum {
   ERROR_KIND_PARSE_UNARY_MISSING_RHS,
   ERROR_KIND_PARSE_STATEMENT,
   ERROR_KIND_UNDEFINED_VAR,
-  ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
+  ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
   ERROR_KIND_PARSE_IF_MISSING_CONDITION,
   ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK,
   ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_LEFT,
@@ -125,8 +125,8 @@ static void error_print(Error err) {
   case ERROR_KIND_UNDEFINED_VAR:
     printf("undefined variable");
     break;
-  case ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER:
-    printf("trying to take address of something that is not a variable");
+  case ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE:
+    printf("trying to take address of something that is not addressable");
     break;
   case ERROR_KIND_PARSE_IF_MISSING_CONDITION:
     printf("missing if condition");

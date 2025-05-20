@@ -183,17 +183,6 @@ static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
   *PG_DYN_PUSH(&parser->nodes, allocator) = node;
 }
 
-[[nodiscard]]
-static AstNode ast_peek_first(AstNodeDyn nodes) {
-  AstNode res = {0};
-
-  if (0 == nodes.len) {
-    return res;
-  }
-
-  return PG_SLICE_AT(nodes, 0);
-}
-
 [[maybe_unused]] // TODO
 [[nodiscard]]
 static AstNode ast_pop_first(AstNodeDyn nodes, u64 *idx) {
@@ -503,12 +492,6 @@ static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
 
   if (!ast_parse_unary(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_UNARY_MISSING_RHS,
-                  ast_current_or_last_token(*parser).origin, allocator);
-    return false;
-  }
-
-  if (AST_NODE_KIND_IDENTIFIER != ast_peek_first(parser->nodes).kind) {
-    ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_IDENTIFIER,
                   ast_current_or_last_token(*parser).origin, allocator);
     return false;
   }
@@ -1007,6 +990,58 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
   }
 }
 
+[[nodiscard]] static bool ast_node_is_addressable(AstNode node) {
+  switch (node.kind) {
+  case AST_NODE_KIND_IDENTIFIER:
+  case AST_NODE_KIND_ADDRESS_OF:
+    return true;
+
+  case AST_NODE_KIND_FN_DEFINITION:
+  case AST_NODE_KIND_VAR_DEFINITION:
+  case AST_NODE_KIND_LABEL_DEFINITION:
+  case AST_NODE_KIND_JUMP:
+  case AST_NODE_KIND_NUMBER:
+  case AST_NODE_KIND_LABEL:
+  case AST_NODE_KIND_BUILTIN_ASSERT:
+  case AST_NODE_KIND_ADD:
+  case AST_NODE_KIND_COMPARISON:
+  case AST_NODE_KIND_JUMP_IF_FALSE:
+  case AST_NODE_KIND_BLOCK:
+  case AST_NODE_KIND_SYSCALL:
+    return false;
+
+  case AST_NODE_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+[[nodiscard]] static bool ast_node_is_expr(AstNode node) {
+  switch (node.kind) {
+  case AST_NODE_KIND_IDENTIFIER:
+  case AST_NODE_KIND_NUMBER:
+  case AST_NODE_KIND_ADD:
+  case AST_NODE_KIND_COMPARISON:
+  case AST_NODE_KIND_SYSCALL:
+    return true;
+
+  case AST_NODE_KIND_ADDRESS_OF:
+  case AST_NODE_KIND_JUMP:
+  case AST_NODE_KIND_FN_DEFINITION:
+  case AST_NODE_KIND_VAR_DEFINITION:
+  case AST_NODE_KIND_LABEL_DEFINITION:
+  case AST_NODE_KIND_LABEL:
+  case AST_NODE_KIND_BUILTIN_ASSERT:
+  case AST_NODE_KIND_JUMP_IF_FALSE:
+  case AST_NODE_KIND_BLOCK:
+    return false;
+
+  case AST_NODE_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
 [[nodiscard]]
 static MetadataDyn ast_generate_metadata(AstParser *parser,
                                          PgAllocator *allocator) {
@@ -1047,13 +1082,23 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
       for (u32 j = 0; j < args_count; j++) {
         AstNodeIndex top_idx = PG_SLICE_LAST(stack);
         AstNode top = PG_SLICE_AT(parser->nodes, top_idx.value);
+
+        if (AST_NODE_KIND_ADDRESS_OF == node->kind &&
+            !ast_node_is_addressable(top)) {
+          ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
+                        node->origin, allocator);
+          break;
+        }
+
         metadata_extend_lifetime_on_use(metadata, top.meta_idx, ins_idx);
         // Stack pop.
         stack.len -= 1;
       }
 
       // Stack push.
-      *PG_DYN_PUSH(&stack, allocator) = (AstNodeIndex){i};
+      if (ast_node_is_expr(*node)) {
+        *PG_DYN_PUSH(&stack, allocator) = (AstNodeIndex){i};
+      }
     } break;
     case AST_NODE_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
