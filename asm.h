@@ -509,16 +509,21 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
                      AstNodeDyn nodes, bool verbose, PgAllocator *allocator) {
 
   (void)asm_emitter;
-  (void)verbose;
-  (void)allocator;
 
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
     AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
-    (void)fn_node;
 
-    // for (u32 j = 0; j < fn_def.metadata.len; j++) {
-    //   Metadata meta = PG_SLICE_AT(fn_def.metadata, j);
-    // }
+    InterferenceGraph graph =
+        reg_build_interference_graph(fn_def.metadata, allocator);
+    if (verbose) {
+      printf("\n------------ Interference graph %.*s ------------\n",
+             (i32)fn_node.u.identifier.len, fn_node.u.identifier.data);
+      reg_print_interference_graph(graph, fn_def.metadata);
+
+      // for (u32 j = 0; j < fn_def.metadata.len; j++) {
+      //   Metadata meta = PG_SLICE_AT(fn_def.metadata, j);
+      // }
+    }
   }
 }
