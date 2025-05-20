@@ -296,74 +296,72 @@ static void metadata_print_meta(Metadata meta) {
 #endif
 }
 
-static void ast_print(AstNodeDyn nodes, MetadataDyn metadata, u32 left_width) {
+static void ast_print_node(AstNode node, MetadataDyn metadata) {
+  origin_print(node.origin);
+  putchar(' ');
+
+  switch (node.kind) {
+  case AST_NODE_KIND_NUMBER:
+    printf("U64 %" PRIu64, node.u.n64);
+    break;
+  case AST_NODE_KIND_IDENTIFIER:
+    printf("Identifier %.*s", (i32)node.u.identifier.len,
+           node.u.identifier.data);
+    break;
+  case AST_NODE_KIND_ADDRESS_OF:
+    printf("AddressOf");
+    break;
+  case AST_NODE_KIND_BUILTIN_ASSERT:
+    printf("Assert");
+    break;
+  case AST_NODE_KIND_ADD:
+    printf("Add");
+    break;
+  case AST_NODE_KIND_COMPARISON:
+    printf("Comparison");
+    break;
+  case AST_NODE_KIND_SYSCALL: {
+    printf("Syscall");
+  } break;
+  case AST_NODE_KIND_BLOCK: {
+    printf("Block");
+  } break;
+  case AST_NODE_KIND_VAR_DEFINITION:
+    printf("VarDecl %.*s", (i32)node.u.identifier.len, node.u.identifier.data);
+    break;
+  case AST_NODE_KIND_JUMP_IF_FALSE:
+    printf("JumpIfFalse");
+    break;
+  case AST_NODE_KIND_JUMP:
+    printf("Jump");
+    break;
+  case AST_NODE_KIND_FN_DEFINITION:
+    printf("FnDefinition %.*s", (i32)node.u.identifier.len,
+           node.u.identifier.data);
+    break;
+  case AST_NODE_KIND_LABEL_DEFINITION:
+    printf("LabelDefinition %.*s", (i32)node.u.label.value.len,
+           node.u.label.value.data);
+    break;
+  case AST_NODE_KIND_LABEL:
+    printf("Label %.*s", (i32)node.u.label.value.len, node.u.label.value.data);
+    break;
+  case AST_NODE_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+  if (metadata.len && node.meta_idx.value) {
+    printf(" // ");
+    Metadata meta = PG_SLICE_AT(metadata, node.meta_idx.value);
+    metadata_print_meta(meta);
+  }
+}
+
+static void ast_print_nodes(AstNodeDyn nodes, MetadataDyn metadata) {
   for (u32 i = 0; i < nodes.len; i++) {
     printf("[%u] ", i);
     AstNode node = PG_SLICE_AT(nodes, i);
-
-    for (u64 j = 0; j < left_width; j++) {
-      putchar(' ');
-    }
-    origin_print(node.origin);
-    putchar(' ');
-
-    switch (node.kind) {
-    case AST_NODE_KIND_NUMBER:
-      printf("U64 %" PRIu64, node.u.n64);
-      break;
-    case AST_NODE_KIND_IDENTIFIER:
-      printf("Identifier %.*s", (i32)node.u.identifier.len,
-             node.u.identifier.data);
-      break;
-    case AST_NODE_KIND_ADDRESS_OF:
-      printf("AddressOf");
-      break;
-    case AST_NODE_KIND_BUILTIN_ASSERT:
-      printf("Assert");
-      break;
-    case AST_NODE_KIND_ADD:
-      printf("Add");
-      break;
-    case AST_NODE_KIND_COMPARISON:
-      printf("Comparison");
-      break;
-    case AST_NODE_KIND_SYSCALL: {
-      printf("Syscall");
-    } break;
-    case AST_NODE_KIND_BLOCK: {
-      printf("Block");
-    } break;
-    case AST_NODE_KIND_VAR_DEFINITION:
-      printf("VarDecl %.*s", (i32)node.u.identifier.len,
-             node.u.identifier.data);
-      break;
-    case AST_NODE_KIND_JUMP_IF_FALSE:
-      printf("JumpIfFalse");
-      break;
-    case AST_NODE_KIND_JUMP:
-      printf("Jump");
-      break;
-    case AST_NODE_KIND_FN_DEFINITION:
-      printf("FnDefinition %.*s", (i32)node.u.identifier.len,
-             node.u.identifier.data);
-      break;
-    case AST_NODE_KIND_LABEL_DEFINITION:
-      printf("LabelDefinition %.*s", (i32)node.u.label.value.len,
-             node.u.label.value.data);
-      break;
-    case AST_NODE_KIND_LABEL:
-      printf("Label %.*s", (i32)node.u.label.value.len,
-             node.u.label.value.data);
-      break;
-    case AST_NODE_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-    if (metadata.len && node.meta_idx.value) {
-      printf(" // ");
-      Metadata meta = PG_SLICE_AT(metadata, node.meta_idx.value);
-      metadata_print_meta(meta);
-    }
+    ast_print_node(node, metadata);
     printf("\n");
   }
 }
@@ -1060,8 +1058,8 @@ static AstNodeIndex ast_stack_pop(AstNodeIndexDyn *stack) {
 }
 
 [[nodiscard]]
-static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
-                                             PgAllocator *allocator) {
+static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
+                                            PgAllocator *allocator) {
 
   AstNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
@@ -1196,6 +1194,8 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
     }
   }
 
+  PG_SLICE_AT(fn_defs, fn_idx).node_end.value = (u32)parser->nodes.len;
+
   return fn_defs;
 }
 
@@ -1212,12 +1212,13 @@ static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
 
     printf("%.*s:\n", (i32)fn_name.len, fn_name.data);
 
-    for (u32 j = 0; j < fn_def.metadata.len; j++) {
-      Metadata meta = PG_SLICE_AT(fn_def.metadata, j);
-
-      metadata_print_meta(meta);
+    for (u32 j = fn_def.node_start.value + 1; j < fn_def.node_end.value; j++) {
+      printf("[%u] ", j);
+      AstNode node = PG_SLICE_AT(nodes, j);
+      ast_print_node(node, fn_def.metadata);
       printf("\n");
     }
+
     printf("\n");
   }
 }
