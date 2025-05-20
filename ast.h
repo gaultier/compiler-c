@@ -1186,6 +1186,8 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
         }
 
         if (AST_NODE_KIND_SYSCALL == node->kind) {
+          PG_ASSERT(args_count > 0);
+
           PG_SLICE_AT(fn_def->metadata, top.meta_idx.value)
               .virtual_register.constraint =
               VREG_CONSTRAINT_SYSCALL_NUM + args_count - j - 1;
