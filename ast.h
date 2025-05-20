@@ -990,7 +990,7 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
   }
 }
 
-[[nodiscard]] static bool ast_node_is_addressable(AstNode node) {
+[[nodiscard]] static bool ast_node_is_kind_addressable(AstNode node) {
   switch (node.kind) {
   case AST_NODE_KIND_IDENTIFIER:
   case AST_NODE_KIND_ADDRESS_OF:
@@ -1071,16 +1071,9 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
     InstructionIndex ins_idx = {i};
     AstNode *node = PG_SLICE_AT_PTR(&parser->nodes, i);
     AstNodeIndex node_idx = {i};
+    bool is_expr = ast_node_is_expr(*node);
 
-    switch (node->kind) {
-      // Expressions that create a new value.
-    case AST_NODE_KIND_ADD:
-    case AST_NODE_KIND_COMPARISON:
-    case AST_NODE_KIND_VAR_DEFINITION:
-    case AST_NODE_KIND_ADDRESS_OF:
-    case AST_NODE_KIND_FN_DEFINITION:
-    case AST_NODE_KIND_SYSCALL:
-    case AST_NODE_KIND_NUMBER: {
+    if (is_expr) {
       node->meta_idx = metadata_make(&metadata, allocator);
       metadata_start_lifetime(metadata, node->meta_idx, ins_idx);
 
@@ -1088,8 +1081,13 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
         PG_ASSERT(node->u.identifier.len);
         PG_DYN_LAST(metadata).identifier = node->u.identifier;
       }
+    }
 
-    } break;
+    if (AST_NODE_KIND_ADDRESS_OF == node->kind) {
+    }
+
+    // Specific actions.
+    switch (node->kind) {
     case AST_NODE_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
       // TODO: Scope aware symbol resolution.
@@ -1101,7 +1099,14 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
         PG_DYN_LAST(*parser->errors).src_span = node->u.identifier;
       }
     } break;
-      // No metadata.
+
+    case AST_NODE_KIND_ADDRESS_OF:
+    case AST_NODE_KIND_FN_DEFINITION:
+    case AST_NODE_KIND_SYSCALL:
+    case AST_NODE_KIND_NUMBER:
+    case AST_NODE_KIND_ADD:
+    case AST_NODE_KIND_COMPARISON:
+    case AST_NODE_KIND_VAR_DEFINITION:
     case AST_NODE_KIND_LABEL_DEFINITION:
     case AST_NODE_KIND_LABEL:
     case AST_NODE_KIND_JUMP_IF_FALSE:
@@ -1131,18 +1136,21 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
         AstNodeIndex top_idx = ast_stack_pop(&stack);
         AstNode top = PG_SLICE_AT(parser->nodes, top_idx.value);
 
-        if (AST_NODE_KIND_ADDRESS_OF == node->kind &&
-            !ast_node_is_addressable(top)) {
-          ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
-                        node->origin, allocator);
-          continue;
+        if (AST_NODE_KIND_ADDRESS_OF == node->kind) {
+          if (!ast_node_is_kind_addressable(top)) {
+            ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
+                          node->origin, allocator);
+            continue;
+          }
+
+          PG_SLICE_AT(metadata, top.meta_idx.value)
+              .virtual_register.addressable = true;
         }
 
         metadata_extend_lifetime_on_use(metadata, top.meta_idx, ins_idx);
       }
 
       // Stack push.
-      bool is_expr = ast_node_is_expr(*node);
       if (is_expr) {
         ast_stack_push(&stack, node_idx, allocator);
       }
