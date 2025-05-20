@@ -1129,11 +1129,19 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
       fn_idx = (u32)fn_defs.len - 1;
     } break;
 
+    case AST_NODE_KIND_COMPARISON: {
+      PG_SLICE_AT(fn_def->metadata, node->meta_idx.value)
+          .virtual_register.constraint = VREG_CONSTRAINT_CONDITION_FLAGS;
+    } break;
+
+    case AST_NODE_KIND_SYSCALL: {
+      PG_SLICE_AT(fn_def->metadata, node->meta_idx.value)
+          .virtual_register.constraint = VREG_CONSTRAINT_SYSCALL_RET;
+    } break;
+
     case AST_NODE_KIND_ADDRESS_OF:
-    case AST_NODE_KIND_SYSCALL:
     case AST_NODE_KIND_NUMBER:
     case AST_NODE_KIND_ADD:
-    case AST_NODE_KIND_COMPARISON:
     case AST_NODE_KIND_VAR_DEFINITION:
     case AST_NODE_KIND_LABEL_DEFINITION:
     case AST_NODE_KIND_LABEL:
@@ -1173,6 +1181,11 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
 
           PG_SLICE_AT(fn_def->metadata, top.meta_idx.value)
               .virtual_register.addressable = true;
+        }
+
+        if (AST_NODE_KIND_SYSCALL == node->kind) {
+          PG_SLICE_AT(fn_def->metadata, top.meta_idx.value)
+              .virtual_register.constraint = VREG_CONSTRAINT_SYSCALL_NUM + j;
         }
 
         metadata_extend_lifetime_on_use(fn_def->metadata, top.meta_idx,
