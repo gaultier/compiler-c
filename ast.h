@@ -910,9 +910,12 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
                                          PgAllocator *allocator) {
   MetadataDyn metadata = {0};
   PG_DYN_ENSURE_CAP(&metadata, parser->nodes.len, allocator);
+  *PG_DYN_PUSH(&metadata, allocator) = (Metadata){0}; // Dummy.
 
   AstNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
+
+  AstNodeIndex fn_idx = {0};
 
   for (u32 i = 0; i < parser->nodes.len; i++) {
     InstructionIndex ins_idx = {i};
@@ -951,6 +954,13 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
 
       // Stack push.
       *PG_DYN_PUSH(&stack, allocator) = (AstNodeIndex){i};
+
+      if (node->kind == AST_NODE_KIND_FN_DEFINITION) {
+        AstNode fn = PG_SLICE_AT(parser->nodes, fn_idx.value);
+        metadata_extend_lifetime_on_use(metadata, fn.meta_idx, ins_idx);
+
+        fn_idx = (AstNodeIndex){i};
+      }
     } break;
     case AST_NODE_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
