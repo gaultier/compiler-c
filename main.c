@@ -1,7 +1,7 @@
 #include "amd64.h"
 #include "asm.h"
-#if 0
 #include "elf.h"
+#if 0
 #include "type_check.h"
 #endif
 
@@ -112,7 +112,6 @@ int main(int argc, char *argv[]) {
            asm_emitter->program.file_path.data);
     asm_emitter->print_program(*asm_emitter);
   }
-#if 0
 
   PgError err_write = elf_write_exe(asm_emitter, allocator);
   if (err_write) {
@@ -121,7 +120,6 @@ int main(int argc, char *argv[]) {
             asm_emitter->program.file_path.data, err_write);
     return 1;
   }
-#endif
 
   if (cli_opts.verbose) {
     printf("arena: use=%lu available=%lu\n", pg_arena_mem_use(arena),
