@@ -209,7 +209,6 @@ static void amd64_add_instruction(PgAnyDyn *instructions_any,
 
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit storing code (push).
-[[maybe_unused]]
 static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
   if (AST_NODE_FLAG_FN_NO_FRAME_POINTERS & section->flags) {
     return;
@@ -243,7 +242,6 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
 
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit loading code (pop).
-[[maybe_unused]]
 static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
   if (AST_NODE_FLAG_FN_NO_FRAME_POINTERS & section->flags) {
     return;
@@ -1550,16 +1548,16 @@ amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
   }
 }
 
-#if 0
 [[nodiscard]]
-static AsmCodeSection amd64_emit_fn_definition(AsmEmitter *asm_emitter,
-                                               FnDefinition fn_def,
-                                               AstNodeDyn nodes, bool verbose,
-                                               PgAllocator *allocator) {
+static AsmCodeSection
+amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
+                         bool verbose, PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
   (void)amd64_emitter;
 
-  AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
+  (void)verbose;
+
+  AstNode fn_node = PG_SLICE_AT(asm_emitter->nodes, fn_def.node_start.value);
   AsmCodeSection section = {
       .name = fn_node.u.identifier,
       .flags = fn_node.flags,
@@ -1581,20 +1579,6 @@ static AsmCodeSection amd64_emit_fn_definition(AsmEmitter *asm_emitter,
   };
   amd64_add_instruction(&section.instructions, stack_sub, allocator);
   u64 stack_sub_instruction_idx = section.instructions.len - 1;
-
-  if (verbose) {
-    printf("\n------------ Colored interference graph ------------\n");
-#if 0
-    lir_print_interference_graph(fn_def.interference_graph, fn_def.metadata);
-
-    printf("\n------------ Adjacency matrix of interference graph %.*s"
-           "------------\n\n",
-           (i32)fn_def.name.len, fn_def.name.data);
-#endif
-    pg_adjacency_matrix_print(fn_def.interference_graph);
-  }
-  asm_sanity_check_interference_graph(fn_def.interference_graph,
-                                      fn_def.metadata, true);
 
 #if 0
   for (u64 i = 0; i < fn_def.instructions.len; i++) {
@@ -1635,9 +1619,11 @@ static AsmCodeSection amd64_emit_fn_definition(AsmEmitter *asm_emitter,
   }
   amd64_emit_epilog(&section, allocator);
 
+  amd64_sanity_check_section(amd64_emitter, section);
   return section;
 }
 
+#if 0
 static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
                                       FnDefinitionDyn fn_defs, AstNodeDyn nodes,
                                       bool verbose, PgAllocator *allocator) {
@@ -1727,9 +1713,7 @@ static AsmEmitter *amd64_make_asm_emitter(AstNodeDyn nodes, PgString exe_path,
                                           PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter =
       pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
-#if 0
-  amd64_emitter->emit_fn_definitions = amd64_emit_fn_definitions;
-#endif
+  amd64_emitter->emit_fn_definition = amd64_emit_fn_definition;
   amd64_emitter->print_program = amd64_print_program;
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
   amd64_emitter->encode_program_text = amd64_encode_program_text;

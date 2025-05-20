@@ -65,8 +65,9 @@ typedef struct {
 typedef struct AsmEmitter AsmEmitter;
 
 #define ASM_EMITTER_FIELDS                                                     \
-  void (*emit_fn_definitions)(AsmEmitter * asm_emitter, MetadataDyn metadata,  \
-                              bool verbose, PgAllocator *allocator);           \
+  AsmCodeSection (*emit_fn_definition)(AsmEmitter * asm_emitter,               \
+                                       FnDefinition fn_def, bool verbose,      \
+                                       PgAllocator *allocator);                \
   Pgu8Slice (*encode_program_text)(AsmEmitter * asm_emitter,                   \
                                    PgAllocator * allocator);                   \
   void (*print_program)(AsmEmitter asm_emitter);                               \
@@ -76,8 +77,7 @@ typedef struct AsmEmitter AsmEmitter;
                                                                                \
   Architecture arch;                                                           \
   AstNodeDyn nodes;                                                            \
-  AsmProgram program;                                                          \
-  Pgu8Dyn encoded;
+  AsmProgram program;
 
 struct AsmEmitter {
   ASM_EMITTER_FIELDS
@@ -528,5 +528,8 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
                                         fn_def.metadata, true);
 
     // TODO: Codegen.
+    AsmCodeSection section = asm_emitter->emit_fn_definition(
+        asm_emitter, fn_def, verbose, allocator);
+    (void)section;
   }
 }
