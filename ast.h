@@ -1199,20 +1199,24 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
   return fn_node.u.identifier;
 }
 
+static void ast_print_fn_def(FnDefinition fn_def, AstNodeDyn nodes) {
+  PgString fn_name = ast_fn_name(fn_def, nodes);
+
+  printf("%.*s:\n", (i32)fn_name.len, fn_name.data);
+
+  for (u32 j = fn_def.node_start.value + 1; j < fn_def.node_end.value; j++) {
+    printf("[%u] ", j);
+    AstNode node = PG_SLICE_AT(nodes, j);
+    ast_print_node(node, fn_def.metadata);
+    printf("\n");
+  }
+
+  printf("\n");
+}
+
 static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    PgString fn_name = ast_fn_name(fn_def, nodes);
-
-    printf("%.*s:\n", (i32)fn_name.len, fn_name.data);
-
-    for (u32 j = fn_def.node_start.value + 1; j < fn_def.node_end.value; j++) {
-      printf("[%u] ", j);
-      AstNode node = PG_SLICE_AT(nodes, j);
-      ast_print_node(node, fn_def.metadata);
-      printf("\n");
-    }
-
-    printf("\n");
+    ast_print_fn_def(fn_def, nodes);
   }
 }

@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter =
       amd64_make_asm_emitter(parser.nodes, exe_path, allocator);
-  asm_emit(asm_emitter, fn_defs, parser.nodes, cli_opts.verbose, allocator);
+  asm_emit(asm_emitter, fn_defs, cli_opts.verbose, allocator);
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM %.*s ------------\n",

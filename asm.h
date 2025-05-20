@@ -334,8 +334,8 @@ asm_color_assign_register(InterferenceGraph graph_clone,
 // registers.
 // TODO: Consider coalescing (see literature).
 static void asm_color_interference_graph(AsmEmitter *emitter,
-                                         FnDefinition *fn_def, AstNodeDyn nodes,
-                                         bool verbose, PgAllocator *allocator) {
+                                         FnDefinition *fn_def, bool verbose,
+                                         PgAllocator *allocator) {
   if (0 == fn_def->interference_graph.nodes_count) {
     return;
   }
@@ -346,7 +346,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
       pg_adjacency_matrix_clone(fn_def->interference_graph, allocator);
 
   if (verbose) {
-    PgString fn_name = ast_fn_name(*fn_def, nodes);
+    PgString fn_name = ast_fn_name(*fn_def, emitter->nodes);
     printf("\n------------ Adjacency matrix of interference graph before "
            "pre-coloring %.*s"
            "------------\n\n",
@@ -360,7 +360,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
   asm_color_do_precoloring(emitter, fn_def, node_tombstones_bitfield,
                            &gprs_precolored, verbose);
   if (verbose) {
-    PgString fn_name = ast_fn_name(*fn_def, nodes);
+    PgString fn_name = ast_fn_name(*fn_def, emitter->nodes);
     printf("\n------------ Adjacency matrix of interference graph after "
            "pre-coloring %.*s"
            "------------\n\n",
@@ -502,13 +502,13 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
 }
 
 static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
-                     AstNodeDyn nodes, bool verbose, PgAllocator *allocator) {
+                     bool verbose, PgAllocator *allocator) {
 
   (void)asm_emitter;
 
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
+    AstNode fn_node = PG_SLICE_AT(asm_emitter->nodes, fn_def.node_start.value);
 
     fn_def.interference_graph =
         reg_build_interference_graph(fn_def.metadata, allocator);
@@ -520,8 +520,8 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
 
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, false);
-    asm_color_interference_graph(asm_emitter, &fn_def, nodes, verbose,
-                                 allocator);
+    asm_color_interference_graph(asm_emitter, &fn_def, verbose, allocator);
+    ast_print_fn_def(fn_def, asm_emitter->nodes);
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, true);
 
