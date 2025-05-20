@@ -28,6 +28,7 @@ typedef enum {
   ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT,
   ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION,
   ERROR_KIND_WRONG_ARGS_COUNT,
+  ERROR_KIND_MALFORMED_AST,
 } ErrorKind;
 
 typedef struct {
@@ -148,6 +149,10 @@ static void error_print(Error err) {
     break;
   case ERROR_KIND_WRONG_ARGS_COUNT:
     printf("wrong argument count");
+    break;
+
+  case ERROR_KIND_MALFORMED_AST:
+    printf("malformed ast");
     break;
 
   default:

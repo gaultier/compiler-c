@@ -1,1 +1,2 @@
+[.] ast: update stack vm with ast_stack_push, ast_stack_pop
 [.] ast: move to 'stack vm bytecode' representation 
