@@ -28,7 +28,6 @@ typedef struct {
   Origin origin;
   PgString s;
 } LexToken;
-PG_SLICE(LexToken) LexTokenSlice;
 PG_DYN(LexToken) LexTokenDyn;
 
 typedef struct {
@@ -416,7 +415,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
   lex_add_token(lexer, LEX_TOKEN_KIND_EOF, (Origin){0}, allocator);
 }
 
-static void lex_tokens_print(LexTokenSlice tokens) {
+static void lex_tokens_print(LexTokenDyn tokens) {
   for (u64 i = 0; i < tokens.len; i++) {
     LexToken token = PG_SLICE_AT(tokens, i);
     printf("[%lu] ", i);

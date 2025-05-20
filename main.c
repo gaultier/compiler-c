@@ -74,8 +74,7 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ Lex tokens ------------\n");
-    LexTokenSlice tokens_slice = PG_DYN_SLICE(LexTokenSlice, lexer.tokens);
-    lex_tokens_print(tokens_slice);
+    lex_tokens_print(lexer.tokens);
   }
 
   AstParser parser = {.lexer = lexer, .errors = &errors};

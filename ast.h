@@ -102,7 +102,6 @@ typedef struct {
 #endif
   } u;
 } MemoryLocation;
-PG_SLICE(MemoryLocation) MemoryLocationSlice;
 PG_DYN(MemoryLocation) MemoryLocationDyn;
 
 typedef struct {

@@ -25,7 +25,6 @@ typedef struct {
   AstNodeFlag flags;
   PgAnyDyn instructions;
 } AsmCodeSection;
-PG_SLICE(AsmCodeSection) AsmCodeSectionSlice;
 PG_DYN(AsmCodeSection) AsmCodeSectionDyn;
 
 typedef enum {
@@ -43,7 +42,6 @@ typedef struct {
     PgString bytes;
   } u;
 } AsmConstant;
-PG_SLICE(AsmConstant) AsmConstantSlice;
 PG_DYN(AsmConstant) AsmConstantDyn;
 
 typedef struct {
