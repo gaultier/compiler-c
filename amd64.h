@@ -1564,21 +1564,23 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
   };
   amd64_emit_prolog(&section, allocator);
 
-  Amd64Instruction stack_sub = {
-      .kind = AMD64_INSTRUCTION_KIND_SUB,
-      .lhs =
-          (Amd64Operand){
-              .kind = AMD64_OPERAND_KIND_REGISTER,
-              .u.reg = amd64_rsp,
-          },
-      .rhs =
-          (Amd64Operand){
-              .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-              .u.immediate = 0, // Backpatched.
-          },
-  };
-  amd64_add_instruction(&section.instructions, stack_sub, allocator);
-  u64 stack_sub_instruction_idx = section.instructions.len - 1;
+  if (fn_def.stack_base_pointer_offset_max > 0) {
+    Amd64Instruction stack_sub = {
+        .kind = AMD64_INSTRUCTION_KIND_SUB,
+        .lhs =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                .u.reg = amd64_rsp,
+            },
+        .rhs =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                .u.immediate = 0, // Backpatched.
+            },
+    };
+    amd64_add_instruction(&section.instructions, stack_sub, allocator);
+  }
+  u64 stack_sub_instruction_idx_maybe = section.instructions.len - 1;
 
 #if 0
   for (u64 i = 0; i < fn_def.instructions.len; i++) {
@@ -1592,7 +1594,7 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
         (u32)PG_ROUNDUP(fn_def.stack_base_pointer_offset, 16);
 
     PG_C_ARRAY_AT_PTR((Amd64Instruction *)section.instructions.data,
-                      section.instructions.len, stack_sub_instruction_idx)
+                      section.instructions.len, stack_sub_instruction_idx_maybe)
         ->rhs.u.immediate = rsp_max_offset_aligned_16;
 
     Amd64Instruction stack_add = {
