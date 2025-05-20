@@ -131,6 +131,15 @@ typedef struct {
 
 } AstParser;
 
+typedef struct {
+  MetadataDyn metadata;
+  AstNodeIndex node_start, node_end;
+
+  u32 stack_base_pointer_offset;
+  u32 stack_base_pointer_offset_max;
+} FnDefinition;
+PG_DYN(FnDefinition) FnDefinitionDyn;
+
 [[nodiscard]]
 static Label ast_next_label_name(AstParser *parser, PgAllocator *allocator) {
   Label id = {
@@ -1058,14 +1067,14 @@ static AstNodeIndex ast_stack_pop(AstNodeIndexDyn *stack) {
 }
 
 [[nodiscard]]
-static MetadataDyn ast_generate_metadata(AstParser *parser,
-                                         PgAllocator *allocator) {
-  MetadataDyn metadata = {0};
-  PG_DYN_ENSURE_CAP(&metadata, parser->nodes.len, allocator);
-  *PG_DYN_PUSH(&metadata, allocator) = (Metadata){0}; // Dummy.
+static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
+                                             PgAllocator *allocator) {
 
   AstNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
+
+  FnDefinitionDyn fn_defs = {0};
+  u32 fn_idx = 0;
 
   for (u32 i = 0; i < parser->nodes.len; i++) {
     InstructionIndex ins_idx = {i};
@@ -1073,13 +1082,15 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
     AstNodeIndex node_idx = {i};
     bool is_expr = ast_node_is_expr(*node);
 
+    FnDefinition *fn_def = PG_SLICE_AT_PTR(&fn_defs, fn_idx);
+
     if (is_expr) {
-      node->meta_idx = metadata_make(&metadata, allocator);
-      metadata_start_lifetime(metadata, node->meta_idx, ins_idx);
+      node->meta_idx = metadata_make(&fn_def->metadata, allocator);
+      metadata_start_lifetime(fn_def->metadata, node->meta_idx, ins_idx);
 
       if (ast_node_has_name(*node)) {
         PG_ASSERT(node->u.identifier.len);
-        PG_DYN_LAST(metadata).identifier = node->u.identifier;
+        PG_DYN_LAST(fn_def->metadata).identifier = node->u.identifier;
       }
     }
 
@@ -1092,7 +1103,7 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
       // Here the variable name is resolved.
       // TODO: Scope aware symbol resolution.
       Metadata *meta =
-          metadata_find_by_identifier(metadata, node->u.identifier);
+          metadata_find_by_identifier(fn_def->metadata, node->u.identifier);
       if (!meta) {
         ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, node->origin,
                       allocator);
@@ -1100,8 +1111,16 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
       }
     } break;
 
+    case AST_NODE_KIND_FN_DEFINITION: {
+      FnDefinition fn_def_new = {.node_start = node_idx};
+      // TODO: Still needed?
+      *PG_DYN_PUSH(&fn_def_new.metadata, allocator) = (Metadata){0}; // Dummy.
+
+      *PG_DYN_PUSH(&fn_defs, allocator) = fn_def_new;
+      fn_idx = (u32)fn_defs.len - 1;
+    } break;
+
     case AST_NODE_KIND_ADDRESS_OF:
-    case AST_NODE_KIND_FN_DEFINITION:
     case AST_NODE_KIND_SYSCALL:
     case AST_NODE_KIND_NUMBER:
     case AST_NODE_KIND_ADD:
@@ -1143,11 +1162,12 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
             continue;
           }
 
-          PG_SLICE_AT(metadata, top.meta_idx.value)
+          PG_SLICE_AT(fn_def->metadata, top.meta_idx.value)
               .virtual_register.addressable = true;
         }
 
-        metadata_extend_lifetime_on_use(metadata, top.meta_idx, ins_idx);
+        metadata_extend_lifetime_on_use(fn_def->metadata, top.meta_idx,
+                                        ins_idx);
       }
 
       // Stack push.
@@ -1162,15 +1182,22 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
     }
   }
 
-  return metadata;
+  return fn_defs;
 }
 
-[[maybe_unused]]
-static void metadata_print(MetadataDyn metadata) {
-  for (u64 i = 0; i < metadata.len; i++) {
-    Metadata meta = PG_SLICE_AT(metadata, i);
-    printf("[%lu] ", i);
-    metadata_print_meta(meta);
+static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
+  for (u32 i = 0; i < fn_defs.len; i++) {
+    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
+    AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
+
+    printf("%.*s:\n", (i32)fn_node.u.identifier.len, fn_node.u.identifier.data);
+
+    for (u32 j = 0; j < fn_def.metadata.len; j++) {
+      Metadata meta = PG_SLICE_AT(fn_def.metadata, j);
+
+      metadata_print_meta(meta);
+      printf("\n");
+    }
     printf("\n");
   }
 }

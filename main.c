@@ -85,10 +85,10 @@ int main(int argc, char *argv[]) {
     ast_print(parser.nodes, (MetadataDyn){0}, 0);
   }
 
-  MetadataDyn metadata = ast_generate_metadata(&parser, allocator);
+  FnDefinitionDyn fn_defs = ast_generate_metadata(&parser, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ AST with metadata ------------\n");
-    ast_print(parser.nodes, metadata, 0);
+    ast_print_fn_defs(fn_defs, parser.nodes);
   }
 
 #if 0
@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
   }
 
   AsmEmitter *asm_emitter = nullptr;
-  asm_emit(asm_emitter, parser.nodes, metadata, cli_opts.verbose, allocator);
+  asm_emit(asm_emitter, fn_defs, parser.nodes, cli_opts.verbose, allocator);
 #if 0
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);

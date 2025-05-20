@@ -505,33 +505,20 @@ static void asm_color_interference_graph(AsmEmitter *emitter, FnBody *fn_body,
 }
 #endif
 
-static void asm_emit(AsmEmitter *asm_emitter, AstNodeDyn nodes,
-                     MetadataDyn metadata, bool verbose,
-                     PgAllocator *allocator) {
-  u32 stack_base_pointer_offset = 0, stack_base_pointer_offset_max = 0;
+static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
+                     AstNodeDyn nodes, bool verbose, PgAllocator *allocator) {
 
   (void)asm_emitter;
-  (void)stack_base_pointer_offset;
-  (void)stack_base_pointer_offset_max;
+  (void)verbose;
+  (void)allocator;
 
-  for (u32 i = 0; i < nodes.len; i++) {
-    AstNode node = PG_SLICE_AT(nodes, i);
+  for (u32 i = 0; i < fn_defs.len; i++) {
+    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
+    AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
+    (void)fn_node;
 
-    if (AST_NODE_KIND_FN_DEFINITION == node.kind) {
-      PG_ASSERT(node.u.identifier.len);
-
-      stack_base_pointer_offset = 0;
-      stack_base_pointer_offset_max = 0;
-
-      InterferenceGraph graph =
-          reg_build_interference_graph(metadata, allocator);
-      if (verbose) {
-        printf("\n------------ Interference graph %.*s ------------\n",
-               (i32)node.u.identifier.len, node.u.identifier.data);
-        reg_print_interference_graph(graph, metadata);
-      }
-    }
-
-    // asm_emitter->emit_
+    // for (u32 j = 0; j < fn_def.metadata.len; j++) {
+    //   Metadata meta = PG_SLICE_AT(fn_def.metadata, j);
+    // }
   }
 }
