@@ -853,6 +853,7 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
 
     AstNode syscall = {0};
     syscall.kind = AST_NODE_KIND_SYSCALL;
+    syscall.u.args_count = 2;
     ast_push(parser, syscall, allocator);
   }
   {
@@ -874,6 +875,7 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
 
     AstNode syscall = {0};
     syscall.kind = AST_NODE_KIND_SYSCALL;
+    syscall.u.args_count = 2;
     ast_push(parser, syscall, allocator);
   }
 }
@@ -1185,7 +1187,8 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
 
         if (AST_NODE_KIND_SYSCALL == node->kind) {
           PG_SLICE_AT(fn_def->metadata, top.meta_idx.value)
-              .virtual_register.constraint = VREG_CONSTRAINT_SYSCALL_NUM + j;
+              .virtual_register.constraint =
+              VREG_CONSTRAINT_SYSCALL_NUM + args_count - j - 1;
         }
 
         metadata_extend_lifetime_on_use(fn_def->metadata, top.meta_idx,
