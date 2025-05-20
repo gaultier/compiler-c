@@ -211,7 +211,103 @@ static AstNode ast_pop_first(AstNodeDyn nodes, u64 *idx) {
   return res;
 }
 
-static void ast_print(AstNodeDyn nodes, u32 left_width) {
+static void print_var(Metadata meta) {
+  if (0 == meta.virtual_register.value) {
+    return;
+  }
+
+  if (!pg_string_is_empty(meta.identifier)) {
+    printf("%.*s%%%" PRIu32, (i32)meta.identifier.len, meta.identifier.data,
+           meta.virtual_register.value);
+  } else {
+    printf("%%%" PRIu32, meta.virtual_register.value);
+  }
+}
+
+[[nodiscard]]
+static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
+  switch (constraint) {
+  case VREG_CONSTRAINT_NONE:
+    return "NONE";
+  case VREG_CONSTRAINT_CONDITION_FLAGS:
+    return "CONDITION_FLAGS";
+  case VREG_CONSTRAINT_SYSCALL_NUM:
+    return "SYSCALL_NUM";
+  case VREG_CONSTRAINT_SYSCALL0:
+    return "SYSCALL0";
+  case VREG_CONSTRAINT_SYSCALL1:
+    return "SYSCALL1";
+  case VREG_CONSTRAINT_SYSCALL2:
+    return "SYSCALL2";
+  case VREG_CONSTRAINT_SYSCALL3:
+    return "SYSCALL3";
+  case VREG_CONSTRAINT_SYSCALL4:
+    return "SYSCALL4";
+  case VREG_CONSTRAINT_SYSCALL5:
+    return "SYSCALL5";
+  case VREG_CONSTRAINT_SYSCALL_RET:
+    return "SYSCALL_RET";
+
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void metadata_print_meta(Metadata meta) {
+#if 0
+  if (meta.tombstone) {
+    printf("\x1B[9m"); // Strikethrough.
+  }
+#endif
+
+  printf("var=");
+  print_var(meta);
+  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
+         meta.lifetime_end.value);
+
+  if (meta.virtual_register.value) {
+    printf(" vreg=v%u{constraint=%s, addressable=%s}",
+           meta.virtual_register.value,
+           register_constraint_to_cstr(meta.virtual_register.constraint),
+           meta.virtual_register.addressable ? "true" : "false");
+  }
+
+  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
+    printf(" mem_loc=");
+
+    switch (meta.memory_location.kind) {
+    case MEMORY_LOCATION_KIND_REGISTER:
+    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
+      printf("reg(todo)");
+      // TODO
+#if 0
+      amd64_print_register(meta.memory_location.reg);
+#endif
+      break;
+    case MEMORY_LOCATION_KIND_STACK: {
+      printf("[sp");
+      i32 offset = meta.memory_location.u.base_pointer_offset;
+      printf("-%" PRIi32 "]", offset);
+    } break;
+#if 0
+    case MEMORY_LOCATION_KIND_MEMORY:
+      printf("%#lx", loc.memory_address);
+      break;
+#endif
+    case MEMORY_LOCATION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+  }
+
+#if 0
+  if (meta.tombstone) {
+    printf("\x1B[0m"); // Strikethrough.
+  }
+#endif
+}
+
+static void ast_print(AstNodeDyn nodes, MetadataDyn metadata, u32 left_width) {
   for (u32 i = 0; i < nodes.len; i++) {
     printf("[%u] ", i);
     AstNode node = PG_SLICE_AT(nodes, i);
@@ -224,56 +320,62 @@ static void ast_print(AstNodeDyn nodes, u32 left_width) {
 
     switch (node.kind) {
     case AST_NODE_KIND_NUMBER:
-      printf("U64 %" PRIu64 "\n", node.u.n64);
+      printf("U64 %" PRIu64, node.u.n64);
       break;
     case AST_NODE_KIND_IDENTIFIER:
-      printf("Identifier %.*s\n", (i32)node.u.identifier.len,
+      printf("Identifier %.*s", (i32)node.u.identifier.len,
              node.u.identifier.data);
       break;
     case AST_NODE_KIND_ADDRESS_OF:
-      printf("AddressOf\n");
+      printf("AddressOf");
       break;
     case AST_NODE_KIND_BUILTIN_ASSERT:
-      printf("Assert\n");
+      printf("Assert");
       break;
     case AST_NODE_KIND_ADD:
-      printf("Add\n");
+      printf("Add");
       break;
     case AST_NODE_KIND_COMPARISON:
-      printf("Comparison\n");
+      printf("Comparison");
       break;
     case AST_NODE_KIND_SYSCALL: {
-      printf("Syscall\n");
+      printf("Syscall");
     } break;
     case AST_NODE_KIND_BLOCK: {
-      printf("Block\n");
+      printf("Block");
     } break;
     case AST_NODE_KIND_VAR_DEFINITION:
-      printf("VarDecl %.*s\n", (i32)node.u.identifier.len,
+      printf("VarDecl %.*s", (i32)node.u.identifier.len,
              node.u.identifier.data);
       break;
     case AST_NODE_KIND_JUMP_IF_FALSE:
-      printf("JumpIfFalse\n");
+      printf("JumpIfFalse");
       break;
     case AST_NODE_KIND_JUMP:
-      printf("Jump\n");
+      printf("Jump");
       break;
     case AST_NODE_KIND_FN_DEFINITION:
-      printf("FnDefinition %.*s\n", (i32)node.u.identifier.len,
+      printf("FnDefinition %.*s", (i32)node.u.identifier.len,
              node.u.identifier.data);
       break;
     case AST_NODE_KIND_LABEL_DEFINITION:
-      printf("LabelDefinition %.*s\n", (i32)node.u.label.value.len,
+      printf("LabelDefinition %.*s", (i32)node.u.label.value.len,
              node.u.label.value.data);
       break;
     case AST_NODE_KIND_LABEL:
-      printf("Label %.*s\n", (i32)node.u.label.value.len,
+      printf("Label %.*s", (i32)node.u.label.value.len,
              node.u.label.value.data);
       break;
     case AST_NODE_KIND_NONE:
     default:
       PG_ASSERT(0);
     }
+    if (metadata.len && node.meta_idx.value) {
+      printf(" // ");
+      Metadata meta = PG_SLICE_AT(metadata, node.meta_idx.value);
+      metadata_print_meta(meta);
+    }
+    printf("\n");
   }
 }
 
@@ -983,102 +1085,7 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
   return metadata;
 }
 
-static void print_var(Metadata meta) {
-  if (0 == meta.virtual_register.value) {
-    return;
-  }
-
-  if (!pg_string_is_empty(meta.identifier)) {
-    printf("%.*s%%%" PRIu32, (i32)meta.identifier.len, meta.identifier.data,
-           meta.virtual_register.value);
-  } else {
-    printf("%%%" PRIu32, meta.virtual_register.value);
-  }
-}
-
-[[nodiscard]]
-static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
-  switch (constraint) {
-  case VREG_CONSTRAINT_NONE:
-    return "NONE";
-  case VREG_CONSTRAINT_CONDITION_FLAGS:
-    return "CONDITION_FLAGS";
-  case VREG_CONSTRAINT_SYSCALL_NUM:
-    return "SYSCALL_NUM";
-  case VREG_CONSTRAINT_SYSCALL0:
-    return "SYSCALL0";
-  case VREG_CONSTRAINT_SYSCALL1:
-    return "SYSCALL1";
-  case VREG_CONSTRAINT_SYSCALL2:
-    return "SYSCALL2";
-  case VREG_CONSTRAINT_SYSCALL3:
-    return "SYSCALL3";
-  case VREG_CONSTRAINT_SYSCALL4:
-    return "SYSCALL4";
-  case VREG_CONSTRAINT_SYSCALL5:
-    return "SYSCALL5";
-  case VREG_CONSTRAINT_SYSCALL_RET:
-    return "SYSCALL_RET";
-
-  default:
-    PG_ASSERT(0);
-  }
-}
-
-static void metadata_print_meta(Metadata meta) {
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[9m"); // Strikethrough.
-  }
-#endif
-
-  printf("var=");
-  print_var(meta);
-  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
-         meta.lifetime_end.value);
-
-  if (meta.virtual_register.value) {
-    printf(" vreg=v%u{constraint=%s, addressable=%s}",
-           meta.virtual_register.value,
-           register_constraint_to_cstr(meta.virtual_register.constraint),
-           meta.virtual_register.addressable ? "true" : "false");
-  }
-
-  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
-    printf(" mem_loc=");
-
-    switch (meta.memory_location.kind) {
-    case MEMORY_LOCATION_KIND_REGISTER:
-    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      printf("reg(todo)");
-      // TODO
-#if 0
-      amd64_print_register(meta.memory_location.reg);
-#endif
-      break;
-    case MEMORY_LOCATION_KIND_STACK: {
-      printf("[sp");
-      i32 offset = meta.memory_location.u.base_pointer_offset;
-      printf("-%" PRIi32 "]", offset);
-    } break;
-#if 0
-    case MEMORY_LOCATION_KIND_MEMORY:
-      printf("%#lx", loc.memory_address);
-      break;
-#endif
-    case MEMORY_LOCATION_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-  }
-
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[0m"); // Strikethrough.
-  }
-#endif
-}
-
+[[maybe_unused]]
 static void metadata_print(MetadataDyn metadata) {
   for (u64 i = 0; i < metadata.len; i++) {
     Metadata meta = PG_SLICE_AT(metadata, i);

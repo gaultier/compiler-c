@@ -84,13 +84,13 @@ int main(int argc, char *argv[]) {
 
   if (cli_opts.verbose) {
     printf("\n------------ AST ------------\n");
-    ast_print(parser.nodes, 0);
+    ast_print(parser.nodes, (MetadataDyn){0}, 0);
   }
 
   MetadataDyn metadata = ast_generate_metadata(&parser, allocator);
   if (cli_opts.verbose) {
-    printf("\n------------ Metadata ------------\n");
-    metadata_print(metadata);
+    printf("\n------------ AST with metadata ------------\n");
+    ast_print(parser.nodes, metadata, 0);
   }
 
 #if 0
