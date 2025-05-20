@@ -790,7 +790,7 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_push(parser, fn_start, allocator);
 
   for (u64 _i = 0; _i < parser->lexer.tokens.len;) {
-    if (parser->tokens_consumed >= parser->lexer.tokens.len) {
+    if (ast_match_token_kind(parser, LEX_TOKEN_KIND_EOF).kind) {
       break;
     }
 
@@ -1048,9 +1048,9 @@ static void print_fn_definitions(FnDefinitionDyn fn_defs) {
 
     printf("[%u] ", i);
     origin_print(fn_def.origin);
-    printf("fn %.*s\n\n", (i32)fn_def.name.len, fn_def.name.data);
+    printf("fn %.*s\n", (i32)fn_def.name.len, fn_def.name.data);
 
     metadata_print(fn_def.metadata);
-    printf("\n\n");
+    printf("\n");
   }
 }
