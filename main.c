@@ -1,6 +1,4 @@
 #include "asm.h"
-#include "ast.h"
-#include "register_alloc.h"
 #if 0
 #include "elf.h"
 #include "type_check.h"
@@ -101,10 +99,10 @@ int main(int argc, char *argv[]) {
     goto err;
   }
 
-  PgString base_path = pg_path_base_name(file_path);
-  PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter = nullptr;
 #if 0
+  PgString base_path = pg_path_base_name(file_path);
+  PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter =
       amd64_make_asm_emitter(&lir_emitter, exe_path, allocator);
 #endif

@@ -183,6 +183,8 @@ static bool asm_must_spill(AsmEmitter emitter, MetadataDyn metadata,
   return needs_spill;
 }
 
+#if 0
+
 static void asm_spill_node(MetadataDyn metadata, FnBody *fn_body,
                            InterferenceNodeIndex node_idx) {
 
@@ -499,5 +501,13 @@ static void asm_color_interference_graph(AsmEmitter *emitter, FnBody *fn_body,
         PG_ASSERT(MEMORY_LOCATION_KIND_STACK == node_mem_loc.kind);
       }
     }
+  }
+}
+#endif
+
+static void asm_emit(AsmEmitter *asm_emitter, AstNodeDyn nodes,
+                     MetadataDyn metadata, PgAllocator *allocator) {
+  for (u32 i = 0; i < nodes.len; i++) {
+    AstNode node = PG_SLICE_AT(nodes, i);
   }
 }
