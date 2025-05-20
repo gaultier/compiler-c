@@ -102,10 +102,10 @@ PG_DYN(MemoryLocation) MemoryLocationDyn;
 
 typedef struct {
   u32 value;
-} IrInstructionIndex;
+} InstructionIndex;
 
 typedef struct {
-  IrInstructionIndex lifetime_start, lifetime_end;
+  InstructionIndex lifetime_start, lifetime_end;
   VirtualRegister virtual_register;
   MemoryLocation memory_location;
   PgString identifier;
@@ -114,6 +114,17 @@ typedef struct {
 #endif
 } Metadata;
 PG_DYN(Metadata) MetadataDyn;
+
+typedef struct {
+  PgString name;
+  AstNodeFlag flags;
+
+  // TODO: Arguments.
+  MetadataDyn metadata;
+  InstructionIndex ins_start;
+  Origin origin;
+} FnDefinition;
+PG_DYN(FnDefinition) FnDefinitionDyn;
 
 typedef struct {
   Lexer lexer;
@@ -787,4 +798,257 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   }
 
   ast_emit_program_epilog(parser, allocator);
+}
+
+[[nodiscard]] static MetadataIndex metadata_last_idx(MetadataDyn metadata) {
+  PG_ASSERT(metadata.len > 0);
+  return (MetadataIndex){(u32)metadata.len - 1};
+}
+
+[[nodiscard]]
+static MetadataIndex metadata_make(MetadataDyn *metadata,
+                                   PgAllocator *allocator) {
+  Metadata res = {0};
+  res.virtual_register.value = (u32)metadata->len;
+
+  *PG_DYN_PUSH(metadata, allocator) = res;
+
+  return metadata_last_idx(*metadata);
+}
+
+static void metadata_start_lifetime(MetadataDyn metadata,
+                                    MetadataIndex meta_idx,
+                                    InstructionIndex ins_idx) {
+  PG_SLICE_AT(metadata, meta_idx.value).lifetime_start = ins_idx;
+  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
+}
+
+[[nodiscard]]
+static MetadataIndex metadata_ptr_to_idx(MetadataDyn metadata, Metadata *meta) {
+  return (MetadataIndex){(u32)(meta - metadata.data)};
+}
+
+[[nodiscard]]
+static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
+                                             PgString identifier) {
+  for (u64 i = 0; i < metadata.len; i++) {
+    Metadata *meta = PG_SLICE_AT_PTR(&metadata, i);
+    if (pg_string_eq(meta->identifier, identifier)) {
+      return meta;
+    }
+  }
+  return nullptr;
+}
+
+static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
+                                            MetadataIndex meta_idx,
+                                            InstructionIndex ins_idx) {
+  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
+
+  // TODO: Variable pointed to needs to live at least as long as the pointer to
+  // it.
+  // TODO: If there are multiple aliases to the same pointer, all aliases
+  // should have their meta extended to this point!
+  // TODO: Dataflow.
+}
+
+[[nodiscard]]
+static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
+                                             PgAllocator *allocator) {
+  FnDefinitionDyn fn_defs = {0};
+  u32 fn_def_idx = -1U;
+  u32 fn_instructions_count = 0;
+
+  for (u32 i = 0; i < parser->nodes.len; i++) {
+    InstructionIndex ins_idx = {fn_instructions_count};
+    AstNode *node = PG_SLICE_AT_PTR(&parser->nodes, i);
+    FnDefinition *fn_def =
+        fn_def_idx == -1U ? nullptr : PG_SLICE_AT_PTR(&fn_defs, fn_def_idx);
+
+    switch (node->kind) {
+      // Expressions that create a new value.
+    case AST_NODE_KIND_ADD:
+    case AST_NODE_KIND_COMPARISON:
+    case AST_NODE_KIND_VAR_DEFINITION:
+    case AST_NODE_KIND_ADDRESS_OF:
+    case AST_NODE_KIND_SYSCALL:
+    case AST_NODE_KIND_NUMBER: {
+      PG_ASSERT(fn_def);
+      node->meta_idx = metadata_make(&fn_def->metadata, allocator);
+      metadata_start_lifetime(fn_def->metadata, node->meta_idx, ins_idx);
+
+      if (AST_NODE_KIND_VAR_DEFINITION == node->kind) {
+        PG_ASSERT(node->u.identifier.len);
+        PG_DYN_LAST(fn_def->metadata).identifier = node->u.identifier;
+      }
+    } break;
+    case AST_NODE_KIND_IDENTIFIER: {
+      PG_ASSERT(fn_def);
+      // Here the variable name is resolved.
+      Metadata *meta =
+          metadata_find_by_identifier(fn_def->metadata, node->u.identifier);
+      if (!meta) {
+        *PG_DYN_PUSH(parser->errors, allocator) = (Error){
+            .kind = ERROR_KIND_UNDEFINED_VAR,
+            .origin = node->origin,
+            .src = parser->lexer.src,
+            .src_span = node->u.identifier,
+        };
+        break;
+      }
+
+      MetadataIndex meta_idx = metadata_ptr_to_idx(fn_def->metadata, meta);
+      metadata_extend_lifetime_on_use(fn_def->metadata, meta_idx, ins_idx);
+    } break;
+    case AST_NODE_KIND_FN_DEFINITION: {
+      FnDefinition fn_def_new = (FnDefinition){
+          .name = node->u.identifier,
+          .flags = node->flags,
+          .ins_start = ins_idx,
+          .origin = node->origin,
+      };
+      *PG_DYN_PUSH(&fn_defs, allocator) = fn_def_new;
+      fn_def_idx = (u32)fn_defs.len - 1;
+      fn_instructions_count = 0;
+
+    } break;
+
+      // No metadata.
+    case AST_NODE_KIND_LABEL_DEFINITION:
+    case AST_NODE_KIND_LABEL:
+    case AST_NODE_KIND_JUMP_IF_FALSE:
+    case AST_NODE_KIND_JUMP:
+    case AST_NODE_KIND_BUILTIN_ASSERT:
+    case AST_NODE_KIND_BLOCK:
+      break;
+
+    case AST_NODE_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+    fn_instructions_count += 1;
+  }
+
+  return fn_defs;
+}
+
+static void print_var(Metadata meta) {
+  if (0 == meta.virtual_register.value) {
+    return;
+  }
+
+  if (!pg_string_is_empty(meta.identifier)) {
+    printf("%.*s%%%" PRIu32, (i32)meta.identifier.len, meta.identifier.data,
+           meta.virtual_register.value);
+  } else {
+    printf("%%%" PRIu32, meta.virtual_register.value);
+  }
+}
+
+[[nodiscard]]
+static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
+  switch (constraint) {
+  case VREG_CONSTRAINT_NONE:
+    return "NONE";
+  case VREG_CONSTRAINT_CONDITION_FLAGS:
+    return "CONDITION_FLAGS";
+  case VREG_CONSTRAINT_SYSCALL_NUM:
+    return "SYSCALL_NUM";
+  case VREG_CONSTRAINT_SYSCALL0:
+    return "SYSCALL0";
+  case VREG_CONSTRAINT_SYSCALL1:
+    return "SYSCALL1";
+  case VREG_CONSTRAINT_SYSCALL2:
+    return "SYSCALL2";
+  case VREG_CONSTRAINT_SYSCALL3:
+    return "SYSCALL3";
+  case VREG_CONSTRAINT_SYSCALL4:
+    return "SYSCALL4";
+  case VREG_CONSTRAINT_SYSCALL5:
+    return "SYSCALL5";
+  case VREG_CONSTRAINT_SYSCALL_RET:
+    return "SYSCALL_RET";
+
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void metadata_print_meta(Metadata meta) {
+#if 0
+  if (meta.tombstone) {
+    printf("\x1B[9m"); // Strikethrough.
+  }
+#endif
+
+  printf("var=");
+  print_var(meta);
+  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
+         meta.lifetime_end.value);
+
+  if (meta.virtual_register.value) {
+    printf(" vreg=v%u{constraint=%s, addressable=%s}",
+           meta.virtual_register.value,
+           register_constraint_to_cstr(meta.virtual_register.constraint),
+           meta.virtual_register.addressable ? "true" : "false");
+  }
+
+  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
+    printf(" mem_loc=");
+
+    switch (meta.memory_location.kind) {
+    case MEMORY_LOCATION_KIND_REGISTER:
+    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
+      printf("reg(todo)");
+      // TODO
+#if 0
+      amd64_print_register(meta.memory_location.reg);
+#endif
+      break;
+    case MEMORY_LOCATION_KIND_STACK: {
+      printf("[sp");
+      i32 offset = meta.memory_location.u.base_pointer_offset;
+      printf("-%" PRIi32 "]", offset);
+    } break;
+#if 0
+    case MEMORY_LOCATION_KIND_MEMORY:
+      printf("%#lx", loc.memory_address);
+      break;
+#endif
+    case MEMORY_LOCATION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+  }
+
+#if 0
+  if (meta.tombstone) {
+    printf("\x1B[0m"); // Strikethrough.
+  }
+#endif
+}
+
+static void metadata_print(MetadataDyn metadata) {
+  for (u64 i = 0; i < metadata.len; i++) {
+    Metadata meta = PG_SLICE_AT(metadata, i);
+    printf("[%lu] ", i);
+    metadata_print_meta(meta);
+    printf("\n");
+  }
+}
+
+static void print_fn_definitions(FnDefinitionDyn fn_defs) {
+  printf("\n------------ Functions ------------\n");
+
+  for (u32 i = 0; i < fn_defs.len; i++) {
+    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
+    PG_ASSERT(fn_def.name.len);
+
+    printf("[%u] ", i);
+    origin_print(fn_def.origin);
+    printf("fn %.*s\n\n", (i32)fn_def.name.len, fn_def.name.data);
+
+    metadata_print(fn_def.metadata);
+    printf("\n\n");
+  }
 }

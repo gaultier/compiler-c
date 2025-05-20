@@ -87,6 +87,11 @@ int main(int argc, char *argv[]) {
     ast_print(parser.nodes, 0);
   }
 
+  FnDefinitionDyn fn_defs = ast_generate_metadata(&parser, allocator);
+  if (cli_opts.verbose) {
+    print_fn_definitions(fn_defs);
+  }
+
 #if 0
   TypeChecker type_checker = types_make_type_checker(allocator);
   (void)type_checker; // TODO

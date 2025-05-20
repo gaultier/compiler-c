@@ -57,12 +57,12 @@ typedef struct {
 
   IrInstructionDyn instructions;
   MetadataDyn metadata;
-} IrFnDefinition;
-PG_DYN(IrFnDefinition) IrFnDefinitionDyn;
+} FnDefinition;
+PG_DYN(FnDefinition) FnDefinitionDyn;
 
 typedef struct {
   AstParser parser;
-  IrFnDefinitionDyn fn_definitions;
+  FnDefinitionDyn fn_definitions;
 
   // Gets incremented.
   u32 label_id;
@@ -83,69 +83,16 @@ static Label ir_emitter_next_label_name(IrEmitter *emitter,
   return id;
 }
 
-[[nodiscard]] static MetadataIndex metadata_last_idx(MetadataDyn metadata) {
-  PG_ASSERT(metadata.len > 0);
-  return (MetadataIndex){(u32)metadata.len - 1};
-}
-
 [[nodiscard]]
-static MetadataIndex metadata_make(MetadataDyn *metadata,
-                                   PgAllocator *allocator) {
-  Metadata res = {0};
-  res.virtual_register.value = (u32)metadata->len;
-
-  *PG_DYN_PUSH(metadata, allocator) = res;
-
-  return metadata_last_idx(*metadata);
-}
-
-static void metadata_start_lifetime(MetadataDyn metadata,
-                                    MetadataIndex meta_idx,
-                                    IrInstructionIndex ins_idx) {
-  PG_SLICE_AT(metadata, meta_idx.value).lifetime_start = ins_idx;
-  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
-}
-
-[[nodiscard]]
-static MetadataIndex metadata_ptr_to_idx(MetadataDyn metadata, Metadata *meta) {
-  return (MetadataIndex){(u32)(meta - metadata.data)};
-}
-
-[[nodiscard]]
-static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
-                                             PgString identifier) {
-  for (u64 i = 0; i < metadata.len; i++) {
-    Metadata *meta = PG_SLICE_AT_PTR(&metadata, i);
-    if (pg_string_eq(meta->identifier, identifier)) {
-      return meta;
-    }
-  }
-  return nullptr;
-}
-
-static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
-                                            MetadataIndex meta_idx,
-                                            IrInstructionIndex ins_idx) {
-  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
-
-  // TODO: Variable pointed to needs to live at least as long as the pointer to
-  // it.
-  // TODO: If there are multiple aliases to the same pointer, all aliases
-  // should have their meta extended to this point!
-  // TODO: Dataflow.
-}
-
-[[nodiscard]]
-static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
+static IrOperand ir_emit_ast_node(IrEmitter *emitter, FnDefinition *fn_def,
                                   ErrorDyn *errors, PgAllocator *allocator) {
   switch (node.kind) {
   case AST_NODE_KIND_NONE:
     PG_ASSERT(0);
   case AST_NODE_KIND_NUMBER: {
     MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
-    metadata_start_lifetime(
-        fn_def->metadata, meta_idx,
-        (IrInstructionIndex){(u32)fn_def->instructions.len});
+    metadata_start_lifetime(fn_def->metadata, meta_idx,
+                            (InstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {
         .kind = IR_INSTRUCTION_KIND_LOAD,
@@ -178,9 +125,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
                                      fn_def, errors, allocator);
 
     MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
-    metadata_start_lifetime(
-        fn_def->metadata, meta_idx,
-        (IrInstructionIndex){(u32)fn_def->instructions.len});
+    metadata_start_lifetime(fn_def->metadata, meta_idx,
+                            (InstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADD;
@@ -191,7 +137,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
 
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
-    IrInstructionIndex ins_idx =
+    InstructionIndex ins_idx =
         PG_SLICE_AT(fn_def->metadata, meta_idx.value).lifetime_start;
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
@@ -215,9 +161,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
 
     MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
-    metadata_start_lifetime(
-        fn_def->metadata, meta_idx,
-        (IrInstructionIndex){(u32)fn_def->instructions.len});
+    metadata_start_lifetime(fn_def->metadata, meta_idx,
+                            (InstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
@@ -230,7 +175,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
 
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
-    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
+    InstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == lhs.kind) {
       metadata_extend_lifetime_on_use(fn_def->metadata, lhs.u.meta_idx,
@@ -255,9 +200,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     }
 
     MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
-    metadata_start_lifetime(
-        fn_def->metadata, meta_idx,
-        (IrInstructionIndex){(u32)fn_def->instructions.len});
+    metadata_start_lifetime(fn_def->metadata, meta_idx,
+                            (InstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
@@ -266,7 +210,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     ins.meta_idx = meta_idx;
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
-    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
+    InstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     for (u64 i = 0; i < node.operands.len; i++) {
       IrOperand val = PG_SLICE_AT(ins.operands, i);
       if (IR_OPERAND_KIND_VAR == val.kind) {
@@ -303,7 +247,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     PG_ASSERT(!pg_string_is_empty(node.u.identifier));
 
     PG_ASSERT(!fn_def);
-    IrFnDefinition fn_def_real = (IrFnDefinition){
+    FnDefinition fn_def_real = (IrFnDefinition){
         .name = node.u.identifier,
         .flags = node.flags,
     };
@@ -329,9 +273,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
     PG_SLICE_AT(fn_def->metadata, meta_idx.value).identifier =
         node.u.identifier;
-    metadata_start_lifetime(
-        fn_def->metadata, meta_idx,
-        (IrInstructionIndex){(u32)fn_def->instructions.len});
+    metadata_start_lifetime(fn_def->metadata, meta_idx,
+                            (InstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_LOAD;
@@ -341,7 +284,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     *PG_DYN_PUSH(&ins.operands, allocator) = rhs;
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
-    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
+    InstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
       metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
                                       ins_idx);
@@ -366,7 +309,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
 
     MetadataIndex meta_idx = metadata_ptr_to_idx(fn_def->metadata, meta);
 
-    IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
+    InstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
     metadata_extend_lifetime_on_use(fn_def->metadata, meta_idx, ins_idx);
 
     return (IrOperand){.kind = IR_OPERAND_KIND_VAR, .u.meta_idx = meta_idx};
@@ -374,9 +317,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
   case AST_NODE_KIND_BUILTIN_ASSERT: {
     PG_ASSERT(1 == node.operands.len);
     MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
-    metadata_start_lifetime(
-        fn_def->metadata, meta_idx,
-        (IrInstructionIndex){(u32)fn_def->instructions.len});
+    metadata_start_lifetime(fn_def->metadata, meta_idx,
+                            (InstructionIndex){(u32)fn_def->instructions.len});
 
     {
       AstNode operand = PG_SLICE_AT(node.operands, 0);
@@ -424,9 +366,8 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     IrOperand rhs =
         ir_emit_ast_node(operand, emitter, fn_def, errors, allocator);
     MetadataIndex meta_idx = metadata_make(&fn_def->metadata, allocator);
-    metadata_start_lifetime(
-        fn_def->metadata, meta_idx,
-        (IrInstructionIndex){(u32)fn_def->instructions.len});
+    metadata_start_lifetime(fn_def->metadata, meta_idx,
+                            (InstructionIndex){(u32)fn_def->instructions.len});
 
     IrInstruction ins = {0};
     ins.kind = IR_INSTRUCTION_KIND_ADDRESS_OF;
@@ -437,7 +378,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ins;
 
     if (IR_OPERAND_KIND_VAR == rhs.kind) {
-      IrInstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
+      InstructionIndex ins_idx = {(u32)(fn_def->instructions.len - 1)};
       metadata_extend_lifetime_on_use(fn_def->metadata, rhs.u.meta_idx,
                                       ins_idx);
     } else {
@@ -470,7 +411,7 @@ static IrOperand ir_emit_ast_node(IrEmitter *emitter, IrFnDefinition *fn_def,
     };
     *PG_DYN_PUSH(&ir_cond_jump.operands, allocator) = cond;
     *PG_DYN_PUSH(&fn_def->instructions, allocator) = ir_cond_jump;
-    IrInstructionIndex ir_cond_jump_idx = {(u32)(fn_def->instructions.len - 1)};
+    InstructionIndex ir_cond_jump_idx = {(u32)(fn_def->instructions.len - 1)};
 
     if (IR_OPERAND_KIND_VAR == cond.kind) {
       metadata_extend_lifetime_on_use(fn_def->metadata, cond.u.meta_idx,
@@ -873,19 +814,6 @@ static void ir_optimize(IrInstructionDyn *instructions, MetadataDyn *metadata,
 }
 #endif
 
-static void ir_print_var(Metadata meta) {
-  if (0 == meta.virtual_register.value) {
-    return;
-  }
-
-  if (!pg_string_is_empty(meta.identifier)) {
-    printf("%.*s%%%" PRIu32, (i32)meta.identifier.len, meta.identifier.data,
-           meta.virtual_register.value);
-  } else {
-    printf("%%%" PRIu32, meta.virtual_register.value);
-  }
-}
-
 static void ir_print_operand(IrOperand op, MetadataDyn metadata) {
   switch (op.kind) {
   case IR_OPERAND_KIND_NONE:
@@ -904,266 +832,6 @@ static void ir_print_operand(IrOperand op, MetadataDyn metadata) {
     break;
   default:
     PG_ASSERT(0);
-  }
-}
-
-[[nodiscard]]
-static char *
-lir_register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
-  switch (constraint) {
-  case VREG_CONSTRAINT_NONE:
-    return "NONE";
-  case VREG_CONSTRAINT_CONDITION_FLAGS:
-    return "CONDITION_FLAGS";
-  case VREG_CONSTRAINT_SYSCALL_NUM:
-    return "SYSCALL_NUM";
-  case VREG_CONSTRAINT_SYSCALL0:
-    return "SYSCALL0";
-  case VREG_CONSTRAINT_SYSCALL1:
-    return "SYSCALL1";
-  case VREG_CONSTRAINT_SYSCALL2:
-    return "SYSCALL2";
-  case VREG_CONSTRAINT_SYSCALL3:
-    return "SYSCALL3";
-  case VREG_CONSTRAINT_SYSCALL4:
-    return "SYSCALL4";
-  case VREG_CONSTRAINT_SYSCALL5:
-    return "SYSCALL5";
-  case VREG_CONSTRAINT_SYSCALL_RET:
-    return "SYSCALL_RET";
-
-  default:
-    PG_ASSERT(0);
-  }
-}
-
-static void metadata_print_meta(Metadata meta) {
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[9m"); // Strikethrough.
-  }
-#endif
-
-  printf("var=");
-  ir_print_var(meta);
-  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
-         meta.lifetime_end.value);
-
-  if (meta.virtual_register.value) {
-    printf(" vreg=v%u{constraint=%s, addressable=%s}",
-           meta.virtual_register.value,
-           lir_register_constraint_to_cstr(meta.virtual_register.constraint),
-           meta.virtual_register.addressable ? "true" : "false");
-  }
-
-  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
-    printf(" mem_loc=");
-
-    switch (meta.memory_location.kind) {
-    case MEMORY_LOCATION_KIND_REGISTER:
-    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      printf("reg(todo)");
-      // TODO
-#if 0
-      amd64_print_register(meta.memory_location.reg);
-#endif
-      break;
-    case MEMORY_LOCATION_KIND_STACK: {
-      printf("[sp");
-      i32 offset = meta.memory_location.u.base_pointer_offset;
-      printf("-%" PRIi32 "]", offset);
-    } break;
-#if 0
-    case MEMORY_LOCATION_KIND_MEMORY:
-      printf("%#lx", loc.memory_address);
-      break;
-#endif
-    case MEMORY_LOCATION_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-  }
-
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[0m"); // Strikethrough.
-  }
-#endif
-}
-
-static void metadata_print(MetadataDyn metadata) {
-  for (u64 i = 0; i < metadata.len; i++) {
-    Metadata meta = PG_SLICE_AT(metadata, i);
-    printf("[%lu] ", i);
-    metadata_print_meta(meta);
-    printf("\n");
-  }
-}
-static void ir_emitter_print_fn_definition(IrFnDefinition fn_def) {
-  PG_ASSERT(fn_def.name.len);
-
-  printf("fn %.*s() {\n", (i32)fn_def.name.len, fn_def.name.data);
-
-  for (u64 i = 0; i < fn_def.instructions.len; i++) {
-    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
-
-#if 0
-  if (ins.tombstone) {
-    printf("\x1B[9m"); // Strikethrough.
-  }
-#endif
-
-    if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
-      printf("\n");
-    }
-
-    printf("[%lu] ", i);
-    origin_print(ins.origin);
-    printf(": ");
-
-    switch (ins.kind) {
-    case IR_INSTRUCTION_KIND_NONE:
-      PG_ASSERT(0);
-    case IR_INSTRUCTION_KIND_ADD: {
-      PG_ASSERT(2 == ins.operands.len);
-      PG_ASSERT(0 != ins.meta_idx.value);
-      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
-      ir_print_var(meta);
-      printf(" := ");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 0), fn_def.metadata);
-      printf(" + ");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 1), fn_def.metadata);
-
-      printf(" // ");
-      metadata_print_meta(meta);
-    } break;
-    case IR_INSTRUCTION_KIND_COMPARISON: {
-      PG_ASSERT(2 == ins.operands.len);
-      PG_ASSERT(0 != ins.meta_idx.value);
-
-      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
-
-      ir_print_var(meta);
-      printf(" := ");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 0), fn_def.metadata);
-      printf(" %s ",
-             LEX_TOKEN_KIND_EQUAL_EQUAL == ins.token_kind ? "==" : "!=");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 1), fn_def.metadata);
-
-      printf(" // ");
-      metadata_print_meta(meta);
-    } break;
-    case IR_INSTRUCTION_KIND_LOAD: {
-      PG_ASSERT(1 == ins.operands.len);
-      PG_ASSERT(0 != ins.meta_idx.value);
-      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
-
-      IrOperand rhs = PG_SLICE_AT(ins.operands, 0);
-      ir_print_var(meta);
-      printf(" := ");
-      ir_print_operand(rhs, fn_def.metadata);
-
-      printf(" // ");
-      metadata_print_meta(meta);
-    } break;
-    case IR_INSTRUCTION_KIND_ADDRESS_OF: {
-      PG_ASSERT(1 == ins.operands.len);
-      PG_ASSERT(0 != ins.meta_idx.value);
-
-      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
-
-      ir_print_var(meta);
-      printf(" := &");
-      ir_print_operand(PG_SLICE_AT(ins.operands, 0), fn_def.metadata);
-
-      printf(" // ");
-      metadata_print_meta(meta);
-    } break;
-    case IR_INSTRUCTION_KIND_SYSCALL: {
-      Metadata meta = PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value);
-
-      ir_print_var(meta);
-      printf("%ssyscall(", 0 == ins.meta_idx.value ? "" : " := ");
-
-      for (u64 j = 0; j < ins.operands.len; j++) {
-        IrOperand val = PG_SLICE_AT(ins.operands, j);
-        ir_print_operand(val, fn_def.metadata);
-
-        if (j + 1 < ins.operands.len) {
-          printf(", ");
-        }
-      }
-
-      printf(")");
-
-      if (0 != ins.meta_idx.value) {
-        printf(" // ");
-        metadata_print_meta(meta);
-      }
-    } break;
-    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
-      PG_ASSERT(2 == ins.operands.len);
-      PG_ASSERT(0 == ins.meta_idx.value);
-
-      IrOperand branch_else = PG_SLICE_AT(ins.operands, 0);
-      PG_ASSERT(IR_OPERAND_KIND_LABEL == branch_else.kind);
-
-      IrOperand cond = PG_SLICE_AT(ins.operands, 1);
-      PG_ASSERT(IR_OPERAND_KIND_VAR == cond.kind ||
-                IR_OPERAND_KIND_NUMBER == cond.kind);
-
-      printf("jump_if_false(");
-      ir_print_operand(cond, fn_def.metadata);
-      printf(", ");
-      ir_print_operand(branch_else, fn_def.metadata);
-      printf(")");
-    } break;
-    case IR_INSTRUCTION_KIND_JUMP: {
-      PG_ASSERT(1 == ins.operands.len);
-      PG_ASSERT(0 == ins.meta_idx.value);
-
-      IrOperand op = PG_SLICE_AT(ins.operands, 0);
-      PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
-      PG_ASSERT(op.u.label.value.len);
-      printf("jump ");
-      ir_print_operand(op, fn_def.metadata);
-    } break;
-
-    case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
-      PG_ASSERT(1 == ins.operands.len);
-      PG_ASSERT(0 == ins.meta_idx.value);
-
-      IrOperand op = PG_SLICE_AT(ins.operands, 0);
-      PG_ASSERT(IR_OPERAND_KIND_LABEL == op.kind);
-      PG_ASSERT(op.u.label.value.len);
-      ir_print_operand(op, fn_def.metadata);
-    } break;
-    default:
-      PG_ASSERT(0);
-    }
-
-    if (IR_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
-      printf(":");
-    }
-    printf("\n");
-#if 0
-  if (ins.tombstone) {
-    printf("\x1B[0m"); // Reset.
-  }
-#endif
-  }
-  printf("}\n");
-
-  printf("\n------------ IR metadata %.*s ------------\n", (i32)fn_def.name.len,
-         fn_def.name.data);
-  metadata_print(fn_def.metadata);
-  printf("\n\n");
-}
-
-static void ir_emitter_print_fn_definitions(IrEmitter emitter) {
-  for (u64 i = 0; i < emitter.fn_definitions.len; i++) {
-    IrFnDefinition fn_def = PG_SLICE_AT(emitter.fn_definitions, i);
-    ir_emitter_print_fn_definition(fn_def);
   }
 }
 

@@ -89,7 +89,7 @@ static void lir_print_operand(LirOperand op, MetadataDyn metadata) {
   case LIR_OPERAND_KIND_VIRTUAL_REGISTER:
     Metadata meta = PG_SLICE_AT(metadata, op.u.meta_idx.value);
     printf("v%u{constraint=%s, addressable=%s}", meta.virtual_register.value,
-           lir_register_constraint_to_cstr(meta.virtual_register.constraint),
+           register_constraint_to_cstr(meta.virtual_register.constraint),
            meta.virtual_register.addressable ? "true" : "false");
     break;
   case LIR_OPERAND_KIND_IMMEDIATE:
@@ -564,9 +564,8 @@ static void lir_print_interference_graph(InterferenceGraph graph,
   }
 }
 
-static void lir_emit_fn_definition(LirEmitter *emitter,
-                                   IrFnDefinition ir_fn_def, bool verbose,
-                                   PgAllocator *allocator) {
+static void lir_emit_fn_definition(LirEmitter *emitter, FnDefinition ir_fn_def,
+                                   bool verbose, PgAllocator *allocator) {
   LirFnDefinition lir_fn_def = {
       .name = ir_fn_def.name,
       .flags = ir_fn_def.flags,
@@ -593,10 +592,10 @@ static void lir_emit_fn_definition(LirEmitter *emitter,
 }
 
 static void lir_emit_fn_definitions(LirEmitter *emitter,
-                                    IrFnDefinitionDyn ir_fn_definitions,
+                                    FnDefinitionDyn ir_fn_definitions,
                                     bool verbose, PgAllocator *allocator) {
   for (u64 i = 0; i < ir_fn_definitions.len; i++) {
-    IrFnDefinition ir_fn_def = PG_SLICE_AT(ir_fn_definitions, i);
+    FnDefinition ir_fn_def = PG_SLICE_AT(ir_fn_definitions, i);
     lir_emit_fn_definition(emitter, ir_fn_def, verbose, allocator);
   }
 }
