@@ -904,11 +904,6 @@ static void metadata_start_lifetime(MetadataDyn metadata,
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 }
 
-[[maybe_unused]] [[nodiscard]]
-static MetadataIndex metadata_ptr_to_idx(MetadataDyn metadata, Metadata *meta) {
-  return (MetadataIndex){(u32)(meta - metadata.data)};
-}
-
 [[nodiscard]]
 static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
                                              PgString identifier) {

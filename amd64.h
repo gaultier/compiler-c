@@ -1727,25 +1727,6 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
   return section;
 }
 
-#if 0
-static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
-                                      FnDefinitionDyn fn_defs, AstNodeDyn nodes,
-                                      bool verbose, PgAllocator *allocator) {
-
-  for (u64 i = 0; i < fn_defs.len; i++) {
-    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    asm_color_interference_graph(asm_emitter, &fn_def, nodes, verbose,
-                                 allocator);
-    AsmCodeSection section = amd64_emit_fn_definition(
-        asm_emitter, fn_def, nodes, verbose, allocator);
-
-    *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section;
-  }
-
-  amd64_sanity_check_program((Amd64Emitter *)asm_emitter);
-}
-#endif
-
 static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
                                  AsmCodeSection section,
                                  PgAllocator *allocator) {
