@@ -530,6 +530,6 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
     // TODO: Codegen.
     AsmCodeSection section = asm_emitter->emit_fn_definition(
         asm_emitter, fn_def, verbose, allocator);
-    (void)section;
+    *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section;
   }
 }
