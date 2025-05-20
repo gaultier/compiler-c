@@ -1044,12 +1044,15 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
 
 static void ast_stack_push(AstNodeIndexDyn *stack, AstNodeIndex node_idx,
                            PgAllocator *allocator) {
-  // TODO
+  *PG_DYN_PUSH(stack, allocator) = node_idx;
 }
 
-static void ast_stack_pop(AstNodeIndexDyn *stack, AstNodeIndex node_idx,
-                          PgAllocator *allocator) {
-  // TODO
+[[nodiscard]]
+static AstNodeIndex ast_stack_pop(AstNodeIndexDyn *stack) {
+  PG_ASSERT(stack->len);
+  AstNodeIndex res = PG_SLICE_LAST(*stack);
+  stack->len -= 1;
+  return res;
 }
 
 [[nodiscard]]
@@ -1065,6 +1068,7 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
   for (u32 i = 0; i < parser->nodes.len; i++) {
     InstructionIndex ins_idx = {i};
     AstNode *node = PG_SLICE_AT_PTR(&parser->nodes, i);
+    AstNodeIndex node_idx = {i};
 
     switch (node->kind) {
       // Expressions that create a new value.
@@ -1083,48 +1087,6 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
         PG_DYN_LAST(metadata).identifier = node->u.identifier;
       }
 
-      // Stack.
-      {
-        if (AST_NODE_KIND_FN_DEFINITION == node->kind) {
-          stack.len = 0;
-        }
-
-        u32 args_count = ast_node_get_expected_args_count(*node);
-        if (!(stack.len >= args_count)) {
-          ast_add_error(parser, ERROR_KIND_WRONG_ARGS_COUNT, node->origin,
-                        allocator);
-          break;
-        }
-        for (u32 j = 0; j < args_count; j++) {
-          AstNodeIndex top_idx = PG_SLICE_LAST(stack);
-          AstNode top = PG_SLICE_AT(parser->nodes, top_idx.value);
-
-          if (AST_NODE_KIND_ADDRESS_OF == node->kind &&
-              !ast_node_is_addressable(top)) {
-            ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
-                          node->origin, allocator);
-            break;
-          }
-
-          metadata_extend_lifetime_on_use(metadata, top.meta_idx, ins_idx);
-          // Stack pop.
-          stack.len -= 1;
-          printf("[D001] [%u] pop stack_len=%lu\n", i, stack.len);
-        }
-
-        // Stack push.
-        bool is_expr = ast_node_is_expr(*node);
-        printf("[D000] [%u] is_expr=%d stack_len=%lu\n", i, is_expr, stack.len);
-        if (is_expr) {
-          *PG_DYN_PUSH(&stack, allocator) = (AstNodeIndex){i};
-          printf("[D001] [%u] push stack_len=%lu\n", i, stack.len);
-        }
-        if (!is_expr && stack.len > 0) {
-          ast_add_error(parser, ERROR_KIND_MALFORMED_AST, node->origin,
-                        allocator);
-          PG_ASSERT(0);
-        }
-      }
     } break;
     case AST_NODE_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
@@ -1137,8 +1099,7 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
         PG_DYN_LAST(*parser->errors).src_span = node->u.identifier;
         break;
       }
-      *PG_DYN_PUSH(&stack, allocator) = (AstNodeIndex){i};
-      printf("[D002] [%u] push stack_len=%lu\n", i, stack.len);
+
     } break;
       // No metadata.
     case AST_NODE_KIND_LABEL_DEFINITION:
@@ -1152,6 +1113,44 @@ static MetadataDyn ast_generate_metadata(AstParser *parser,
     case AST_NODE_KIND_NONE:
     default:
       PG_ASSERT(0);
+    }
+
+    // Stack.
+    {
+      if (AST_NODE_KIND_FN_DEFINITION == node->kind) {
+        stack.len = 0;
+      }
+
+      u32 args_count = ast_node_get_expected_args_count(*node);
+      if (!(stack.len >= args_count)) {
+        ast_add_error(parser, ERROR_KIND_WRONG_ARGS_COUNT, node->origin,
+                      allocator);
+        break;
+      }
+      for (u32 j = 0; j < args_count; j++) {
+        AstNodeIndex top_idx = ast_stack_pop(&stack);
+        AstNode top = PG_SLICE_AT(parser->nodes, top_idx.value);
+
+        if (AST_NODE_KIND_ADDRESS_OF == node->kind &&
+            !ast_node_is_addressable(top)) {
+          ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
+                        node->origin, allocator);
+          break;
+        }
+
+        metadata_extend_lifetime_on_use(metadata, top.meta_idx, ins_idx);
+      }
+
+      // Stack push.
+      bool is_expr = ast_node_is_expr(*node);
+      if (is_expr) {
+        ast_stack_push(&stack, node_idx, allocator);
+      }
+      if (!is_expr && stack.len > 0) {
+        ast_add_error(parser, ERROR_KIND_MALFORMED_AST, node->origin,
+                      allocator);
+        PG_ASSERT(0);
+      }
     }
   }
 
