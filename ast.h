@@ -1041,7 +1041,6 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
 static void ast_stack_push(AstNodeIndexDyn *stack, AstNodeIndex node_idx,
                            PgAllocator *allocator) {
   *PG_DYN_PUSH(stack, allocator) = node_idx;
-  printf("[D001] push node_idx=%u stack_len=%lu\n", node_idx.value, stack->len);
 }
 
 [[nodiscard]]
@@ -1049,7 +1048,6 @@ static AstNodeIndex ast_stack_pop(AstNodeIndexDyn *stack) {
   PG_ASSERT(stack->len);
   AstNodeIndex res = PG_SLICE_LAST(*stack);
   stack->len -= 1;
-  printf("[D001] pop node_idx=%u stack_len=%lu\n", res.value, stack->len);
   return res;
 }
 
