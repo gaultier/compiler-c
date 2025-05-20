@@ -904,6 +904,8 @@ static void metadata_start_lifetime(MetadataDyn metadata,
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 }
 
+// TODO: Scopes.
+// TODO: Detect shadowing.
 [[nodiscard]]
 static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
                                              PgString identifier) {
