@@ -81,12 +81,13 @@ typedef struct AsmEmitter AsmEmitter;
                                                                                \
   Architecture arch;                                                           \
   /* LirEmitter *lir_emitter; */                                               \
-  AsmProgram program;
+  Pgu8Dyn encoded;
 
 struct AsmEmitter {
   ASM_EMITTER_FIELDS
 };
 
+#if 0
 static void asm_gpr_set_add_idx(GprSet *set, u32 idx) {
   PG_ASSERT(set->registers.len > 0);
   PG_ASSERT(idx < set->registers.len);
@@ -183,7 +184,6 @@ static bool asm_must_spill(AsmEmitter emitter, MetadataDyn metadata,
   return needs_spill;
 }
 
-#if 0
 
 static void asm_spill_node(MetadataDyn metadata, FnBody *fn_body,
                            InterferenceNodeIndex node_idx) {
@@ -506,8 +506,32 @@ static void asm_color_interference_graph(AsmEmitter *emitter, FnBody *fn_body,
 #endif
 
 static void asm_emit(AsmEmitter *asm_emitter, AstNodeDyn nodes,
-                     MetadataDyn metadata, PgAllocator *allocator) {
+                     MetadataDyn metadata, bool verbose,
+                     PgAllocator *allocator) {
+  u32 stack_base_pointer_offset = 0, stack_base_pointer_offset_max = 0;
+
+  (void)asm_emitter;
+  (void)stack_base_pointer_offset;
+  (void)stack_base_pointer_offset_max;
+
   for (u32 i = 0; i < nodes.len; i++) {
     AstNode node = PG_SLICE_AT(nodes, i);
+
+    if (AST_NODE_KIND_FN_DEFINITION == node.kind) {
+      PG_ASSERT(node.u.identifier.len);
+
+      stack_base_pointer_offset = 0;
+      stack_base_pointer_offset_max = 0;
+
+      InterferenceGraph graph =
+          reg_build_interference_graph(metadata, allocator);
+      if (verbose) {
+        printf("\n------------ Interference graph %.*s ------------\n",
+               (i32)node.u.identifier.len, node.u.identifier.data);
+        reg_print_interference_graph(graph, metadata);
+      }
+    }
+
+    // asm_emitter->emit_
   }
 }

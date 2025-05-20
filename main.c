@@ -100,14 +100,15 @@ int main(int argc, char *argv[]) {
   }
 
   AsmEmitter *asm_emitter = nullptr;
+  asm_emit(asm_emitter, parser.nodes, metadata, cli_opts.verbose, allocator);
 #if 0
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter =
       amd64_make_asm_emitter(&lir_emitter, exe_path, allocator);
-#endif
   asm_emitter->emit_fn_definitions(asm_emitter, metadata, cli_opts.verbose,
                                    allocator);
+#endif
 
 #if 0
   if (cli_opts.verbose) {
