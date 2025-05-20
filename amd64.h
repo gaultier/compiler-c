@@ -1545,9 +1545,9 @@ amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
 }
 
 [[nodiscard]]
-static AsmCodeSection
-amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
-                         bool verbose, PgAllocator *allocator) {
+static AsmCodeSection amd64_emit_fn_definition(AsmEmitter *asm_emitter,
+                                               FnBody fn_def, bool verbose,
+                                               PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
 
   AsmCodeSection section = {
@@ -1625,11 +1625,11 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, LirFnDefinition fn_def,
 }
 
 static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
-                                      LirFnDefinitionDyn fn_definitions,
-                                      bool verbose, PgAllocator *allocator) {
+                                      MetadataDyn metadata, bool verbose,
+                                      PgAllocator *allocator) {
 
   for (u64 i = 0; i < fn_definitions.len; i++) {
-    LirFnDefinition fn_def = PG_SLICE_AT(fn_definitions, i);
+    FnBody fn_def = PG_SLICE_AT(fn_definitions, i);
     asm_color_interference_graph(asm_emitter, &fn_def, verbose, allocator);
     AsmCodeSection section =
         amd64_emit_fn_definition(asm_emitter, fn_def, verbose, allocator);

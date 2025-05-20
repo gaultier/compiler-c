@@ -1,9 +1,8 @@
+#include "asm.h"
 #include "ast.h"
 #include "register_alloc.h"
 #if 0
-#include "amd64.h"
 #include "elf.h"
-#include "ir.h"
 #include "type_check.h"
 #endif
 
@@ -97,54 +96,22 @@ int main(int argc, char *argv[]) {
 #if 0
   TypeChecker type_checker = types_make_type_checker(allocator);
   (void)type_checker; // TODO
-
-  IrEmitter ir_emitter = {.parser = parser};
-  ir_emit_program(&ir_emitter, *parser.root, &errors, allocator);
 #endif
   if (errors.len) {
     goto err;
   }
 
-#if 0
-  if (cli_opts.verbose) {
-    printf("\n------------ IR ------------\n");
-    ir_emitter_print_fn_definitions(ir_emitter);
-  }
-#if 0
-  if (cli_opts.optimize) {
-    ir_optimize(&ir_emitter.instructions, &ir_emitter.metadata,
-                cli_opts.verbose);
-    if (cli_opts.verbose) {
-      printf("\n------------ IR simplified ------------\n");
-      ir_emitter_print_instructions(ir_emitter);
-    }
-    ir_emitter_trim_tombstone_items(&ir_emitter);
-  }
-#endif
-
-  LirEmitter lir_emitter = {0};
-  lir_emit_fn_definitions(&lir_emitter, ir_emitter.fn_definitions,
-                          cli_opts.verbose, allocator);
-  if (cli_opts.verbose) {
-    printf("\n------------ LIR ------------\n");
-    lir_emitter_print_fn_definitions(lir_emitter);
-  }
-#endif
-
-  InterferenceGraph graph = reg_build_interference_graph(metadata, allocator);
-  if (cli_opts.verbose) {
-    printf("\n------------ Interference graph ------------\n");
-    reg_print_interference_graph(graph, metadata);
-  }
-
-#if 0
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
+  AsmEmitter *asm_emitter = nullptr;
+#if 0
   AsmEmitter *asm_emitter =
       amd64_make_asm_emitter(&lir_emitter, exe_path, allocator);
-  asm_emitter->emit_fn_definitions(asm_emitter, lir_emitter.fn_definitions,
-                                   cli_opts.verbose, allocator);
+#endif
+  asm_emitter->emit_fn_definitions(asm_emitter, metadata, cli_opts.verbose,
+                                   allocator);
 
+#if 0
   if (cli_opts.verbose) {
     printf("\n------------ ASM %.*s ------------\n",
            (i32)asm_emitter->program.file_path.len,
