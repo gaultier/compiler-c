@@ -27,6 +27,7 @@ typedef enum {
   ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT,
   ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT,
   ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION,
+  ERROR_KIND_WRONG_ARGS_COUNT,
 } ErrorKind;
 
 typedef struct {
@@ -145,6 +146,10 @@ static void error_print(Error err) {
   case ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION:
     printf("missing assert expression");
     break;
+  case ERROR_KIND_WRONG_ARGS_COUNT:
+    printf("wrong argument count");
+    break;
+
   default:
     PG_ASSERT(0);
   }

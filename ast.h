@@ -42,7 +42,7 @@ struct AstNode {
   union {
     u64 n64;             // NUmber literal.
     PgString identifier; // Variable name.
-    u64 args_count;      // Function.
+    u32 args_count;      // Function, syscall, etc.
     Label label;
   } u;
   MetadataIndex meta_idx;
@@ -50,6 +50,11 @@ struct AstNode {
   LexTokenKind token_kind;
   AstNodeFlag flags;
 };
+
+typedef struct {
+  u32 value;
+} AstNodeIndex;
+PG_DYN(AstNodeIndex) AstNodeIndexDyn;
 
 typedef enum {
   VREG_CONSTRAINT_NONE,
@@ -534,7 +539,7 @@ static bool ast_parse_syscall(AstParser *parser, PgAllocator *allocator) {
 
   LexToken token_after = {0};
 
-  u64 args_count = 0;
+  u32 args_count = 0;
 
   while (parser->tokens_consumed < parser->lexer.tokens.len) {
     LexToken token = PG_SLICE_AT(parser->lexer.tokens, parser->tokens_consumed);
@@ -587,7 +592,7 @@ static bool ast_parse_block(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  u64 args_count = 0;
+  u32 args_count = 0;
 
   for (u64 _i = parser->tokens_consumed; _i < parser->lexer.tokens.len; _i++) {
     LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_CURLY_RIGHT);
@@ -825,7 +830,7 @@ static void metadata_start_lifetime(MetadataDyn metadata,
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 }
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static MetadataIndex metadata_ptr_to_idx(MetadataDyn metadata, Metadata *meta) {
   return (MetadataIndex){(u32)(meta - metadata.data)};
 }
@@ -854,12 +859,45 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
   // TODO: Dataflow.
 }
 
+[[nodiscard]] static u32 ast_node_get_expected_args_count(AstNode node) {
+  switch (node.kind) {
+  case AST_NODE_KIND_NUMBER:
+  case AST_NODE_KIND_IDENTIFIER:
+  case AST_NODE_KIND_FN_DEFINITION:
+  case AST_NODE_KIND_LABEL_DEFINITION:
+  case AST_NODE_KIND_LABEL:
+    return 0;
+
+  case AST_NODE_KIND_ADDRESS_OF:
+  case AST_NODE_KIND_VAR_DEFINITION:
+  case AST_NODE_KIND_JUMP:
+  case AST_NODE_KIND_BUILTIN_ASSERT:
+    return 1;
+
+  case AST_NODE_KIND_ADD:
+  case AST_NODE_KIND_COMPARISON:
+  case AST_NODE_KIND_JUMP_IF_FALSE:
+    return 2;
+
+  case AST_NODE_KIND_BLOCK:
+  case AST_NODE_KIND_SYSCALL:
+    return node.u.args_count;
+
+  case AST_NODE_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
 [[nodiscard]]
 static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
                                              PgAllocator *allocator) {
   FnDefinitionDyn fn_defs = {0};
   u32 fn_def_idx = -1U;
   u32 fn_instructions_count = 0;
+
+  AstNodeIndexDyn stack = {0};
+  PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
   for (u32 i = 0; i < parser->nodes.len; i++) {
     InstructionIndex ins_idx = {fn_instructions_count};
@@ -883,6 +921,24 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
         PG_ASSERT(node->u.identifier.len);
         PG_DYN_LAST(fn_def->metadata).identifier = node->u.identifier;
       }
+
+      u32 args_count = ast_node_get_expected_args_count(*node);
+      if (!(stack.len >= args_count)) {
+        ast_add_error(parser, ERROR_KIND_WRONG_ARGS_COUNT, node->origin,
+                      allocator);
+        break;
+      }
+      for (u32 j = 0; j < args_count; j++) {
+        AstNodeIndex top_idx = PG_SLICE_LAST(stack);
+        AstNode top = PG_SLICE_AT(parser->nodes, top_idx.value);
+        metadata_extend_lifetime_on_use(fn_def->metadata, top.meta_idx,
+                                        ins_idx);
+        // Stack pop.
+        stack.len -= 1;
+      }
+
+      // Stack push.
+      *PG_DYN_PUSH(&stack, allocator) = (AstNodeIndex){i};
     } break;
     case AST_NODE_KIND_IDENTIFIER: {
       PG_ASSERT(fn_def);
@@ -890,17 +946,11 @@ static FnDefinitionDyn ast_generate_metadata(AstParser *parser,
       Metadata *meta =
           metadata_find_by_identifier(fn_def->metadata, node->u.identifier);
       if (!meta) {
-        *PG_DYN_PUSH(parser->errors, allocator) = (Error){
-            .kind = ERROR_KIND_UNDEFINED_VAR,
-            .origin = node->origin,
-            .src = parser->lexer.src,
-            .src_span = node->u.identifier,
-        };
+        ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, node->origin,
+                      allocator);
+        PG_DYN_LAST(*parser->errors).src_span = node->u.identifier;
         break;
       }
-
-      MetadataIndex meta_idx = metadata_ptr_to_idx(fn_def->metadata, meta);
-      metadata_extend_lifetime_on_use(fn_def->metadata, meta_idx, ins_idx);
     } break;
     case AST_NODE_KIND_FN_DEFINITION: {
       FnDefinition fn_def_new = (FnDefinition){
