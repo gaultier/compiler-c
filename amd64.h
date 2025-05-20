@@ -1051,15 +1051,26 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   }
 }
 
-#if 0
-[[nodiscard]] static Amd64Operand amd64_convert_lir_operand_to_amd64_operand(
-    Amd64Emitter *emitter, MetadataDyn metadata, LirOperand lir_op) {
-  (void)emitter;
+[[nodiscard]] static Amd64Operand
+amd64_convert_node_to_amd64_operand(AstNode node, MetadataDyn metadata) {
+  if (AST_NODE_KIND_NUMBER == node.kind) {
+    return (Amd64Operand){
+        .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+        .u.immediate = node.u.n64,
+    };
+  }
 
-  switch (lir_op.kind) {
-  case LIR_OPERAND_KIND_VIRTUAL_REGISTER: {
+  if (AST_NODE_KIND_LABEL == node.kind) {
+    PG_ASSERT(node.u.label.value.len);
+    return (Amd64Operand){
+        .kind = AMD64_OPERAND_KIND_LABEL,
+        .u.label = node.u.label,
+    };
+  }
+
+  if (ast_node_is_expr(node)) {
     MemoryLocation mem_loc =
-        PG_SLICE_AT(metadata, lir_op.u.meta_idx.value).memory_location;
+        PG_SLICE_AT(metadata, node.meta_idx.value).memory_location;
     switch (mem_loc.kind) {
     case MEMORY_LOCATION_KIND_REGISTER: {
       PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
@@ -1088,43 +1099,10 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     default:
       PG_ASSERT(0);
     }
-#if 0
-    InterferenceNode node =
-        PG_SLICE_AT(emitter->interference_nodes, node_idx.value);
-    PG_ASSERT(node.reg.value || node.base_stack_pointer_offset);
+  }
 
-    if (0 == node.base_stack_pointer_offset) {
-      return (Amd64Operand){
-          .kind = AMD64_OPERAND_KIND_REGISTER,
-          .reg = node.reg,
-      };
-    }
-
-    return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
-        .effective_address.base = amd64_rbp,
-        .effective_address.displacement = -(i32)node.base_stack_pointer_offset,
-    };
-#endif
-  }
-  case LIR_OPERAND_KIND_IMMEDIATE:
-    return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-        .u.immediate = lir_op.u.immediate,
-    };
-  case LIR_OPERAND_KIND_LABEL: {
-    PG_ASSERT(lir_op.u.label.value.len);
-    return (Amd64Operand){
-        .kind = AMD64_OPERAND_KIND_LABEL,
-        .u.label = lir_op.u.label,
-    };
-  }
-  case LIR_OPERAND_KIND_NONE:
-  default:
-    PG_ASSERT(0);
-  }
+  PG_ASSERT(0);
 }
-#endif
 
 static void amd64_sanity_check_section(Amd64Emitter *emitter,
                                        AsmCodeSection section) {
@@ -1144,6 +1122,9 @@ static void amd64_sanity_check_section(Amd64Emitter *emitter,
 
     PG_ASSERT(!(AMD64_OPERAND_KIND_IMMEDIATE == ins.lhs.kind &&
                 AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind));
+
+    PG_ASSERT(!(AMD64_OPERAND_KIND_IMMEDIATE == ins.lhs.kind &&
+                AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind));
   }
 }
 
@@ -1173,9 +1154,9 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_ADD,
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .rhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             rhs),
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .lhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             lhs),
           .origin = lir.origin,
       };
@@ -1194,7 +1175,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                 .u.reg = amd64_spill_registers[0], // TODO: mark it as used?
             },
         .rhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, rhs),
     };
     amd64_add_instruction(&section->instructions, ins_load, allocator);
 
@@ -1203,14 +1184,14 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
         .origin = lir.origin,
         .lhs = ins_load.lhs,
         .rhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, rhs),
     };
     amd64_add_instruction(&section->instructions, ins_add, allocator);
 
     Amd64Instruction ins_store = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
         .lhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, lhs),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, lhs),
         .rhs = ins_load.lhs,
         .origin = lir.origin,
     };
@@ -1233,9 +1214,9 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_SUB,
         .rhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, rhs),
         .lhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, lhs),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, lhs),
         .origin = lir.origin,
     };
 
@@ -1260,7 +1241,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
       if (MEMORY_LOCATION_KIND_STATUS_REGISTER == src_mem_loc.kind) {
         Amd64Instruction ins = {
             .kind = AMD64_INSTRUCTION_KIND_SET_IF_EQ,
-            .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+            .lhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                               dst),
             .origin = lir.origin,
         };
@@ -1274,9 +1255,9 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
         LIR_OPERAND_KIND_IMMEDIATE == src.kind) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .lhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             dst),
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .rhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             src),
           .origin = lir.origin,
       };
@@ -1297,14 +1278,14 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                   // TODO: pick one of the spill registers?
                   .u.reg = amd64_spill_registers[0], // TODO: mark it as used?
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .rhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             src),
       };
       amd64_add_instruction(&section->instructions, ins_load, allocator);
 
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .lhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             dst),
           .rhs = ins_load.lhs,
           .origin = lir.origin,
@@ -1323,9 +1304,9 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
          MEMORY_LOCATION_KIND_REGISTER == src_mem_loc.kind)) {
       Amd64Instruction instruction = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .lhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             dst),
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .rhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             src),
           .origin = lir.origin,
       };
@@ -1345,14 +1326,14 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                   // TODO: pick one of the spill registers?
                   .u.reg = amd64_spill_registers[0], // TODO: mark it as used?
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .rhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             src),
       };
       amd64_add_instruction(&section->instructions, ins_load, allocator);
 
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .lhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             dst),
           .rhs = ins_load.lhs,
           .origin = lir.origin,
@@ -1375,7 +1356,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                               -(i32)dst_mem_loc.u.base_pointer_offset,
                       },
               },
-          .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter, metadata,
+          .rhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
                                                             src),
       };
       amd64_add_instruction(&section->instructions, ins_store, allocator);
@@ -1403,7 +1384,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
         .lhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, op),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, op),
         .origin = lir.origin,
     };
 
@@ -1421,7 +1402,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
         .lhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, op),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, op),
         .origin = lir.origin,
     };
 
@@ -1438,7 +1419,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_JMP,
         .lhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, op),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, op),
         .origin = lir.origin,
     };
 
@@ -1461,9 +1442,9 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     Amd64Instruction instruction = {
         .kind = AMD64_INSTRUCTION_KIND_CMP,
         .lhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, lhs),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, lhs),
         .rhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, rhs),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, rhs),
         .origin = lir.origin,
     };
 
@@ -1493,7 +1474,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                 .u.reg = amd64_spill_registers[0], // TODO: mark it as used?
             },
         .rhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, src),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, src),
     };
     PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins_load.rhs.kind);
     amd64_add_instruction(&section->instructions, ins_load, allocator);
@@ -1501,7 +1482,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     Amd64Instruction ins_store = {
         .kind = AMD64_INSTRUCTION_KIND_MOV,
         .lhs =
-            amd64_convert_lir_operand_to_amd64_operand(emitter, metadata, dst),
+            amd64_convert_node_to_amd64_operand(emitter, metadata, dst),
         .rhs = ins_load.lhs,
         .origin = lir.origin,
     };
@@ -1532,11 +1513,10 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       AstNodeIndex rhs_idx = ast_stack_pop(&stack);
       AstNode lhs = PG_SLICE_AT(emitter->nodes, lhs_idx.value);
       AstNode rhs = PG_SLICE_AT(emitter->nodes, rhs_idx.value);
-      (void)rhs;
 
       // TODO: Asserts.
 
-      // PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
+      PG_ASSERT(ast_node_is_expr(lhs));
       MemoryLocation lhs_mem_loc =
           PG_SLICE_AT(fn_def.metadata, lhs.meta_idx.value).memory_location;
 
@@ -1544,12 +1524,8 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
         Amd64Instruction instruction = {
             .kind = AMD64_INSTRUCTION_KIND_ADD,
-            // .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter,
-            // metadata,
-            //                                                   rhs),
-            // .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter,
-            // metadata,
-            //                                                   lhs),
+            .rhs = amd64_convert_node_to_amd64_operand(rhs, fn_def.metadata),
+            .lhs = amd64_convert_node_to_amd64_operand(lhs, fn_def.metadata),
             .origin = node.origin,
         };
         amd64_add_instruction(&section->instructions, instruction, allocator);
@@ -1566,9 +1542,7 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
                   // TODO: pick one of the spill registers?
                   .u.reg = amd64_spill_registers[0], // TODO: mark it as used?
               },
-          // .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter,
-          // metadata,
-          //                                                   rhs),
+          .rhs = amd64_convert_node_to_amd64_operand(rhs, fn_def.metadata),
       };
       amd64_add_instruction(&section->instructions, ins_load, allocator);
 
@@ -1576,17 +1550,13 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
           .kind = AMD64_INSTRUCTION_KIND_ADD,
           .origin = node.origin,
           .lhs = ins_load.lhs,
-          // .rhs = amd64_convert_lir_operand_to_amd64_operand(emitter,
-          // metadata,
-          //                                                   rhs),
+          .rhs = amd64_convert_node_to_amd64_operand(rhs, fn_def.metadata),
       };
       amd64_add_instruction(&section->instructions, ins_add, allocator);
 
       Amd64Instruction ins_store = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          // .lhs = amd64_convert_lir_operand_to_amd64_operand(emitter,
-          // metadata,
-          //                                                   lhs),
+          .lhs = amd64_convert_node_to_amd64_operand(lhs, fn_def.metadata),
           .rhs = ins_load.lhs,
           .origin = node.origin,
       };
