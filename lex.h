@@ -20,6 +20,7 @@ typedef enum {
   LEX_TOKEN_KIND_KEYWORD_ELSE,
   LEX_TOKEN_KIND_KEYWORD_ASSERT,
   LEX_TOKEN_KIND_KEYWORD_SYSCALL,
+  LEX_TOKEN_KIND_EOF,
 } LexTokenKind;
 
 typedef struct {
@@ -307,7 +308,7 @@ static Lexer lex_make_lexer(PgString file_path, PgString src,
 static void lex(Lexer *lexer, PgAllocator *allocator) {
   for (u64 _i = 0; _i < lexer->src.len; _i++) {
     if (lexer->it.idx >= lexer->src.len) {
-      return;
+      break;
     }
 
     PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
@@ -412,6 +413,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     } break;
     }
   }
+  lex_add_token(lexer, LEX_TOKEN_KIND_EOF, (Origin){0}, allocator);
 }
 
 static void lex_tokens_print(LexTokenSlice tokens) {
@@ -471,6 +473,9 @@ static void lex_tokens_print(LexTokenSlice tokens) {
       break;
     case LEX_TOKEN_KIND_IDENTIFIER:
       printf("Identifier %.*s\n", (i32)token.s.len, token.s.data);
+      break;
+    case LEX_TOKEN_KIND_EOF:
+      printf("EOF\n");
       break;
     default:
       PG_ASSERT(0);

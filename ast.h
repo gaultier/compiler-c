@@ -451,7 +451,8 @@ static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
     node.kind = AST_NODE_KIND_ADD;
     ast_push(parser, node, allocator);
   }
-  return false;
+  return ast_match_token_kind(parser, LEX_TOKEN_KIND_EOF).kind !=
+         LEX_TOKEN_KIND_NONE;
 }
 
 [[nodiscard]]
@@ -483,7 +484,8 @@ static bool ast_parse_equality(AstParser *parser, PgAllocator *allocator) {
     node.token_kind = token.kind;
     ast_push(parser, node, allocator);
   }
-  return false;
+  return ast_match_token_kind(parser, LEX_TOKEN_KIND_EOF).kind !=
+         LEX_TOKEN_KIND_NONE;
 }
 
 [[nodiscard]]
