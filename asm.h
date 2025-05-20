@@ -75,7 +75,8 @@ typedef struct AsmEmitter AsmEmitter;
   void (*print_register)(Register reg);                                        \
                                                                                \
   Architecture arch;                                                           \
-  /* LirEmitter *lir_emitter; */                                               \
+  AstNodeDyn nodes;                                                            \
+  AsmProgram program;                                                          \
   Pgu8Dyn encoded;
 
 struct AsmEmitter {
@@ -525,5 +526,7 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
                                  allocator);
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, true);
+
+    // TODO: Codegen.
   }
 }

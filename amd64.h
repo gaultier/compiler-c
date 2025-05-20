@@ -1,6 +1,5 @@
 #pragma once
 #include "asm.h"
-#include "lir.h"
 
 typedef enum {
   AMD64_OPERAND_KIND_NONE,
@@ -210,6 +209,7 @@ static void amd64_add_instruction(PgAnyDyn *instructions_any,
 
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit storing code (push).
+[[maybe_unused]]
 static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
   if (AST_NODE_FLAG_FN_NO_FRAME_POINTERS & section->flags) {
     return;
@@ -243,6 +243,7 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
 
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit loading code (pop).
+[[maybe_unused]]
 static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
   if (AST_NODE_FLAG_FN_NO_FRAME_POINTERS & section->flags) {
     return;
@@ -1058,6 +1059,7 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   }
 }
 
+#if 0
 [[nodiscard]] static Amd64Operand amd64_convert_lir_operand_to_amd64_operand(
     Amd64Emitter *emitter, MetadataDyn metadata, LirOperand lir_op) {
   (void)emitter;
@@ -1130,6 +1132,7 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
     PG_ASSERT(0);
   }
 }
+#endif
 
 static void amd64_sanity_check_section(Amd64Emitter *emitter,
                                        AsmCodeSection section) {
@@ -1152,6 +1155,7 @@ static void amd64_sanity_check_section(Amd64Emitter *emitter,
   }
 }
 
+[[maybe_unused]]
 static void amd64_sanity_check_program(Amd64Emitter *emitter) {
   for (u64 i = 0; i < emitter->program.text.len; i++) {
     AsmCodeSection section = PG_SLICE_AT(emitter->program.text, i);
@@ -1159,6 +1163,7 @@ static void amd64_sanity_check_program(Amd64Emitter *emitter) {
   }
 }
 
+#if 0
 static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                              MetadataDyn metadata, LirInstruction lir,
                              PgAllocator *allocator) {
@@ -1517,6 +1522,7 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
     PG_ASSERT(0);
   }
 }
+#endif
 
 static Register
 amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
@@ -1544,15 +1550,19 @@ amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
   }
 }
 
+#if 0
 [[nodiscard]]
 static AsmCodeSection amd64_emit_fn_definition(AsmEmitter *asm_emitter,
-                                               FnBody fn_def, bool verbose,
+                                               FnDefinition fn_def,
+                                               AstNodeDyn nodes, bool verbose,
                                                PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
+  (void)amd64_emitter;
 
+  AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
   AsmCodeSection section = {
-      .name = fn_def.name,
-      .flags = fn_def.flags,
+      .name = fn_node.u.identifier,
+      .flags = fn_node.flags,
   };
   amd64_emit_prolog(&section, allocator);
 
@@ -1574,24 +1584,28 @@ static AsmCodeSection amd64_emit_fn_definition(AsmEmitter *asm_emitter,
 
   if (verbose) {
     printf("\n------------ Colored interference graph ------------\n");
+#if 0
     lir_print_interference_graph(fn_def.interference_graph, fn_def.metadata);
 
     printf("\n------------ Adjacency matrix of interference graph %.*s"
            "------------\n\n",
            (i32)fn_def.name.len, fn_def.name.data);
+#endif
     pg_adjacency_matrix_print(fn_def.interference_graph);
   }
   asm_sanity_check_interference_graph(fn_def.interference_graph,
                                       fn_def.metadata, true);
 
+#if 0
   for (u64 i = 0; i < fn_def.instructions.len; i++) {
     amd64_lir_to_asm(amd64_emitter, &section, fn_def.metadata,
                      PG_SLICE_AT(fn_def.instructions, i), allocator);
   }
+#endif
 
-  if (fn_def.stack_base_pointer_max_offset > 0) {
+  if (fn_def.stack_base_pointer_offset > 0) {
     u32 rsp_max_offset_aligned_16 =
-        (u32)PG_ROUNDUP(fn_def.stack_base_pointer_max_offset, 16);
+        (u32)PG_ROUNDUP(fn_def.stack_base_pointer_offset, 16);
 
     PG_C_ARRAY_AT_PTR((Amd64Instruction *)section.instructions.data,
                       section.instructions.len, stack_sub_instruction_idx)
@@ -1625,20 +1639,22 @@ static AsmCodeSection amd64_emit_fn_definition(AsmEmitter *asm_emitter,
 }
 
 static void amd64_emit_fn_definitions(AsmEmitter *asm_emitter,
-                                      MetadataDyn metadata, bool verbose,
-                                      PgAllocator *allocator) {
+                                      FnDefinitionDyn fn_defs, AstNodeDyn nodes,
+                                      bool verbose, PgAllocator *allocator) {
 
-  for (u64 i = 0; i < fn_definitions.len; i++) {
-    FnBody fn_def = PG_SLICE_AT(fn_definitions, i);
-    asm_color_interference_graph(asm_emitter, &fn_def, verbose, allocator);
-    AsmCodeSection section =
-        amd64_emit_fn_definition(asm_emitter, fn_def, verbose, allocator);
+  for (u64 i = 0; i < fn_defs.len; i++) {
+    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
+    asm_color_interference_graph(asm_emitter, &fn_def, nodes, verbose,
+                                 allocator);
+    AsmCodeSection section = amd64_emit_fn_definition(
+        asm_emitter, fn_def, nodes, verbose, allocator);
 
     *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section;
   }
 
   amd64_sanity_check_program((Amd64Emitter *)asm_emitter);
 }
+#endif
 
 static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
                                  AsmCodeSection section,
@@ -1707,18 +1723,19 @@ static Pgu8Slice amd64_encode_program_text(AsmEmitter *asm_emitter,
 }
 
 [[nodiscard]]
-static AsmEmitter *amd64_make_asm_emitter(LirEmitter *lir_emitter,
-                                          PgString exe_path,
+static AsmEmitter *amd64_make_asm_emitter(AstNodeDyn nodes, PgString exe_path,
                                           PgAllocator *allocator) {
   Amd64Emitter *amd64_emitter =
       pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
+#if 0
   amd64_emitter->emit_fn_definitions = amd64_emit_fn_definitions;
+#endif
   amd64_emitter->print_program = amd64_print_program;
   amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
   amd64_emitter->encode_program_text = amd64_encode_program_text;
   amd64_emitter->print_register = amd64_print_register;
 
-  amd64_emitter->lir_emitter = lir_emitter;
+  amd64_emitter->nodes = nodes;
 
   amd64_emitter->arch = amd64_arch;
   amd64_emitter->program.file_path = exe_path;
