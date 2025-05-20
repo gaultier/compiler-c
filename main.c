@@ -87,9 +87,10 @@ int main(int argc, char *argv[]) {
     ast_print(parser.nodes, 0);
   }
 
-  FnDefinitionDyn fn_defs = ast_generate_metadata(&parser, allocator);
+  MetadataDyn metadata = ast_generate_metadata(&parser, allocator);
   if (cli_opts.verbose) {
-    print_fn_definitions(fn_defs);
+    printf("\n------------ Metadata ------------\n");
+    metadata_print(metadata);
   }
 
 #if 0
