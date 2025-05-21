@@ -1470,31 +1470,23 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       MemoryLocation lhs_mem_loc =
           PG_SLICE_AT(fn_def.metadata, lhs.meta_idx.value).memory_location;
 
-      if (AST_NODE_KIND_NUMBER == lhs.kind &&
-          AST_NODE_KIND_NUMBER == rhs.kind) {
-        Amd64Instruction instruction = {
-            .kind = AMD64_INSTRUCTION_KIND_MOV,
-            .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
-            .rhs =
-                {
-                    .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                    .u.immediate = lhs.u.n64 + rhs.u.n64,
-                },
-            .origin = node.origin,
-        };
-        amd64_add_instruction(&section->instructions, instruction, allocator);
-        return;
-      }
-
       // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
       if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
-        Amd64Instruction instruction = {
-            .kind = AMD64_INSTRUCTION_KIND_ADD,
-            .rhs = amd64_convert_node_to_amd64_operand(rhs, fn_def.metadata),
-            .lhs = amd64_convert_node_to_amd64_operand(lhs, fn_def.metadata),
+        Amd64Instruction ins_mov = {
+            .kind = AMD64_INSTRUCTION_KIND_MOV,
+            .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
+            .rhs = amd64_convert_node_to_amd64_operand(lhs, fn_def.metadata),
             .origin = node.origin,
         };
-        amd64_add_instruction(&section->instructions, instruction, allocator);
+        amd64_add_instruction(&section->instructions, ins_mov, allocator);
+
+        Amd64Instruction ins_add = {
+            .kind = AMD64_INSTRUCTION_KIND_ADD,
+            .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
+            .rhs = amd64_convert_node_to_amd64_operand(rhs, fn_def.metadata),
+            .origin = node.origin,
+        };
+        amd64_add_instruction(&section->instructions, ins_add, allocator);
         return;
       }
 
