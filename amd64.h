@@ -1513,6 +1513,8 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       AstNodeIndex rhs_idx = ast_stack_pop(&stack);
       AstNode lhs = PG_SLICE_AT(emitter->nodes, lhs_idx.value);
       AstNode rhs = PG_SLICE_AT(emitter->nodes, rhs_idx.value);
+      PG_ASSERT(lhs.kind);
+      PG_ASSERT(rhs.kind);
 
       // TODO: Asserts.
       // TODO: Handle the case of `1+2` i.e. 2 immediates.
