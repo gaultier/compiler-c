@@ -1452,8 +1452,9 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
 
     switch (node.kind) {
     case AST_NODE_KIND_ADD: {
-      AstNodeIndex lhs_idx = ast_stack_pop(&stack);
-      AstNodeIndex rhs_idx = ast_stack_pop(&stack);
+      AstNodeIndexDyn stack_tmp = stack;
+      AstNodeIndex rhs_idx = ast_stack_pop(&stack_tmp);
+      AstNodeIndex lhs_idx = ast_stack_pop(&stack_tmp);
       AstNode lhs = PG_SLICE_AT(emitter->nodes, lhs_idx.value);
       AstNode rhs = PG_SLICE_AT(emitter->nodes, rhs_idx.value);
       PG_ASSERT(lhs.kind);
@@ -1529,7 +1530,8 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
     } break;
 
     case AST_NODE_KIND_VAR_DEFINITION: {
-      AstNodeIndex op_idx = ast_stack_pop(&stack);
+      AstNodeIndexDyn stack_tmp = stack;
+      AstNodeIndex op_idx = ast_stack_pop(&stack_tmp);
       AstNode op = PG_SLICE_AT(emitter->nodes, op_idx.value);
 
       Amd64Instruction instruction = {
