@@ -48,6 +48,7 @@ struct AstNode {
   MetadataIndex meta_idx;
   Origin origin;
   LexTokenKind token_kind;
+  bool tombstone;
   AstNodeFlag flags;
 };
 
@@ -296,6 +297,10 @@ static void metadata_print_meta(Metadata meta) {
 }
 
 static void ast_print_node(AstNode node, MetadataDyn metadata) {
+  if (node.tombstone) {
+    printf("\x1B[9m"); // Strikethrough.
+  }
+
   origin_print(node.origin);
   putchar(' ');
 
@@ -354,6 +359,7 @@ static void ast_print_node(AstNode node, MetadataDyn metadata) {
     Metadata meta = PG_SLICE_AT(metadata, node.meta_idx.value);
     metadata_print_meta(meta);
   }
+  printf("\x1B[0m"); // Strikethrough.
 }
 
 static void ast_print_nodes(AstNodeDyn nodes, MetadataDyn metadata) {
@@ -1222,5 +1228,74 @@ static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
     ast_print_fn_def(fn_def, nodes);
+  }
+}
+
+static void ast_constant_fold(AstNodeDyn nodes, PgAllocator *allocator) {
+  AstNodeIndexDyn stack = {0};
+  PG_DYN_ENSURE_CAP(&stack, 512, allocator);
+
+  for (u32 i = 0; i < nodes.len; i++) {
+    AstNode *node = PG_SLICE_AT_PTR(&nodes, i);
+    AstNodeIndex node_idx = {i};
+    bool is_expr = ast_node_is_expr(*node);
+
+    // Stack.
+    {
+      if (AST_NODE_KIND_FN_DEFINITION == node->kind) {
+        stack.len = 0;
+      }
+
+      u32 args_count = ast_node_get_expected_args_count(*node);
+      PG_ASSERT(stack.len >= args_count);
+
+      if (AST_NODE_KIND_ADD == node->kind) {
+        PG_ASSERT(2 == args_count);
+        AstNodeIndex lhs_idx = ast_stack_pop(&stack);
+        AstNode lhs = PG_SLICE_AT(nodes, lhs_idx.value);
+        AstNodeIndex rhs_idx = ast_stack_pop(&stack);
+        AstNode rhs = PG_SLICE_AT(nodes, rhs_idx.value);
+
+        if (AST_NODE_KIND_NUMBER == lhs.kind &&
+            AST_NODE_KIND_NUMBER == rhs.kind) {
+          PG_SLICE_AT(nodes, lhs_idx.value).tombstone = true;
+          node->tombstone = true;
+          PG_SLICE_AT(nodes, rhs_idx.value).u.n64 += lhs.u.n64;
+
+          ast_stack_push(&stack, rhs_idx, allocator);
+        } else {
+          ast_stack_push(&stack, node_idx, allocator);
+        }
+
+        continue;
+      }
+
+      for (u32 j = 0; j < args_count; j++) {
+        AstNodeIndex top_idx = ast_stack_pop(&stack);
+        AstNode top = PG_SLICE_AT(nodes, top_idx.value);
+
+        if (is_expr) {
+          PG_ASSERT(ast_node_is_expr(top));
+        }
+      }
+
+      // Stack push.
+      if (is_expr) {
+        ast_stack_push(&stack, node_idx, allocator);
+      }
+      PG_ASSERT(is_expr || stack.len == 0);
+    }
+  }
+}
+
+static void ast_trim_tombstoned(AstNodeDyn *nodes) {
+  for (u64 i = 0; i < nodes->len;) {
+    AstNode node = PG_SLICE_AT(*nodes, i);
+    if (!node.tombstone) {
+      i++;
+      continue;
+    }
+
+    PG_DYN_REMOVE_AT(nodes, i);
   }
 }
