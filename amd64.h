@@ -1461,10 +1461,11 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       PG_ASSERT(rhs.kind);
 
       // TODO: Asserts.
-      // TODO: Handle the case of `1+2` i.e. 2 immediates.
 
       PG_ASSERT(ast_node_is_expr(lhs));
       PG_ASSERT(ast_node_is_expr(rhs));
+      PG_ASSERT(!(AST_NODE_KIND_NUMBER == lhs.kind &&
+                  AST_NODE_KIND_NUMBER == rhs.kind));
 
       MemoryLocation lhs_mem_loc =
           PG_SLICE_AT(fn_def.metadata, lhs.meta_idx.value).memory_location;
