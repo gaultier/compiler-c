@@ -1518,8 +1518,26 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       // TODO: Handle the case of `1+2` i.e. 2 immediates.
 
       PG_ASSERT(ast_node_is_expr(lhs));
+      PG_ASSERT(ast_node_is_expr(rhs));
+
       MemoryLocation lhs_mem_loc =
           PG_SLICE_AT(fn_def.metadata, lhs.meta_idx.value).memory_location;
+
+      if (AST_NODE_KIND_NUMBER == lhs.kind &&
+          AST_NODE_KIND_NUMBER == rhs.kind) {
+        Amd64Instruction instruction = {
+            .kind = AMD64_INSTRUCTION_KIND_MOV,
+            .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
+            .rhs =
+                {
+                    .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                    .u.immediate = lhs.u.n64 + rhs.u.n64,
+                },
+            .origin = node.origin,
+        };
+        amd64_add_instruction(&section->instructions, instruction, allocator);
+        return;
+      }
 
       // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
       if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
@@ -1565,10 +1583,23 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, ins_store, allocator);
     } break;
 
+    case AST_NODE_KIND_VAR_DEFINITION: {
+      AstNodeIndex op_idx = ast_stack_pop(&stack);
+      AstNode op = PG_SLICE_AT(emitter->nodes, op_idx.value);
+
+      Amd64Instruction instruction = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
+          .rhs = amd64_convert_node_to_amd64_operand(op, fn_def.metadata),
+          .origin = node.origin,
+      };
+
+      amd64_add_instruction(&section->instructions, instruction, allocator);
+    } break;
+
     case AST_NODE_KIND_NUMBER:
     case AST_NODE_KIND_IDENTIFIER:
     case AST_NODE_KIND_BLOCK:
-    case AST_NODE_KIND_VAR_DEFINITION:
     case AST_NODE_KIND_ADDRESS_OF:
     case AST_NODE_KIND_JUMP_IF_FALSE:
     case AST_NODE_KIND_JUMP:
