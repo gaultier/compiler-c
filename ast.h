@@ -920,6 +920,7 @@ static void metadata_start_lifetime(MetadataDyn metadata,
 
 // TODO: Scopes.
 // TODO: Detect shadowing.
+// TODO: LUT to cache result.
 [[nodiscard]]
 static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
                                              PgString identifier) {
@@ -932,16 +933,21 @@ static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
   return nullptr;
 }
 
-static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
-                                            MetadataIndex meta_idx,
+static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
                                             InstructionIndex ins_idx) {
-  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
+  PG_SLICE_AT(metadata, node.meta_idx.value).lifetime_end = ins_idx;
 
   // TODO: Variable pointed to needs to live at least as long as the pointer to
   // it.
   // TODO: If there are multiple aliases to the same pointer, all aliases
   // should have their meta extended to this point!
   // TODO: Dataflow.
+
+  if (AST_NODE_KIND_IDENTIFIER == node.kind) {
+    Metadata *meta = metadata_find_by_identifier(metadata, node.u.identifier);
+    PG_ASSERT(meta);
+    meta->lifetime_end = ins_idx;
+  }
 }
 
 [[nodiscard]] static u32 ast_node_get_expected_args_count(AstNode node) {
@@ -1190,8 +1196,7 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
               VREG_CONSTRAINT_SYSCALL_NUM + args_count - j - 1;
         }
 
-        metadata_extend_lifetime_on_use(fn_def->metadata, top.meta_idx,
-                                        ins_idx);
+        metadata_extend_lifetime_on_use(fn_def->metadata, top, ins_idx);
       }
 
       // Stack push.
