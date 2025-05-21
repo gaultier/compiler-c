@@ -1292,30 +1292,35 @@ static AstChangeDyn ast_constant_fold(AstNodeDyn nodes,
         }
       }
 
-#if 0
       if (AST_NODE_KIND_COMPARISON == node.kind) {
         PG_ASSERT(2 == args_count);
-        AstNodeIndex lhs_idx = ast_stack_pop(&stack);
-        AstNode lhs = PG_SLICE_AT(nodes, lhs_idx.value);
-        AstNodeIndex rhs_idx = ast_stack_pop(&stack);
+        AstNodeIndexDyn stack_tmp = stack;
+        AstNodeIndex rhs_idx = ast_stack_pop(&stack_tmp);
+        PG_ASSERT(rhs_idx.value != node_idx.value);
         AstNode rhs = PG_SLICE_AT(nodes, rhs_idx.value);
+        AstNodeIndex lhs_idx = ast_stack_pop(&stack_tmp);
+        PG_ASSERT(lhs_idx.value != node_idx.value);
+        AstNode lhs = PG_SLICE_AT(nodes, lhs_idx.value);
 
         if (AST_NODE_KIND_NUMBER == lhs.kind &&
             AST_NODE_KIND_NUMBER == rhs.kind) {
-          if (LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind) {
-            PG_SLICE_AT(nodes, rhs_idx.value).u.n64 = lhs.u.n64 == rhs.u.n64;
-          } else {
-            PG_ASSERT(0 && "todo");
-          }
-
-          ast_stack_push(&stack, rhs_idx, allocator);
-        } else {
-          ast_stack_push(&stack, node_idx, allocator);
+          AstNode folded = rhs;
+          folded.u.n64 = lhs.u.n64 == rhs.u.n64;
+          *PG_DYN_PUSH(&res, allocator) = (AstChange){
+              .kind = AST_CHANGE_KIND_REPLACE,
+              .location = lhs_idx,
+              .replace_new = folded,
+          };
+          *PG_DYN_PUSH(&res, allocator) = (AstChange){
+              .kind = AST_CHANGE_KIND_REMOVE,
+              .location = rhs_idx,
+          };
+          *PG_DYN_PUSH(&res, allocator) = (AstChange){
+              .kind = AST_CHANGE_KIND_REMOVE,
+              .location = node_idx,
+          };
         }
-
-        continue;
       }
-#endif
 
       for (u32 j = 0; j < args_count; j++) {
         AstNodeIndex top_idx = ast_stack_pop(&stack);
