@@ -1141,63 +1141,6 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
                              MetadataDyn metadata, LirInstruction lir,
                              PgAllocator *allocator) {
   switch (lir.kind) {
-  case LIR_INSTRUCTION_KIND_ADD: {
-    PG_ASSERT(2 == lir.operands.len);
-    LirOperand lhs = PG_SLICE_AT(lir.operands, 0);
-    LirOperand rhs = PG_SLICE_AT(lir.operands, 1);
-
-    PG_ASSERT(LIR_OPERAND_KIND_VIRTUAL_REGISTER == lhs.kind);
-    MemoryLocation lhs_mem_loc =
-        PG_SLICE_AT(metadata, lhs.u.meta_idx.value).memory_location;
-
-    // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
-    if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
-      Amd64Instruction instruction = {
-          .kind = AMD64_INSTRUCTION_KIND_ADD,
-          .rhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
-                                                            rhs),
-          .lhs = amd64_convert_node_to_amd64_operand(emitter, metadata,
-                                                            lhs),
-          .origin = lir.origin,
-      };
-      amd64_add_instruction(&section->instructions, instruction, allocator);
-      return;
-    }
-
-    // Need to insert load/stores.
-
-    Amd64Instruction ins_load = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs =
-            {
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                // TODO: pick one of the spill registers?
-                .u.reg = amd64_spill_registers[0], // TODO: mark it as used?
-            },
-        .rhs =
-            amd64_convert_node_to_amd64_operand(emitter, metadata, rhs),
-    };
-    amd64_add_instruction(&section->instructions, ins_load, allocator);
-
-    Amd64Instruction ins_add = {
-        .kind = AMD64_INSTRUCTION_KIND_ADD,
-        .origin = lir.origin,
-        .lhs = ins_load.lhs,
-        .rhs =
-            amd64_convert_node_to_amd64_operand(emitter, metadata, rhs),
-    };
-    amd64_add_instruction(&section->instructions, ins_add, allocator);
-
-    Amd64Instruction ins_store = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs =
-            amd64_convert_node_to_amd64_operand(emitter, metadata, lhs),
-        .rhs = ins_load.lhs,
-        .origin = lir.origin,
-    };
-
-    amd64_add_instruction(&section->instructions, ins_store, allocator);
-  } break;
   case LIR_INSTRUCTION_KIND_SUB: {
     PG_ASSERT(2 == lir.operands.len);
     LirOperand lhs = PG_SLICE_AT(lir.operands, 0);

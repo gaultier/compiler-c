@@ -1153,6 +1153,10 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
         AstNodeIndex top_idx = ast_stack_pop(&stack);
         AstNode top = PG_SLICE_AT(parser->nodes, top_idx.value);
 
+        if (is_expr) {
+          PG_ASSERT(ast_node_is_expr(top));
+        }
+
         if (AST_NODE_KIND_ADDRESS_OF == node->kind) {
           if (!ast_node_is_kind_addressable(top)) {
             ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
