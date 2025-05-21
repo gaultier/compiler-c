@@ -1231,12 +1231,19 @@ static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
   }
 }
 
-static void ast_constant_fold(AstNodeDyn nodes, PgAllocator *allocator) {
+[[nodiscard]]
+static bool ast_constant_fold(AstNodeDyn nodes, PgAllocator *allocator) {
   AstNodeIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
+  bool changed = false;
+
   for (u32 i = 0; i < nodes.len; i++) {
     AstNode *node = PG_SLICE_AT_PTR(&nodes, i);
+    if (node->tombstone) {
+      continue;
+    }
+
     AstNodeIndex node_idx = {i};
     bool is_expr = ast_node_is_expr(*node);
 
@@ -1258,9 +1265,36 @@ static void ast_constant_fold(AstNodeDyn nodes, PgAllocator *allocator) {
 
         if (AST_NODE_KIND_NUMBER == lhs.kind &&
             AST_NODE_KIND_NUMBER == rhs.kind) {
+          changed = true;
           PG_SLICE_AT(nodes, lhs_idx.value).tombstone = true;
           node->tombstone = true;
           PG_SLICE_AT(nodes, rhs_idx.value).u.n64 += lhs.u.n64;
+
+          ast_stack_push(&stack, rhs_idx, allocator);
+        } else {
+          ast_stack_push(&stack, node_idx, allocator);
+        }
+
+        continue;
+      }
+
+      if (AST_NODE_KIND_COMPARISON == node->kind) {
+        PG_ASSERT(2 == args_count);
+        AstNodeIndex lhs_idx = ast_stack_pop(&stack);
+        AstNode lhs = PG_SLICE_AT(nodes, lhs_idx.value);
+        AstNodeIndex rhs_idx = ast_stack_pop(&stack);
+        AstNode rhs = PG_SLICE_AT(nodes, rhs_idx.value);
+
+        if (AST_NODE_KIND_NUMBER == lhs.kind &&
+            AST_NODE_KIND_NUMBER == rhs.kind) {
+          changed = true;
+          PG_SLICE_AT(nodes, lhs_idx.value).tombstone = true;
+          node->tombstone = true;
+          if (LEX_TOKEN_KIND_EQUAL_EQUAL == node->token_kind) {
+            PG_SLICE_AT(nodes, rhs_idx.value).u.n64 = lhs.u.n64 == rhs.u.n64;
+          } else {
+            PG_ASSERT(0 && "todo");
+          }
 
           ast_stack_push(&stack, rhs_idx, allocator);
         } else {
@@ -1286,6 +1320,7 @@ static void ast_constant_fold(AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(is_expr || stack.len == 0);
     }
   }
+  return changed;
 }
 
 static void ast_trim_tombstoned(AstNodeDyn *nodes) {

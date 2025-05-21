@@ -84,13 +84,16 @@ int main(int argc, char *argv[]) {
     printf("\n------------ AST ------------\n");
     ast_print_nodes(parser.nodes, (MetadataDyn){0});
   }
-  ast_constant_fold(parser.nodes, allocator);
-  if (cli_opts.verbose) {
-    printf("\n------------ AST constant folded ------------\n");
-    ast_print_nodes(parser.nodes, (MetadataDyn){0});
-  }
 
-  ast_trim_tombstoned(&parser.nodes);
+  bool changed = ast_constant_fold(parser.nodes, allocator);
+  if (changed) {
+    if (cli_opts.verbose) {
+      printf("\n------------ AST constant folded ------------\n");
+      ast_print_nodes(parser.nodes, (MetadataDyn){0});
+    }
+
+    ast_trim_tombstoned(&parser.nodes);
+  }
 
   FnDefinitionDyn fn_defs = ast_generate_fn_defs(&parser, allocator);
   if (cli_opts.verbose) {
