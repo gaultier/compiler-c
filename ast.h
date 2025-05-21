@@ -1084,7 +1084,7 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
     FnDefinition *fn_def =
         fn_idx < fn_defs.len ? PG_SLICE_AT_PTR(&fn_defs, fn_idx) : nullptr;
 
-    if (is_expr) {
+    if (is_expr || AST_NODE_KIND_VAR_DEFINITION == node->kind) {
       node->meta_idx = metadata_make(&fn_def->metadata, allocator);
       metadata_start_lifetime(fn_def->metadata, node->meta_idx, ins_idx);
 

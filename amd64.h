@@ -1068,7 +1068,7 @@ amd64_convert_node_to_amd64_operand(AstNode node, MetadataDyn metadata) {
     };
   }
 
-  if (ast_node_is_expr(node)) {
+  if (ast_node_is_expr(node) || AST_NODE_KIND_VAR_DEFINITION == node.kind) {
     MemoryLocation mem_loc =
         PG_SLICE_AT(metadata, node.meta_idx.value).memory_location;
     switch (mem_loc.kind) {
