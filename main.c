@@ -80,19 +80,31 @@ int main(int argc, char *argv[]) {
   AstParser parser = {.lexer = lexer, .errors = &errors};
   ast_emit(&parser, allocator);
 
-  if (cli_opts.verbose) {
-    printf("\n------------ AST ------------\n");
-    ast_print_nodes(parser.nodes, (MetadataDyn){0});
-  }
+  // Constant folding.
+  {
+    u32 iterations_max = 10;
+    for (u32 i = 0; i < iterations_max; i++) {
+      if (cli_opts.verbose) {
+        printf("\n------------ [%u] AST ------------\n", i);
+        ast_print_nodes(parser.nodes, (MetadataDyn){0});
+      }
 
-  bool changed = ast_constant_fold(parser.nodes, allocator);
-  if (changed) {
-    if (cli_opts.verbose) {
-      printf("\n------------ AST constant folded ------------\n");
-      ast_print_nodes(parser.nodes, (MetadataDyn){0});
+      AstChangeDyn changes = ast_constant_fold(parser.nodes, allocator);
+      if (0 == changes.len) {
+        break;
+      }
+
+      if (cli_opts.verbose) {
+        printf("\n------------ [%u] Constant fold ------------\n", i);
+        ast_print_changes(changes, parser.nodes);
+      }
+
+      ast_apply_changes(&parser.nodes, changes);
+      if (cli_opts.verbose) {
+        printf("\n------------ [%u] AST constant folded ------------\n", i);
+        ast_print_nodes(parser.nodes, (MetadataDyn){0});
+      }
     }
-
-    ast_trim_tombstoned(&parser.nodes);
   }
 
   FnDefinitionDyn fn_defs = ast_generate_fn_defs(&parser, allocator);
