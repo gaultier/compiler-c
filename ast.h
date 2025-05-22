@@ -1,7 +1,7 @@
 #pragma once
 #include "lex.h"
 
-typedef enum {
+typedef enum : u8 {
   AST_NODE_KIND_NONE,
   AST_NODE_KIND_NUMBER,
   AST_NODE_KIND_IDENTIFIER,
@@ -19,10 +19,7 @@ typedef enum {
   AST_NODE_KIND_LABEL,
 } AstNodeKind;
 
-typedef struct AstNode AstNode;
-PG_DYN(AstNode) AstNodeDyn;
-
-typedef enum [[clang::flag_enum]] {
+typedef enum [[clang::flag_enum]] : u8 {
   AST_NODE_FLAG_NONE = 0,
   AST_NODE_FLAG_GLOBAL = 1 << 0,
   AST_NODE_FLAG_FN_NO_FRAME_POINTERS = 1 << 1,
@@ -37,8 +34,8 @@ typedef struct {
   u32 value;
 } MetadataIndex;
 
-struct AstNode {
-  AstNodeKind kind;
+typedef struct {
+  Origin origin;
   union {
     u64 n64;             // NUmber literal.
     PgString identifier; // Variable name.
@@ -46,10 +43,11 @@ struct AstNode {
     Label label;
   } u;
   MetadataIndex meta_idx;
-  Origin origin;
   LexTokenKind token_kind;
   AstNodeFlag flags;
-};
+  AstNodeKind kind;
+} AstNode;
+PG_DYN(AstNode) AstNodeDyn;
 
 typedef struct {
   u32 value;
@@ -1272,37 +1270,28 @@ static void ast_constant_fold(AstNodeDyn *nodes_before, AstNodeDyn *nodes_after,
         }
       }
 
-#if 0
       if (AST_NODE_KIND_COMPARISON == node.kind) {
         PG_ASSERT(2 == args_count);
-        AstNodeIndexDyn stack_tmp = stack;
-        AstNodeIndex rhs_idx = ast_stack_pop(&stack_tmp);
-        PG_ASSERT(rhs_idx.value != node_idx.value);
-        AstNode rhs = PG_SLICE_AT(nodes, rhs_idx.value);
-        AstNodeIndex lhs_idx = ast_stack_pop(&stack_tmp);
-        PG_ASSERT(lhs_idx.value != node_idx.value);
-        AstNode lhs = PG_SLICE_AT(nodes, lhs_idx.value);
+        AstNodeDyn stack_tmp = stack;
+        AstNode rhs = PG_DYN_POP(&stack_tmp);
+        AstNode lhs = PG_DYN_POP(&stack_tmp);
 
         if (AST_NODE_KIND_NUMBER == lhs.kind &&
             AST_NODE_KIND_NUMBER == rhs.kind) {
-          AstNode folded = rhs;
+          AstNode folded = lhs;
           folded.u.n64 = lhs.u.n64 == rhs.u.n64;
-          *PG_DYN_PUSH(&res, allocator) = (AstChange){
-              .kind = AST_CHANGE_KIND_REPLACE,
-              .location = lhs_idx,
-              .replace_new = folded,
-          };
-          *PG_DYN_PUSH(&res, allocator) = (AstChange){
-              .kind = AST_CHANGE_KIND_REMOVE,
-              .location = rhs_idx,
-          };
-          *PG_DYN_PUSH(&res, allocator) = (AstChange){
-              .kind = AST_CHANGE_KIND_REMOVE,
-              .location = node_idx,
-          };
+
+          PG_DYN_POP(&stack);
+          PG_DYN_POP(&stack);
+
+          PG_DYN_POP(nodes_after);
+          PG_DYN_POP(nodes_after);
+
+          *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
+          *PG_DYN_PUSH(&stack, allocator) = folded;
+          continue;
         }
       }
-#endif
 
       for (u32 j = 0; j < args_count; j++) {
         AstNode top = PG_DYN_POP(&stack);
@@ -1312,7 +1301,6 @@ static void ast_constant_fold(AstNodeDyn *nodes_before, AstNodeDyn *nodes_after,
         }
       }
 
-      // Stack push.
       if (is_expr) {
         *PG_DYN_PUSH(&stack, allocator) = node;
       }

@@ -2,7 +2,7 @@
 #include "error.h"
 #include "origin.h"
 
-typedef enum {
+typedef enum : u8 {
   LEX_TOKEN_KIND_NONE,
   LEX_TOKEN_KIND_LITERAL_NUMBER,
   LEX_TOKEN_KIND_PLUS,
