@@ -1251,16 +1251,21 @@ static void ast_constant_fold(AstNodeDyn *nodes_before, AstNodeDyn *nodes_after,
 
       if (AST_NODE_KIND_ADD == node.kind) {
         PG_ASSERT(2 == args_count);
-        AstNode rhs = PG_DYN_POP(&stack);
-        AstNode lhs = PG_DYN_POP(&stack);
+        AstNodeDyn stack_tmp = stack;
+        AstNode rhs = PG_DYN_POP(&stack_tmp);
+        AstNode lhs = PG_DYN_POP(&stack_tmp);
 
         if (AST_NODE_KIND_NUMBER == lhs.kind &&
             AST_NODE_KIND_NUMBER == rhs.kind) {
           AstNode folded = lhs;
           folded.u.n64 += rhs.u.n64;
 
+          PG_DYN_POP(&stack);
+          PG_DYN_POP(&stack);
+
           PG_DYN_POP(nodes_after);
           PG_DYN_POP(nodes_after);
+
           *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
           *PG_DYN_PUSH(&stack, allocator) = folded;
           continue;
