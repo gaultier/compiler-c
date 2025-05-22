@@ -147,20 +147,6 @@ typedef struct {
 } FnDefinition;
 PG_DYN(FnDefinition) FnDefinitionDyn;
 
-typedef enum {
-  AST_CHANGE_KIND_NONE,
-  AST_CHANGE_KIND_REMOVE,
-  AST_CHANGE_KIND_REPLACE,
-  // TODO: More.
-} AstChangeKind;
-
-typedef struct {
-  AstChangeKind kind;
-  AstNodeIndex location;
-  AstNode replace_new;
-} AstChange;
-PG_DYN(AstChange) AstChangeDyn;
-
 [[nodiscard]]
 static Label ast_next_label_name(AstParser *parser, PgAllocator *allocator) {
   Label id = {
@@ -1244,18 +1230,14 @@ static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
   }
 }
 
-[[nodiscard]]
-static AstChangeDyn ast_constant_fold(AstNodeDyn nodes,
-                                      PgAllocator *allocator) {
-  AstChangeDyn res = {0};
-  PG_DYN_ENSURE_CAP(&res, nodes.len, allocator);
+static void ast_constant_fold(AstNodeDyn *nodes_before, AstNodeDyn *nodes_after,
+                              PgAllocator *allocator) {
 
-  AstNodeIndexDyn stack = {0};
+  AstNodeDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
-  for (u32 i = 0; i < nodes.len; i++) {
-    AstNode node = PG_SLICE_AT(nodes, i);
-    AstNodeIndex node_idx = {i};
+  for (u32 i = 0; i < nodes_before->len; i++) {
+    AstNode node = PG_SLICE_AT(*nodes_before, i);
     bool is_expr = ast_node_is_expr(node);
 
     // Stack.
@@ -1269,34 +1251,23 @@ static AstChangeDyn ast_constant_fold(AstNodeDyn nodes,
 
       if (AST_NODE_KIND_ADD == node.kind) {
         PG_ASSERT(2 == args_count);
-        AstNodeIndexDyn stack_tmp = stack;
-        AstNodeIndex rhs_idx = ast_stack_pop(&stack_tmp);
-        PG_ASSERT(rhs_idx.value != node_idx.value);
-        AstNode rhs = PG_SLICE_AT(nodes, rhs_idx.value);
-        AstNodeIndex lhs_idx = ast_stack_pop(&stack_tmp);
-        PG_ASSERT(lhs_idx.value != node_idx.value);
-        AstNode lhs = PG_SLICE_AT(nodes, lhs_idx.value);
+        AstNode rhs = PG_DYN_POP(&stack);
+        AstNode lhs = PG_DYN_POP(&stack);
 
         if (AST_NODE_KIND_NUMBER == lhs.kind &&
             AST_NODE_KIND_NUMBER == rhs.kind) {
-          AstNode folded = rhs;
-          folded.u.n64 += lhs.u.n64;
-          *PG_DYN_PUSH(&res, allocator) = (AstChange){
-              .kind = AST_CHANGE_KIND_REPLACE,
-              .location = lhs_idx,
-              .replace_new = folded,
-          };
-          *PG_DYN_PUSH(&res, allocator) = (AstChange){
-              .kind = AST_CHANGE_KIND_REMOVE,
-              .location = rhs_idx,
-          };
-          *PG_DYN_PUSH(&res, allocator) = (AstChange){
-              .kind = AST_CHANGE_KIND_REMOVE,
-              .location = node_idx,
-          };
+          AstNode folded = lhs;
+          folded.u.n64 += rhs.u.n64;
+
+          PG_DYN_POP(nodes_after);
+          PG_DYN_POP(nodes_after);
+          *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
+          *PG_DYN_PUSH(&stack, allocator) = folded;
+          continue;
         }
       }
 
+#if 0
       if (AST_NODE_KIND_COMPARISON == node.kind) {
         PG_ASSERT(2 == args_count);
         AstNodeIndexDyn stack_tmp = stack;
@@ -1326,10 +1297,10 @@ static AstChangeDyn ast_constant_fold(AstNodeDyn nodes,
           };
         }
       }
+#endif
 
       for (u32 j = 0; j < args_count; j++) {
-        AstNodeIndex top_idx = ast_stack_pop(&stack);
-        AstNode top = PG_SLICE_AT(nodes, top_idx.value);
+        AstNode top = PG_DYN_POP(&stack);
 
         if (is_expr) {
           PG_ASSERT(ast_node_is_expr(top));
@@ -1338,58 +1309,10 @@ static AstChangeDyn ast_constant_fold(AstNodeDyn nodes,
 
       // Stack push.
       if (is_expr) {
-        ast_stack_push(&stack, node_idx, allocator);
+        *PG_DYN_PUSH(&stack, allocator) = node;
       }
       PG_ASSERT(is_expr || stack.len == 0);
     }
-  }
-  return res;
-}
-
-static void ast_print_changes(AstChangeDyn changes, AstNodeDyn nodes) {
-  for (u32 i = 0; i < changes.len; i++) {
-    AstChange change = PG_SLICE_AT(changes, i);
-    AstNode node = PG_SLICE_AT(nodes, change.location.value);
-
-    switch (change.kind) {
-    case AST_CHANGE_KIND_NONE:
-      break;
-    case AST_CHANGE_KIND_REMOVE:
-      printf("[%u] [- ] location=%u ", i, change.location.value);
-      ast_print_node(node, (MetadataDyn){0});
-      break;
-    case AST_CHANGE_KIND_REPLACE:
-      printf("[%u] [->] location=%u ", i, change.location.value);
-      ast_print_node(node, (MetadataDyn){0});
-      printf(" -> ");
-      ast_print_node(change.replace_new, (MetadataDyn){0});
-      break;
-    default:
-      PG_ASSERT(0);
-    }
-    printf("\n");
-  }
-}
-
-static void ast_apply_changes(AstNodeDyn *nodes, AstChangeDyn changes) {
-  u64 offset = 0;
-
-  for (u64 i = 0; i < changes.len; i++) {
-    AstChange change = PG_SLICE_AT(changes, i);
-
-    switch (change.kind) {
-    case AST_CHANGE_KIND_NONE:
-      break;
-    case AST_CHANGE_KIND_REMOVE:
-      PG_DYN_REMOVE_AT(nodes, change.location.value - offset);
-      offset += 1;
-      break;
-    case AST_CHANGE_KIND_REPLACE:
-      PG_SLICE_AT(*nodes, change.location.value - offset) = change.replace_new;
-      break;
-    default:
-      PG_ASSERT(0);
-    }
-    printf("\n");
+    *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
 }

@@ -83,25 +83,26 @@ int main(int argc, char *argv[]) {
   // Constant folding.
   {
     u32 iterations_max = 10;
+    AstNodeDyn nodes_after = {0};
+    PG_DYN_ENSURE_CAP(&nodes_after, parser.nodes.len, allocator);
+
     for (u32 i = 0; i < iterations_max; i++) {
       if (cli_opts.verbose) {
-        printf("\n------------ [%u] AST ------------\n", i);
+        printf("\n------------ [%u] Constant fold before ------------\n", i);
         ast_print_nodes(parser.nodes, (MetadataDyn){0});
       }
 
-      AstChangeDyn changes = ast_constant_fold(parser.nodes, allocator);
-      if (0 == changes.len) {
+      nodes_after.len = 0;
+
+      ast_constant_fold(&parser.nodes, &nodes_after, allocator);
+      if (nodes_after.len == parser.nodes.len) { // No change.
         break;
       }
+      PG_ASSERT(nodes_after.len < parser.nodes.len);
 
+      parser.nodes = nodes_after;
       if (cli_opts.verbose) {
-        printf("\n------------ [%u] Constant fold ------------\n", i);
-        ast_print_changes(changes, parser.nodes);
-      }
-
-      ast_apply_changes(&parser.nodes, changes);
-      if (cli_opts.verbose) {
-        printf("\n------------ [%u] AST constant folded ------------\n", i);
+        printf("\n------------ [%u] Constant fold after ------------\n", i);
         ast_print_nodes(parser.nodes, (MetadataDyn){0});
       }
     }
