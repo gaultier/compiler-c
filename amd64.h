@@ -171,6 +171,7 @@ typedef enum {
   AMD64_INSTRUCTION_KIND_JMP,
   AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
   AMD64_INSTRUCTION_KIND_SET_IF_EQ,
+  AMD64_INSTRUCTION_KIND_UD2,
 } Amd64InstructionKind;
 
 typedef struct {
@@ -302,6 +303,9 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
     switch (instruction.kind) {
     case AMD64_INSTRUCTION_KIND_NONE:
       PG_ASSERT(0);
+    case AMD64_INSTRUCTION_KIND_UD2:
+      printf("ud2 ");
+      break;
     case AMD64_INSTRUCTION_KIND_MOV:
       printf("mov ");
       break;
@@ -414,6 +418,13 @@ static const u8 AMD64_REX_MASK_B = 0b0000'0001;
 static const u8 AMD64_SIB_INDEX_NONE = 0b101'000;
 // Base is not a register but a u32 displacement value.
 static const u8 AMD64_SIB_BASE_DISP32 = 0b101;
+
+static void amd64_encode_instruction_ud2(Pgu8Dyn *sb, PgAllocator *allocator) {
+  u8 opcode1 = 0x0f;
+  *PG_DYN_PUSH(sb, allocator) = opcode1;
+  u8 opcode2 = 0x0b;
+  *PG_DYN_PUSH(sb, allocator) = opcode2;
+}
 
 static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
@@ -995,6 +1006,9 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   switch (instruction.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
     PG_ASSERT(0);
+  case AMD64_INSTRUCTION_KIND_UD2:
+    amd64_encode_instruction_ud2(sb, allocator);
+    break;
   case AMD64_INSTRUCTION_KIND_MOV:
     amd64_encode_instruction_mov(sb, instruction, allocator);
     break;
@@ -1537,6 +1551,55 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, instruction, allocator);
     } break;
 
+    case AST_NODE_KIND_BUILTIN_ASSERT: {
+      AstNodeIndexDyn stack_tmp = stack;
+      AstNodeIndex op_idx = ast_stack_pop(&stack_tmp);
+      AstNode op = PG_SLICE_AT(emitter->nodes, op_idx.value);
+
+      // FIXME: Move assert transformation to phases before codegen.
+
+      Amd64Instruction ins_cmp = {
+          .kind = AMD64_INSTRUCTION_KIND_CMP,
+          .lhs = amd64_convert_node_to_amd64_operand(op, fn_def.metadata),
+          .rhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                  .u.immediate = 0,
+              },
+          .origin = node.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_cmp, allocator);
+
+      Amd64Instruction ins_je = {
+          .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
+          .lhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_LABEL,
+                  .u.label.value = PG_S("FIXME"),
+              },
+          .origin = node.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_je, allocator);
+
+      Amd64Instruction ins_jmp_target = {
+          .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
+          .lhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_LABEL,
+                  .u.label.value = PG_S("FIXME"),
+              },
+          .origin = node.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_jmp_target, allocator);
+
+      Amd64Instruction ins_ud2 = {
+          .kind = AMD64_INSTRUCTION_KIND_UD2,
+          .origin = node.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_ud2, allocator);
+
+    } break;
+
     case AST_NODE_KIND_NUMBER:
     case AST_NODE_KIND_IDENTIFIER:
     case AST_NODE_KIND_BLOCK:
@@ -1544,7 +1607,6 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
     case AST_NODE_KIND_JUMP_IF_FALSE:
     case AST_NODE_KIND_JUMP:
     case AST_NODE_KIND_COMPARISON:
-    case AST_NODE_KIND_BUILTIN_ASSERT:
     case AST_NODE_KIND_SYSCALL:
     case AST_NODE_KIND_FN_DEFINITION:
     case AST_NODE_KIND_LABEL_DEFINITION:

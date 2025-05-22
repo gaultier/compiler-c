@@ -834,28 +834,6 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
     syscall.u.args_count = 2;
     ast_push(parser, syscall, allocator);
   }
-  {
-    AstNode fn = {0};
-    fn.kind = AST_NODE_KIND_FN_DEFINITION;
-    fn.u.identifier = PG_S("__builtin_die");
-    fn.flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
-    ast_push(parser, fn, allocator);
-
-    AstNode op0 = {0};
-    op0.kind = AST_NODE_KIND_NUMBER;
-    op0.u.n64 = 60; // FIXME: Only on Linux amd64.
-    ast_push(parser, op0, allocator);
-
-    AstNode op1 = {0};
-    op1.kind = AST_NODE_KIND_NUMBER;
-    op1.u.n64 = 1;
-    ast_push(parser, op1, allocator);
-
-    AstNode syscall = {0};
-    syscall.kind = AST_NODE_KIND_SYSCALL;
-    syscall.u.args_count = 2;
-    ast_push(parser, syscall, allocator);
-  }
 }
 
 static void ast_emit(AstParser *parser, PgAllocator *allocator) {
