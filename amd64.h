@@ -1552,59 +1552,22 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
     } break;
 
     case AST_NODE_KIND_BUILTIN_ASSERT: {
-      AstNodeIndexDyn stack_tmp = stack;
-      AstNodeIndex op_idx = ast_stack_pop(&stack_tmp);
-      AstNode op = PG_SLICE_AT(emitter->nodes, op_idx.value);
+      PG_ASSERT(0);
+    } break;
 
-      // FIXME: Move assert transformation to phases before codegen.
-
-      Amd64Instruction ins_cmp = {
-          .kind = AMD64_INSTRUCTION_KIND_CMP,
-          .lhs = amd64_convert_node_to_amd64_operand(op, fn_def.metadata),
-          .rhs =
-              (Amd64Operand){
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .u.immediate = 0,
-              },
-          .origin = node.origin,
-      };
-      amd64_add_instruction(&section->instructions, ins_cmp, allocator);
-
-      Amd64Instruction ins_je = {
-          .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
-          .lhs =
-              (Amd64Operand){
-                  .kind = AMD64_OPERAND_KIND_LABEL,
-                  .u.label.value = PG_S("FIXME"),
-              },
-          .origin = node.origin,
-      };
-      amd64_add_instruction(&section->instructions, ins_je, allocator);
-
-      Amd64Instruction ins_jmp_target = {
-          .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
-          .lhs =
-              (Amd64Operand){
-                  .kind = AMD64_OPERAND_KIND_LABEL,
-                  .u.label.value = PG_S("FIXME"),
-              },
-          .origin = node.origin,
-      };
-      amd64_add_instruction(&section->instructions, ins_jmp_target, allocator);
-
+    case AST_NODE_KIND_BUILTIN_TRAP: {
       Amd64Instruction ins_ud2 = {
           .kind = AMD64_INSTRUCTION_KIND_UD2,
           .origin = node.origin,
       };
       amd64_add_instruction(&section->instructions, ins_ud2, allocator);
-
     } break;
 
     case AST_NODE_KIND_NUMBER:
     case AST_NODE_KIND_IDENTIFIER:
     case AST_NODE_KIND_BLOCK:
     case AST_NODE_KIND_ADDRESS_OF:
-    case AST_NODE_KIND_JUMP_IF_FALSE:
+    case AST_NODE_KIND_BRANCH:
     case AST_NODE_KIND_JUMP:
     case AST_NODE_KIND_COMPARISON:
     case AST_NODE_KIND_SYSCALL:

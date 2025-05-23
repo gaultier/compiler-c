@@ -9,7 +9,7 @@ typedef enum : u8 {
   AST_NODE_KIND_BLOCK,
   AST_NODE_KIND_VAR_DEFINITION,
   AST_NODE_KIND_ADDRESS_OF,
-  AST_NODE_KIND_JUMP_IF_FALSE,
+  AST_NODE_KIND_BRANCH,
   AST_NODE_KIND_JUMP,
   AST_NODE_KIND_COMPARISON,
   AST_NODE_KIND_BUILTIN_ASSERT,
@@ -17,6 +17,7 @@ typedef enum : u8 {
   AST_NODE_KIND_FN_DEFINITION,
   AST_NODE_KIND_LABEL_DEFINITION,
   AST_NODE_KIND_LABEL,
+  AST_NODE_KIND_BUILTIN_TRAP,
 } AstNodeKind;
 
 typedef enum [[clang::flag_enum]] : u8 {
@@ -326,8 +327,8 @@ static void ast_print_node(AstNode node, MetadataDyn metadata) {
   case AST_NODE_KIND_VAR_DEFINITION:
     printf("VarDecl %.*s", (i32)node.u.identifier.len, node.u.identifier.data);
     break;
-  case AST_NODE_KIND_JUMP_IF_FALSE:
-    printf("JumpIfFalse");
+  case AST_NODE_KIND_BRANCH:
+    printf("Branch");
     break;
   case AST_NODE_KIND_JUMP:
     printf("Jump");
@@ -342,6 +343,9 @@ static void ast_print_node(AstNode node, MetadataDyn metadata) {
     break;
   case AST_NODE_KIND_LABEL:
     printf("Label %.*s", (i32)node.u.label.value.len, node.u.label.value.data);
+    break;
+  case AST_NODE_KIND_BUILTIN_TRAP:
+    printf("Trap");
     break;
   case AST_NODE_KIND_NONE:
   default:
@@ -708,7 +712,7 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     ast_push(parser, jump_else_label, allocator);
 
     AstNode jump_if_false = {0};
-    jump_if_false.kind = AST_NODE_KIND_JUMP_IF_FALSE;
+    jump_if_false.kind = AST_NODE_KIND_BRANCH;
     jump_if_false.u.label = branch_else_label;
     ast_push(parser, jump_if_false, allocator);
   }
@@ -919,6 +923,7 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
   case AST_NODE_KIND_FN_DEFINITION:
   case AST_NODE_KIND_LABEL_DEFINITION:
   case AST_NODE_KIND_LABEL:
+  case AST_NODE_KIND_BUILTIN_TRAP:
     return 0;
 
   case AST_NODE_KIND_ADDRESS_OF:
@@ -929,7 +934,7 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
 
   case AST_NODE_KIND_ADD:
   case AST_NODE_KIND_COMPARISON:
-  case AST_NODE_KIND_JUMP_IF_FALSE:
+  case AST_NODE_KIND_BRANCH:
     return 2;
 
   case AST_NODE_KIND_BLOCK:
@@ -957,9 +962,10 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
   case AST_NODE_KIND_BUILTIN_ASSERT:
   case AST_NODE_KIND_ADD:
   case AST_NODE_KIND_COMPARISON:
-  case AST_NODE_KIND_JUMP_IF_FALSE:
+  case AST_NODE_KIND_BRANCH:
   case AST_NODE_KIND_BLOCK:
   case AST_NODE_KIND_SYSCALL:
+  case AST_NODE_KIND_BUILTIN_TRAP:
     return false;
 
   case AST_NODE_KIND_NONE:
@@ -977,13 +983,14 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
   case AST_NODE_KIND_FN_DEFINITION:
   case AST_NODE_KIND_VAR_DEFINITION:
   case AST_NODE_KIND_LABEL_DEFINITION:
+  case AST_NODE_KIND_BUILTIN_TRAP:
   case AST_NODE_KIND_JUMP:
   case AST_NODE_KIND_NUMBER:
   case AST_NODE_KIND_LABEL:
   case AST_NODE_KIND_BUILTIN_ASSERT:
   case AST_NODE_KIND_ADD:
   case AST_NODE_KIND_COMPARISON:
-  case AST_NODE_KIND_JUMP_IF_FALSE:
+  case AST_NODE_KIND_BRANCH:
   case AST_NODE_KIND_BLOCK:
   case AST_NODE_KIND_SYSCALL:
     return false;
@@ -1010,8 +1017,9 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
   case AST_NODE_KIND_LABEL_DEFINITION:
   case AST_NODE_KIND_LABEL:
   case AST_NODE_KIND_BUILTIN_ASSERT:
-  case AST_NODE_KIND_JUMP_IF_FALSE:
+  case AST_NODE_KIND_BRANCH:
   case AST_NODE_KIND_BLOCK:
+  case AST_NODE_KIND_BUILTIN_TRAP:
     return false;
 
   case AST_NODE_KIND_NONE:
@@ -1108,10 +1116,11 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
     case AST_NODE_KIND_VAR_DEFINITION:
     case AST_NODE_KIND_LABEL_DEFINITION:
     case AST_NODE_KIND_LABEL:
-    case AST_NODE_KIND_JUMP_IF_FALSE:
+    case AST_NODE_KIND_BRANCH:
     case AST_NODE_KIND_JUMP:
     case AST_NODE_KIND_BUILTIN_ASSERT:
     case AST_NODE_KIND_BLOCK:
+    case AST_NODE_KIND_BUILTIN_TRAP:
       break;
 
     case AST_NODE_KIND_NONE:
@@ -1206,14 +1215,14 @@ static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
   }
 }
 
-static void ast_constant_fold(AstNodeDyn *nodes_before, AstNodeDyn *nodes_after,
+static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
                               PgAllocator *allocator) {
 
   AstNodeDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
-  for (u32 i = 0; i < nodes_before->len; i++) {
-    AstNode node = PG_SLICE_AT(*nodes_before, i);
+  for (u32 i = 0; i < nodes_before.len; i++) {
+    AstNode node = PG_SLICE_AT(nodes_before, i);
     bool is_expr = ast_node_is_expr(node);
 
     // Stack.
@@ -1283,6 +1292,103 @@ static void ast_constant_fold(AstNodeDyn *nodes_before, AstNodeDyn *nodes_after,
         *PG_DYN_PUSH(&stack, allocator) = node;
       }
       PG_ASSERT(is_expr || stack.len == 0);
+    }
+    *PG_DYN_PUSH(nodes_after, allocator) = node;
+  }
+}
+
+[[nodiscard]]
+static AstNode ast_node_number(u64 n) {
+  AstNode res = {.kind = AST_NODE_KIND_NUMBER, .u.n64 = n};
+  return res;
+}
+
+[[nodiscard]] static Label ast_make_synth_label(u32 *label_current,
+                                                PgAllocator *allocator) {
+  Label res = {0};
+  res.value = pg_u64_to_string(++(*label_current), allocator);
+  return res;
+}
+
+static void ast_lower(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
+                      u32 *label_current, PgAllocator *allocator) {
+
+  for (u32 i = 0; i < nodes_before.len; i++) {
+    AstNode node = PG_SLICE_AT(nodes_before, i);
+    switch (node.kind) {
+    case AST_NODE_KIND_BUILTIN_ASSERT: {
+      // `assert(cond)` =>
+      // ```
+      // if (cond){
+      //   goto .L1
+      // }
+      // udt2
+      // .L1:
+      // [...]
+      // ```
+      AstNode cond = PG_DYN_POP(nodes_after);
+      *PG_DYN_PUSH(nodes_after, allocator) = cond;
+
+      *PG_DYN_PUSH(nodes_after, allocator) = ast_node_number(0);
+
+      AstNode cmp = {
+          .kind = AST_NODE_KIND_COMPARISON,
+          .token_kind = LEX_TOKEN_KIND_EQUAL_EQUAL,
+      };
+      *PG_DYN_PUSH(nodes_after, allocator) = cmp;
+
+      AstNode if_then_target = {
+          .kind = AST_NODE_KIND_LABEL,
+          .u.label = ast_make_synth_label(label_current, allocator),
+      };
+      *PG_DYN_PUSH(nodes_after, allocator) = if_then_target;
+
+      AstNode if_end_target = {
+          .kind = AST_NODE_KIND_LABEL,
+          .u.label = ast_make_synth_label(label_current, allocator),
+      };
+      *PG_DYN_PUSH(nodes_after, allocator) = if_end_target;
+
+      AstNode branch = {.kind = AST_NODE_KIND_BRANCH};
+      *PG_DYN_PUSH(nodes_after, allocator) = branch;
+
+      AstNode if_then_target_def = {
+          .kind = AST_NODE_KIND_LABEL_DEFINITION,
+          .u = if_then_target.u,
+      };
+
+      *PG_DYN_PUSH(nodes_after, allocator) = if_then_target_def;
+      AstNode trap = {.kind = AST_NODE_KIND_BUILTIN_TRAP};
+      *PG_DYN_PUSH(nodes_after, allocator) = trap;
+
+      AstNode if_end_target_def = {
+          .kind = AST_NODE_KIND_LABEL_DEFINITION,
+          .u = if_end_target.u,
+      };
+      *PG_DYN_PUSH(nodes_after, allocator) = if_end_target_def;
+
+      continue;
+    }
+
+      // 1:1.
+    case AST_NODE_KIND_COMPARISON:
+    case AST_NODE_KIND_NUMBER:
+    case AST_NODE_KIND_IDENTIFIER:
+    case AST_NODE_KIND_ADD:
+    case AST_NODE_KIND_BLOCK:
+    case AST_NODE_KIND_VAR_DEFINITION:
+    case AST_NODE_KIND_ADDRESS_OF:
+    case AST_NODE_KIND_BRANCH:
+    case AST_NODE_KIND_JUMP:
+    case AST_NODE_KIND_SYSCALL:
+    case AST_NODE_KIND_FN_DEFINITION:
+    case AST_NODE_KIND_LABEL_DEFINITION:
+    case AST_NODE_KIND_LABEL:
+    case AST_NODE_KIND_BUILTIN_TRAP:
+      break;
+    case AST_NODE_KIND_NONE:
+    default:
+      PG_ASSERT(0);
     }
     *PG_DYN_PUSH(nodes_after, allocator) = node;
   }

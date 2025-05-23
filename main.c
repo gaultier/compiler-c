@@ -80,38 +80,51 @@ int main(int argc, char *argv[]) {
   AstParser parser = {.lexer = lexer, .errors = &errors};
   ast_emit(&parser, allocator);
 
+  AstNodeDyn nodes_input = parser.nodes;
+  AstNodeDyn nodes_output = {0};
+  PG_DYN_ENSURE_CAP(&nodes_output, nodes_input.len, allocator);
+
   // Constant folding.
   {
     u32 iterations_max = 10;
-    AstNodeDyn nodes_after = {0};
-    PG_DYN_ENSURE_CAP(&nodes_after, parser.nodes.len, allocator);
 
     for (u32 i = 0; i < iterations_max; i++) {
       if (cli_opts.verbose) {
         printf("\n------------ [%u] Constant fold before ------------\n", i);
-        ast_print_nodes(parser.nodes, (MetadataDyn){0});
+        ast_print_nodes(nodes_input, (MetadataDyn){0});
       }
 
-      nodes_after.len = 0;
+      nodes_output.len = 0;
 
-      ast_constant_fold(&parser.nodes, &nodes_after, allocator);
-      if (nodes_after.len == parser.nodes.len) { // No change.
+      ast_constant_fold(nodes_input, &nodes_output, allocator);
+      if (nodes_output.len == nodes_input.len) { // No change.
         break;
       }
-      PG_ASSERT(nodes_after.len < parser.nodes.len);
+      PG_ASSERT(nodes_output.len < nodes_input.len);
 
-      parser.nodes = nodes_after;
+      nodes_input = nodes_output;
       if (cli_opts.verbose) {
         printf("\n------------ [%u] Constant fold after ------------\n", i);
-        ast_print_nodes(parser.nodes, (MetadataDyn){0});
+        ast_print_nodes(nodes_input, (MetadataDyn){0});
       }
+    }
+  }
+  // Lowering
+  {
+    u32 label_current = 0;
+    nodes_output.len = 0;
+    ast_lower(nodes_input, &nodes_output, &label_current, allocator);
+    nodes_input = nodes_output;
+    if (cli_opts.verbose) {
+      printf("\n------------ Lowering after ------------\n");
+      ast_print_nodes(nodes_input, (MetadataDyn){0});
     }
   }
 
   FnDefinitionDyn fn_defs = ast_generate_fn_defs(&parser, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ AST with metadata ------------\n");
-    ast_print_fn_defs(fn_defs, parser.nodes);
+    ast_print_fn_defs(fn_defs, nodes_input);
   }
 
 #if 0
@@ -125,7 +138,7 @@ int main(int argc, char *argv[]) {
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter =
-      amd64_make_asm_emitter(parser.nodes, exe_path, allocator);
+      amd64_make_asm_emitter(nodes_input, exe_path, allocator);
   asm_emit(asm_emitter, fn_defs, cli_opts.verbose, allocator);
 
   if (cli_opts.verbose) {
