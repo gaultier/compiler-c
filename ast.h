@@ -38,7 +38,7 @@ typedef struct {
 typedef struct {
   Origin origin;
   union {
-    u64 n64;             // NUmber literal.
+    u64 n64;             // Number literal.
     PgString identifier; // Variable name.
     u32 args_count;      // Function, syscall, etc.
     Label label;
