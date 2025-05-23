@@ -38,6 +38,19 @@ typedef struct {
   u32 label_id;
 } IrEmitter;
 
+[[nodiscard]]
+static IrInstruction ir_node_number(u64 n) {
+  IrInstruction res = {.kind = IR_INSTRUCTION_KIND_NUMBER, .u.n64 = n};
+  return res;
+}
+
+[[nodiscard]] static Label ir_make_synth_label(u32 *label_current,
+                                               PgAllocator *allocator) {
+  Label res = {0};
+  res.value = pg_u64_to_string(++(*label_current), allocator);
+  return res;
+}
+
 [[nodiscard]] static IrInstructionDyn
 ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   (void)emitter; // FIXME
@@ -183,8 +196,17 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
+    case AST_NODE_KIND_LABEL_DEFINITION: {
+      IrInstruction ins = {0};
+      ins.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
+      ins.origin = node.origin;
+      ins.u.label = ir_make_synth_label(&emitter->label_id, allocator);
+
+      *PG_DYN_PUSH(&res, allocator) = ins;
+
+    } break;
+
     case AST_NODE_KIND_BUILTIN_ASSERT:
-    case AST_NODE_KIND_LABEL_DEFINITION:
       PG_ASSERT(0 && "todo");
       break;
 
