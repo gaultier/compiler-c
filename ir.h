@@ -361,7 +361,7 @@ static void ir_print_instructions(IrInstructionDyn instructions) {
   }
 }
 
-static void ir_print_fn_def(FnDefinition fn_def, AstNodeDyn nodes) {
+static void ir_print_fn_def(FnDefinition fn_def) {
   PG_ASSERT(fn_def.name.len);
 
   printf("%.*s:\n", (i32)fn_def.name.len, fn_def.name.data);
@@ -371,10 +371,10 @@ static void ir_print_fn_def(FnDefinition fn_def, AstNodeDyn nodes) {
   printf("\n");
 }
 
-static void ir_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
+static void ir_print_fn_defs(FnDefinitionDyn fn_defs) {
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    ir_print_fn_def(fn_def, nodes);
+    ir_print_fn_def(fn_def);
   }
 }
 
@@ -711,7 +711,8 @@ static FnDefinitionDyn ir_generate_fn_defs(IrInstructionDyn instructions,
     case IR_INSTRUCTION_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
       // TODO: Scope aware symbol resolution.
-      Metadata *meta = metadata_find_by_identifier(fn_def.metadata, node->u.s);
+      PgString name = PG_S("FIXME");
+      Metadata *meta = metadata_find_by_identifier(fn_def.metadata, name);
       if (!meta) {
         ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, ins->origin, allocator);
         PG_DYN_LAST(*parser->errors).src_span = node->u.s;
