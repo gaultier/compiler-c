@@ -158,6 +158,20 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     case AST_NODE_KIND_SYSCALL: {
       PG_ASSERT(node.u.args_count > 0);
       PG_ASSERT(node.u.args_count <= max_syscall_args_count);
+
+      for (u64 j = 0; j < node.u.args_count; j++) {
+        u64 idx = i - node.u.args_count + j;
+        AstNode op = PG_SLICE_AT(nodes, idx);
+        PG_ASSERT(ast_node_is_expr(op));
+
+        IrInstruction ins = {0};
+        ins.kind = IR_INSTRUCTION_KIND_MOV;
+        ins.origin = node.origin;
+        ins.lhs.value = (u32)idx;
+        ins.res.value = (u32)(res.len);
+        *PG_DYN_PUSH(&res, allocator) = ins;
+      }
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
       ins.origin = node.origin;
@@ -182,7 +196,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 }
 
 static void ir_print_instructions(IrInstructionDyn instructions) {
-  for (u64 i = 0; i < instructions.len; i++) {
+  for (u32 i = 0; i < instructions.len; i++) {
+    printf("[%u] ", i);
     IrInstruction ins = PG_SLICE_AT(instructions, i);
 
     switch (ins.kind) {
