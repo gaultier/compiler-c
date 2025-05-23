@@ -125,6 +125,7 @@ typedef struct {
 typedef PgAdjacencyMatrix InterferenceGraph;
 
 typedef struct {
+  PgString name;
   MetadataDyn metadata;
   IrInstructionDyn instructions;
 
@@ -217,12 +218,6 @@ static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
   default:
     PG_ASSERT(0);
   }
-}
-
-[[nodiscard]] static PgString ir_fn_name(FnDefinition fn_def,
-                                         AstNodeDyn nodes) {
-  AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
-  return fn_node.u.s;
 }
 
 static void ir_print_operand(IrOperand operand) {
@@ -367,9 +362,9 @@ static void ir_print_instructions(IrInstructionDyn instructions) {
 }
 
 static void ir_print_fn_def(FnDefinition fn_def, AstNodeDyn nodes) {
-  PgString fn_name = ir_fn_name(fn_def, nodes);
+  PG_ASSERT(fn_def.name.len);
 
-  printf("%.*s:\n", (i32)fn_name.len, fn_name.data);
+  printf("%.*s:\n", (i32)fn_def.name.len, fn_def.name.data);
 
   ir_print_instructions(fn_def.instructions);
 
