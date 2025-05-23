@@ -1,6 +1,10 @@
 #pragma once
 #include "lex.h"
 
+// On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
+// register arguments.
+static const u64 max_syscall_args_count = 6;
+
 typedef enum : u8 {
   AST_NODE_KIND_NONE,
   AST_NODE_KIND_NUMBER,
@@ -38,9 +42,9 @@ typedef struct {
 typedef struct {
   Origin origin;
   union {
-    u64 n64;             // Number literal.
-    PgString identifier; // Variable name.
-    u32 args_count;      // Function, syscall, etc.
+    u64 n64;        // Number literal.
+    PgString s;     // Variable name.
+    u32 args_count; // Function, syscall, etc.
     Label label;
   } u;
   MetadataIndex meta_idx;
@@ -303,8 +307,7 @@ static void ast_print_node(AstNode node, MetadataDyn metadata) {
     printf("U64 %" PRIu64, node.u.n64);
     break;
   case AST_NODE_KIND_IDENTIFIER:
-    printf("Identifier %.*s", (i32)node.u.identifier.len,
-           node.u.identifier.data);
+    printf("Identifier %.*s", (i32)node.u.s.len, node.u.s.data);
     break;
   case AST_NODE_KIND_ADDRESS_OF:
     printf("AddressOf");
@@ -325,7 +328,7 @@ static void ast_print_node(AstNode node, MetadataDyn metadata) {
     printf("Block");
   } break;
   case AST_NODE_KIND_VAR_DEFINITION:
-    printf("VarDecl %.*s", (i32)node.u.identifier.len, node.u.identifier.data);
+    printf("VarDecl %.*s", (i32)node.u.s.len, node.u.s.data);
     break;
   case AST_NODE_KIND_BRANCH:
     printf("Branch");
@@ -334,8 +337,7 @@ static void ast_print_node(AstNode node, MetadataDyn metadata) {
     printf("Jump");
     break;
   case AST_NODE_KIND_FN_DEFINITION:
-    printf("FnDefinition %.*s", (i32)node.u.identifier.len,
-           node.u.identifier.data);
+    printf("FnDefinition %.*s", (i32)node.u.s.len, node.u.s.data);
     break;
   case AST_NODE_KIND_LABEL_DEFINITION:
     printf("LabelDefinition %.*s", (i32)node.u.label.value.len,
@@ -440,7 +442,7 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
   AstNode node = {0};
   node.kind = AST_NODE_KIND_VAR_DEFINITION;
   node.origin = token_first.origin;
-  node.u.identifier = token_first.s;
+  node.u.s = token_first.s;
   ast_push(parser, node, allocator);
 
   return true;
@@ -468,7 +470,7 @@ static bool ast_parse_primary(AstParser *parser, PgAllocator *allocator) {
     AstNode node = {0};
     node.origin = first.origin;
     node.kind = AST_NODE_KIND_IDENTIFIER;
-    node.u.identifier = first.s;
+    node.u.s = first.s;
     ast_push(parser, node, allocator);
 
     return true;
@@ -819,7 +821,7 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
   {
     AstNode fn = {0};
     fn.kind = AST_NODE_KIND_FN_DEFINITION;
-    fn.u.identifier = PG_S("__builtin_exit");
+    fn.u.s = PG_S("__builtin_exit");
     fn.flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
     ast_push(parser, fn, allocator);
 
@@ -843,7 +845,7 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
 static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   AstNode fn_start = {0};
   fn_start.kind = AST_NODE_KIND_FN_DEFINITION;
-  fn_start.u.identifier = PG_S("_start");
+  fn_start.u.s = PG_S("_start");
   fn_start.flags = AST_NODE_FLAG_GLOBAL;
   // TODO: Do not define this function to avoid recursive calls to it.
   ast_push(parser, fn_start, allocator);
@@ -910,7 +912,7 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
   // TODO: Dataflow.
 
   if (AST_NODE_KIND_IDENTIFIER == node.kind) {
-    Metadata *meta = metadata_find_by_identifier(metadata, node.u.identifier);
+    Metadata *meta = metadata_find_by_identifier(metadata, node.u.s);
     PG_ASSERT(meta);
     meta->lifetime_end = ins_idx;
   }
@@ -1065,8 +1067,8 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
       metadata_start_lifetime(fn_def->metadata, node->meta_idx, ins_idx);
 
       if (ast_node_has_name(*node)) {
-        PG_ASSERT(node->u.identifier.len);
-        PG_DYN_LAST(fn_def->metadata).identifier = node->u.identifier;
+        PG_ASSERT(node->u.s.len);
+        PG_DYN_LAST(fn_def->metadata).identifier = node->u.s;
       }
     }
 
@@ -1078,12 +1080,11 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
     case AST_NODE_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
       // TODO: Scope aware symbol resolution.
-      Metadata *meta =
-          metadata_find_by_identifier(fn_def->metadata, node->u.identifier);
+      Metadata *meta = metadata_find_by_identifier(fn_def->metadata, node->u.s);
       if (!meta) {
         ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, node->origin,
                       allocator);
-        PG_DYN_LAST(*parser->errors).src_span = node->u.identifier;
+        PG_DYN_LAST(*parser->errors).src_span = node->u.s;
       }
     } break;
 
@@ -1190,7 +1191,7 @@ static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
 [[nodiscard]] static PgString ast_fn_name(FnDefinition fn_def,
                                           AstNodeDyn nodes) {
   AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
-  return fn_node.u.identifier;
+  return fn_node.u.s;
 }
 
 static void ast_print_fn_def(FnDefinition fn_def, AstNodeDyn nodes) {
@@ -1292,103 +1293,6 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
         *PG_DYN_PUSH(&stack, allocator) = node;
       }
       PG_ASSERT(is_expr || stack.len == 0);
-    }
-    *PG_DYN_PUSH(nodes_after, allocator) = node;
-  }
-}
-
-[[nodiscard]]
-static AstNode ast_node_number(u64 n) {
-  AstNode res = {.kind = AST_NODE_KIND_NUMBER, .u.n64 = n};
-  return res;
-}
-
-[[nodiscard]] static Label ast_make_synth_label(u32 *label_current,
-                                                PgAllocator *allocator) {
-  Label res = {0};
-  res.value = pg_u64_to_string(++(*label_current), allocator);
-  return res;
-}
-
-static void ast_lower(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
-                      u32 *label_current, PgAllocator *allocator) {
-
-  for (u32 i = 0; i < nodes_before.len; i++) {
-    AstNode node = PG_SLICE_AT(nodes_before, i);
-    switch (node.kind) {
-    case AST_NODE_KIND_BUILTIN_ASSERT: {
-      // `assert(cond)` =>
-      // ```
-      // if (cond){
-      //   goto .L1
-      // }
-      // udt2
-      // .L1:
-      // [...]
-      // ```
-      AstNode cond = PG_DYN_POP(nodes_after);
-      *PG_DYN_PUSH(nodes_after, allocator) = cond;
-
-      *PG_DYN_PUSH(nodes_after, allocator) = ast_node_number(0);
-
-      AstNode cmp = {
-          .kind = AST_NODE_KIND_COMPARISON,
-          .token_kind = LEX_TOKEN_KIND_EQUAL_EQUAL,
-      };
-      *PG_DYN_PUSH(nodes_after, allocator) = cmp;
-
-      AstNode if_then_target = {
-          .kind = AST_NODE_KIND_LABEL,
-          .u.label = ast_make_synth_label(label_current, allocator),
-      };
-      *PG_DYN_PUSH(nodes_after, allocator) = if_then_target;
-
-      AstNode if_end_target = {
-          .kind = AST_NODE_KIND_LABEL,
-          .u.label = ast_make_synth_label(label_current, allocator),
-      };
-      *PG_DYN_PUSH(nodes_after, allocator) = if_end_target;
-
-      AstNode branch = {.kind = AST_NODE_KIND_BRANCH};
-      *PG_DYN_PUSH(nodes_after, allocator) = branch;
-
-      AstNode if_then_target_def = {
-          .kind = AST_NODE_KIND_LABEL_DEFINITION,
-          .u = if_then_target.u,
-      };
-
-      *PG_DYN_PUSH(nodes_after, allocator) = if_then_target_def;
-      AstNode trap = {.kind = AST_NODE_KIND_BUILTIN_TRAP};
-      *PG_DYN_PUSH(nodes_after, allocator) = trap;
-
-      AstNode if_end_target_def = {
-          .kind = AST_NODE_KIND_LABEL_DEFINITION,
-          .u = if_end_target.u,
-      };
-      *PG_DYN_PUSH(nodes_after, allocator) = if_end_target_def;
-
-      continue;
-    }
-
-      // 1:1.
-    case AST_NODE_KIND_COMPARISON:
-    case AST_NODE_KIND_NUMBER:
-    case AST_NODE_KIND_IDENTIFIER:
-    case AST_NODE_KIND_ADD:
-    case AST_NODE_KIND_BLOCK:
-    case AST_NODE_KIND_VAR_DEFINITION:
-    case AST_NODE_KIND_ADDRESS_OF:
-    case AST_NODE_KIND_BRANCH:
-    case AST_NODE_KIND_JUMP:
-    case AST_NODE_KIND_SYSCALL:
-    case AST_NODE_KIND_FN_DEFINITION:
-    case AST_NODE_KIND_LABEL_DEFINITION:
-    case AST_NODE_KIND_LABEL:
-    case AST_NODE_KIND_BUILTIN_TRAP:
-      break;
-    case AST_NODE_KIND_NONE:
-    default:
-      PG_ASSERT(0);
     }
     *PG_DYN_PUSH(nodes_after, allocator) = node;
   }

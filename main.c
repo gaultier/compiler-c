@@ -4,6 +4,7 @@
 #if 0
 #include "type_check.h"
 #endif
+#include "ir.h"
 
 typedef struct {
   bool verbose;
@@ -111,13 +112,12 @@ int main(int argc, char *argv[]) {
   }
   // Lowering
   {
-    u32 label_current = 0;
-    nodes_output.len = 0;
-    ast_lower(nodes_input, &nodes_output, &label_current, allocator);
-    nodes_input = nodes_output;
+    IrEmitter ir_emitter = {0};
+    IrInstructionDyn ir_instructions =
+        ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
     if (cli_opts.verbose) {
-      printf("\n------------ Lowering after ------------\n");
-      ast_print_nodes(nodes_input, (MetadataDyn){0});
+      printf("\n------------ IR ------------\n");
+      ir_print_instructions(ir_instructions);
     }
   }
 

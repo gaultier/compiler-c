@@ -1633,7 +1633,7 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
 
   AstNode fn_node = PG_SLICE_AT(asm_emitter->nodes, fn_def.node_start.value);
   AsmCodeSection section = {
-      .name = fn_node.u.identifier,
+      .name = fn_node.u.s,
       .flags = fn_node.flags,
   };
   amd64_emit_prolog(&section, allocator);

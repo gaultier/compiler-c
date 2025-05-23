@@ -1,10 +1,6 @@
 #pragma once
 #include "ast.h"
 
-// On all relevant targets (amd64, aarch64, riscv), syscalls take up to 6
-// register arguments.
-static const u64 max_syscall_args_count = 6;
-
 typedef struct {
   u32 value;
 } InterferenceNodeIndex;
