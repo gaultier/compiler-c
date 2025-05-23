@@ -710,7 +710,9 @@ static FnDefinitionDyn ir_generate_fn_defs(IrInstructionDyn instructions,
     IrInstruction *ins = PG_SLICE_AT_PTR(&instructions, i);
 
     switch (ins->kind) {
-    case IR_INSTRUCTION_KIND_MOV:
+    case IR_INSTRUCTION_KIND_MOV: {
+      PG_ASSERT(0 && "todo");
+    } break;
     case IR_INSTRUCTION_KIND_ADD:
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
