@@ -3,7 +3,6 @@
 
 typedef enum : u8 {
   IR_INSTRUCTION_KIND_NONE,
-  IR_INSTRUCTION_KIND_NUMBER,
   IR_INSTRUCTION_KIND_IDENTIFIER,
   IR_INSTRUCTION_KIND_ADD,
   IR_INSTRUCTION_KIND_MOV,
@@ -21,6 +20,7 @@ typedef enum : u8 {
 
 typedef enum {
   IR_OPERAND_KIND_NONE,
+  IR_OPERAND_KIND_NUM,
   IR_OPERAND_KIND_LABEL,
   IR_OPERAND_KIND_VREG,
 } IrOperandKind;
@@ -31,6 +31,7 @@ typedef struct {
   union {
     Label label;
     VirtualRegister vreg;
+    u64 u64;
   } u;
 } IrOperand;
 
@@ -38,7 +39,6 @@ typedef struct {
   IrInstructionKind kind;
   u16 flags;
   union {
-    u64 n64;        // Number literal.
     PgString s;     // Variable name.
     u32 args_count; // Function, syscall, etc.
   } u;
@@ -51,12 +51,6 @@ PG_DYN(IrInstruction) IrInstructionDyn;
 typedef struct {
   u32 label_id;
 } IrEmitter;
-
-[[nodiscard]]
-static IrInstruction ir_instruction_const(u64 n) {
-  IrInstruction res = {.kind = IR_INSTRUCTION_KIND_NUMBER, .u.n64 = n};
-  return res;
-}
 
 [[nodiscard]] static IrOperand ir_make_synth_label(u32 *label_current,
                                                    PgAllocator *allocator) {
@@ -82,9 +76,12 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     switch (node.kind) {
     case AST_NODE_KIND_NUMBER: {
       IrInstruction ins = {0};
-      ins.kind = IR_INSTRUCTION_KIND_NUMBER;
+      ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
-      ins.u.n64 = node.u.n64;
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_NUM,
+          .u.u64 = node.u.n64,
+      };
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
@@ -213,6 +210,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(node.u.args_count > 0);
       PG_ASSERT(node.u.args_count <= max_syscall_args_count);
 
+      // TODO: Simply set constraint on existing args vregs?
       for (u64 j = 0; j < node.u.args_count; j++) {
         u64 idx = i - node.u.args_count + j;
         PG_ASSERT(idx <= UINT32_MAX);
@@ -251,14 +249,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     case AST_NODE_KIND_BUILTIN_ASSERT: {
       PG_ASSERT(res.len >= 1);
 
-      IrInstruction ins_0 = ir_instruction_const(0);
-      *PG_DYN_PUSH(&res, allocator) = ins_0;
-
       IrInstruction ins_cmp = {0};
       ins_cmp.kind = IR_INSTRUCTION_KIND_COMPARISON;
       ins_cmp.lhs = (IrOperand){
-          .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg.value = (u32)res.len - 2,
+          .kind = IR_OPERAND_KIND_NUM,
+          .u.u64 = 0,
       };
       ins_cmp.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -286,6 +281,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
 static void ir_print_operand(IrOperand operand) {
   switch (operand.kind) {
+  case IR_OPERAND_KIND_NUM:
+    printf("%lu", operand.u.u64);
+    break;
+
   case IR_OPERAND_KIND_LABEL:
     PG_ASSERT(operand.u.label.value.len);
     printf("%.*s", (i32)operand.u.label.value.len, operand.u.label.value.data);
@@ -306,15 +305,10 @@ static void ir_print_instructions(IrInstructionDyn instructions) {
   for (u32 i = 0; i < instructions.len; i++) {
     printf("[%u] ", i);
     IrInstruction ins = PG_SLICE_AT(instructions, i);
+    origin_print(ins.origin);
+    printf(": ");
 
     switch (ins.kind) {
-    case IR_INSTRUCTION_KIND_NUMBER:
-      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
-      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
-
-      printf("Num %lu", ins.u.n64);
-      break;
-
     case IR_INSTRUCTION_KIND_IDENTIFIER:
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
