@@ -1,7 +1,7 @@
+#if 0
 #include "amd64.h"
 #include "asm.h"
 #include "elf.h"
-#if 0
 #include "type_check.h"
 #endif
 #include "ir.h"
@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
     for (u32 i = 0; i < iterations_max; i++) {
       if (cli_opts.verbose) {
         printf("\n------------ [%u] Constant fold before ------------\n", i);
-        ast_print_nodes(nodes_input, (MetadataDyn){0});
+        ast_print_nodes(nodes_input);
       }
 
       nodes_output.len = 0;
@@ -106,22 +106,23 @@ int main(int argc, char *argv[]) {
       nodes_input = nodes_output;
       if (cli_opts.verbose) {
         printf("\n------------ [%u] Constant fold after ------------\n", i);
-        ast_print_nodes(nodes_input, (MetadataDyn){0});
+        ast_print_nodes(nodes_input);
       }
     }
   }
-  // Lowering
-  {
-    IrEmitter ir_emitter = {0};
-    IrInstructionDyn ir_instructions =
-        ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
-    if (cli_opts.verbose) {
-      printf("\n------------ IR ------------\n");
-      ir_print_instructions(ir_instructions);
-    }
+
+  IrEmitter ir_emitter = {0};
+  IrInstructionDyn ir_instructions =
+      ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
+  if (cli_opts.verbose) {
+    printf("\n------------ IR ------------\n");
+    ir_print_instructions(ir_instructions);
   }
 
-  FnDefinitionDyn fn_defs = ast_generate_fn_defs(&parser, allocator);
+  IrInstructionSlice ir_instructions_slice =
+      PG_DYN_SLICE(IrInstructionSlice, ir_instructions);
+  FnDefinitionDyn fn_defs =
+      ir_generate_fn_defs(ir_instructions_slice, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ AST with metadata ------------\n");
     ast_print_fn_defs(fn_defs, nodes_input);
@@ -135,6 +136,7 @@ int main(int argc, char *argv[]) {
     goto err;
   }
 
+#if 0
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter =
@@ -155,6 +157,7 @@ int main(int argc, char *argv[]) {
             asm_emitter->program.file_path.data, err_write);
     return 1;
   }
+#endif
 
   if (cli_opts.verbose) {
     printf("arena: use=%lu available=%lu\n", pg_arena_mem_use(arena),

@@ -36,10 +36,6 @@ typedef struct {
 } Label;
 
 typedef struct {
-  u32 value;
-} MetadataIndex;
-
-typedef struct {
   Origin origin;
   union {
     u64 n64;        // Number literal.
@@ -47,7 +43,6 @@ typedef struct {
     u32 args_count; // Function, syscall, etc.
     Label label;
   } u;
-  MetadataIndex meta_idx;
   LexTokenKind token_kind;
   AstNodeFlag flags;
   AstNodeKind kind;
@@ -59,69 +54,6 @@ typedef struct {
 } AstNodeIndex;
 PG_DYN(AstNodeIndex) AstNodeIndexDyn;
 
-typedef enum {
-  VREG_CONSTRAINT_NONE,
-  VREG_CONSTRAINT_CONDITION_FLAGS,
-  VREG_CONSTRAINT_SYSCALL_NUM,
-  VREG_CONSTRAINT_SYSCALL0,
-  VREG_CONSTRAINT_SYSCALL1,
-  VREG_CONSTRAINT_SYSCALL2,
-  VREG_CONSTRAINT_SYSCALL3,
-  VREG_CONSTRAINT_SYSCALL4,
-  VREG_CONSTRAINT_SYSCALL5,
-  VREG_CONSTRAINT_SYSCALL_RET,
-} VirtualRegisterConstraint;
-
-typedef struct {
-  u32 value;
-  VirtualRegisterConstraint constraint;
-  bool addressable;
-} VirtualRegister;
-PG_DYN(VirtualRegister) VirtualRegisterDyn;
-
-typedef struct {
-  u32 value;
-} Register;
-PG_SLICE(Register) RegisterSlice;
-PG_DYN(Register) RegisterDyn;
-
-typedef enum {
-  MEMORY_LOCATION_KIND_NONE,
-  MEMORY_LOCATION_KIND_REGISTER,
-  MEMORY_LOCATION_KIND_STACK,
-  MEMORY_LOCATION_KIND_STATUS_REGISTER,
-#if 0
-  MEMORY_LOCATION_KIND_MEMORY,
-#endif
-} MemoryLocationKind;
-
-typedef struct {
-  MemoryLocationKind kind;
-  union {
-    Register reg;
-    i32 base_pointer_offset;
-#if 0
-     u64 memory_address;
-#endif
-  } u;
-} MemoryLocation;
-PG_DYN(MemoryLocation) MemoryLocationDyn;
-
-typedef struct {
-  u32 value;
-} InstructionIndex;
-
-typedef struct {
-  InstructionIndex lifetime_start, lifetime_end;
-  VirtualRegister virtual_register;
-  MemoryLocation memory_location;
-  PgString identifier;
-#if 0
-  bool tombstone;
-#endif
-} Metadata;
-PG_DYN(Metadata) MetadataDyn;
-
 typedef struct {
   Lexer lexer;
   u64 tokens_consumed;
@@ -132,23 +64,6 @@ typedef struct {
   u32 label_id;
 
 } AstParser;
-
-// Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
-// between i and j), stored as a bitfield of the right-upper half (without the
-// diagonal).
-// Each row is a memory location (see above field).
-typedef PgAdjacencyMatrix InterferenceGraph;
-
-typedef struct {
-  MetadataDyn metadata;
-  AstNodeIndex node_start, node_end;
-
-  u32 stack_base_pointer_offset;
-  u32 stack_base_pointer_offset_max;
-
-  InterferenceGraph interference_graph;
-} FnDefinition;
-PG_DYN(FnDefinition) FnDefinitionDyn;
 
 [[nodiscard]]
 static Label ast_next_label_name(AstParser *parser, PgAllocator *allocator) {
@@ -202,103 +117,7 @@ static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
   *PG_DYN_PUSH(&parser->nodes, allocator) = node;
 }
 
-static void print_var(Metadata meta) {
-  if (0 == meta.virtual_register.value) {
-    return;
-  }
-
-  if (!pg_string_is_empty(meta.identifier)) {
-    printf("%.*s%%%" PRIu32, (i32)meta.identifier.len, meta.identifier.data,
-           meta.virtual_register.value);
-  } else {
-    printf("%%%" PRIu32, meta.virtual_register.value);
-  }
-}
-
-[[nodiscard]]
-static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
-  switch (constraint) {
-  case VREG_CONSTRAINT_NONE:
-    return "NONE";
-  case VREG_CONSTRAINT_CONDITION_FLAGS:
-    return "CONDITION_FLAGS";
-  case VREG_CONSTRAINT_SYSCALL_NUM:
-    return "SYSCALL_NUM";
-  case VREG_CONSTRAINT_SYSCALL0:
-    return "SYSCALL0";
-  case VREG_CONSTRAINT_SYSCALL1:
-    return "SYSCALL1";
-  case VREG_CONSTRAINT_SYSCALL2:
-    return "SYSCALL2";
-  case VREG_CONSTRAINT_SYSCALL3:
-    return "SYSCALL3";
-  case VREG_CONSTRAINT_SYSCALL4:
-    return "SYSCALL4";
-  case VREG_CONSTRAINT_SYSCALL5:
-    return "SYSCALL5";
-  case VREG_CONSTRAINT_SYSCALL_RET:
-    return "SYSCALL_RET";
-
-  default:
-    PG_ASSERT(0);
-  }
-}
-
-static void metadata_print_meta(Metadata meta) {
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[9m"); // Strikethrough.
-  }
-#endif
-
-  printf("var=");
-  print_var(meta);
-  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
-         meta.lifetime_end.value);
-
-  if (meta.virtual_register.value) {
-    printf(" vreg=v%u{constraint=%s, addressable=%s}",
-           meta.virtual_register.value,
-           register_constraint_to_cstr(meta.virtual_register.constraint),
-           meta.virtual_register.addressable ? "true" : "false");
-  }
-
-  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
-    printf(" mem_loc=");
-
-    switch (meta.memory_location.kind) {
-    case MEMORY_LOCATION_KIND_REGISTER:
-    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      printf("reg(todo)");
-      // TODO
-#if 0
-      amd64_print_register(meta.memory_location.reg);
-#endif
-      break;
-    case MEMORY_LOCATION_KIND_STACK: {
-      printf("[sp");
-      i32 offset = meta.memory_location.u.base_pointer_offset;
-      printf("-%" PRIi32 "]", offset);
-    } break;
-#if 0
-    case MEMORY_LOCATION_KIND_MEMORY:
-      printf("%#lx", loc.memory_address);
-      break;
-#endif
-    case MEMORY_LOCATION_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-  }
-
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[0m"); // Strikethrough.
-  }
-#endif
-}
-
-static void ast_print_node(AstNode node, MetadataDyn metadata) {
+static void ast_print_node(AstNode node) {
   origin_print(node.origin);
   putchar(' ');
 
@@ -353,18 +172,13 @@ static void ast_print_node(AstNode node, MetadataDyn metadata) {
   default:
     PG_ASSERT(0);
   }
-  if (metadata.len && node.meta_idx.value) {
-    printf(" // ");
-    Metadata meta = PG_SLICE_AT(metadata, node.meta_idx.value);
-    metadata_print_meta(meta);
-  }
 }
 
-static void ast_print_nodes(AstNodeDyn nodes, MetadataDyn metadata) {
+static void ast_print_nodes(AstNodeDyn nodes) {
   for (u32 i = 0; i < nodes.len; i++) {
     printf("[%u] ", i);
     AstNode node = PG_SLICE_AT(nodes, i);
-    ast_print_node(node, metadata);
+    ast_print_node(node);
     printf("\n");
   }
 }
@@ -863,61 +677,6 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_emit_program_epilog(parser, allocator);
 }
 
-[[nodiscard]] static MetadataIndex metadata_last_idx(MetadataDyn metadata) {
-  PG_ASSERT(metadata.len > 0);
-  return (MetadataIndex){(u32)metadata.len - 1};
-}
-
-[[nodiscard]]
-static MetadataIndex metadata_make(MetadataDyn *metadata,
-                                   PgAllocator *allocator) {
-  Metadata res = {0};
-  res.virtual_register.value = (u32)metadata->len;
-
-  *PG_DYN_PUSH(metadata, allocator) = res;
-
-  return metadata_last_idx(*metadata);
-}
-
-static void metadata_start_lifetime(MetadataDyn metadata,
-                                    MetadataIndex meta_idx,
-                                    InstructionIndex ins_idx) {
-  PG_SLICE_AT(metadata, meta_idx.value).lifetime_start = ins_idx;
-  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
-}
-
-// TODO: Scopes.
-// TODO: Detect shadowing.
-// TODO: LUT to cache result.
-[[nodiscard]]
-static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
-                                             PgString identifier) {
-  for (u64 i = 0; i < metadata.len; i++) {
-    Metadata *meta = PG_SLICE_AT_PTR(&metadata, i);
-    if (pg_string_eq(meta->identifier, identifier)) {
-      return meta;
-    }
-  }
-  return nullptr;
-}
-
-static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
-                                            InstructionIndex ins_idx) {
-  PG_SLICE_AT(metadata, node.meta_idx.value).lifetime_end = ins_idx;
-
-  // TODO: Variable pointed to needs to live at least as long as the pointer to
-  // it.
-  // TODO: If there are multiple aliases to the same pointer, all aliases
-  // should have their meta extended to this point!
-  // TODO: Dataflow.
-
-  if (AST_NODE_KIND_IDENTIFIER == node.kind) {
-    Metadata *meta = metadata_find_by_identifier(metadata, node.u.s);
-    PG_ASSERT(meta);
-    meta->lifetime_end = ins_idx;
-  }
-}
-
 [[nodiscard]] static u32 ast_node_get_expected_args_count(AstNode node) {
   switch (node.kind) {
   case AST_NODE_KIND_NUMBER:
@@ -942,33 +701,6 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata, AstNode node,
   case AST_NODE_KIND_BLOCK:
   case AST_NODE_KIND_SYSCALL:
     return node.u.args_count;
-
-  case AST_NODE_KIND_NONE:
-  default:
-    PG_ASSERT(0);
-  }
-}
-
-[[nodiscard]] static bool ast_node_has_name(AstNode node) {
-  switch (node.kind) {
-  case AST_NODE_KIND_IDENTIFIER:
-  case AST_NODE_KIND_FN_DEFINITION:
-  case AST_NODE_KIND_VAR_DEFINITION:
-  case AST_NODE_KIND_LABEL_DEFINITION:
-    return true;
-
-  case AST_NODE_KIND_ADDRESS_OF:
-  case AST_NODE_KIND_JUMP:
-  case AST_NODE_KIND_NUMBER:
-  case AST_NODE_KIND_LABEL:
-  case AST_NODE_KIND_BUILTIN_ASSERT:
-  case AST_NODE_KIND_ADD:
-  case AST_NODE_KIND_COMPARISON:
-  case AST_NODE_KIND_BRANCH:
-  case AST_NODE_KIND_BLOCK:
-  case AST_NODE_KIND_SYSCALL:
-  case AST_NODE_KIND_BUILTIN_TRAP:
-    return false;
 
   case AST_NODE_KIND_NONE:
   default:
@@ -1041,179 +773,6 @@ static AstNodeIndex ast_stack_pop(AstNodeIndexDyn *stack) {
   AstNodeIndex res = PG_SLICE_LAST(*stack);
   stack->len -= 1;
   return res;
-}
-
-[[nodiscard]]
-static FnDefinitionDyn ast_generate_fn_defs(AstParser *parser,
-                                            PgAllocator *allocator) {
-
-  AstNodeIndexDyn stack = {0};
-  PG_DYN_ENSURE_CAP(&stack, 512, allocator);
-
-  FnDefinitionDyn fn_defs = {0};
-  u32 fn_idx = 0;
-
-  for (u32 i = 0; i < parser->nodes.len; i++) {
-    InstructionIndex ins_idx = {i};
-    AstNode *node = PG_SLICE_AT_PTR(&parser->nodes, i);
-    AstNodeIndex node_idx = {i};
-    bool is_expr = ast_node_is_expr(*node);
-
-    FnDefinition *fn_def =
-        fn_idx < fn_defs.len ? PG_SLICE_AT_PTR(&fn_defs, fn_idx) : nullptr;
-
-    if (is_expr || AST_NODE_KIND_VAR_DEFINITION == node->kind) {
-      node->meta_idx = metadata_make(&fn_def->metadata, allocator);
-      metadata_start_lifetime(fn_def->metadata, node->meta_idx, ins_idx);
-
-      if (ast_node_has_name(*node)) {
-        PG_ASSERT(node->u.s.len);
-        PG_DYN_LAST(fn_def->metadata).identifier = node->u.s;
-      }
-    }
-
-    if (AST_NODE_KIND_ADDRESS_OF == node->kind) {
-    }
-
-    // Specific actions.
-    switch (node->kind) {
-    case AST_NODE_KIND_IDENTIFIER: {
-      // Here the variable name is resolved.
-      // TODO: Scope aware symbol resolution.
-      Metadata *meta = metadata_find_by_identifier(fn_def->metadata, node->u.s);
-      if (!meta) {
-        ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, node->origin,
-                      allocator);
-        PG_DYN_LAST(*parser->errors).src_span = node->u.s;
-      }
-    } break;
-
-    case AST_NODE_KIND_FN_DEFINITION: {
-      if (fn_def) {
-        fn_def->node_end = node_idx;
-      }
-
-      FnDefinition fn_def_new = {.node_start = node_idx};
-      // TODO: Still needed?
-      *PG_DYN_PUSH(&fn_def_new.metadata, allocator) = (Metadata){0}; // Dummy.
-
-      *PG_DYN_PUSH(&fn_defs, allocator) = fn_def_new;
-      fn_idx = (u32)fn_defs.len - 1;
-    } break;
-
-    case AST_NODE_KIND_COMPARISON: {
-      PG_SLICE_AT(fn_def->metadata, node->meta_idx.value)
-          .virtual_register.constraint = VREG_CONSTRAINT_CONDITION_FLAGS;
-    } break;
-
-    case AST_NODE_KIND_SYSCALL: {
-      PG_SLICE_AT(fn_def->metadata, node->meta_idx.value)
-          .virtual_register.constraint = VREG_CONSTRAINT_SYSCALL_RET;
-    } break;
-
-    case AST_NODE_KIND_ADDRESS_OF:
-    case AST_NODE_KIND_NUMBER:
-    case AST_NODE_KIND_ADD:
-    case AST_NODE_KIND_VAR_DEFINITION:
-    case AST_NODE_KIND_LABEL_DEFINITION:
-    case AST_NODE_KIND_LABEL:
-    case AST_NODE_KIND_BRANCH:
-    case AST_NODE_KIND_JUMP:
-    case AST_NODE_KIND_BUILTIN_ASSERT:
-    case AST_NODE_KIND_BLOCK:
-    case AST_NODE_KIND_BUILTIN_TRAP:
-      break;
-
-    case AST_NODE_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-
-    // Stack.
-    {
-      if (AST_NODE_KIND_FN_DEFINITION == node->kind) {
-        stack.len = 0;
-      }
-
-      u32 args_count = ast_node_get_expected_args_count(*node);
-      if (!(stack.len >= args_count)) {
-        ast_add_error(parser, ERROR_KIND_WRONG_ARGS_COUNT, node->origin,
-                      allocator);
-        continue;
-      }
-      for (u32 j = 0; j < args_count; j++) {
-        AstNodeIndex top_idx = ast_stack_pop(&stack);
-        AstNode top = PG_SLICE_AT(parser->nodes, top_idx.value);
-
-        if (is_expr) {
-          PG_ASSERT(ast_node_is_expr(top));
-        }
-
-        if (AST_NODE_KIND_ADDRESS_OF == node->kind) {
-          if (!ast_node_is_kind_addressable(top)) {
-            ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
-                          node->origin, allocator);
-            continue;
-          }
-
-          PG_SLICE_AT(fn_def->metadata, top.meta_idx.value)
-              .virtual_register.addressable = true;
-        }
-
-        if (AST_NODE_KIND_SYSCALL == node->kind) {
-          PG_ASSERT(args_count > 0);
-
-          PG_SLICE_AT(fn_def->metadata, top.meta_idx.value)
-              .virtual_register.constraint =
-              VREG_CONSTRAINT_SYSCALL_NUM + args_count - j - 1;
-        }
-
-        metadata_extend_lifetime_on_use(fn_def->metadata, top, ins_idx);
-      }
-
-      // Stack push.
-      if (is_expr) {
-        ast_stack_push(&stack, node_idx, allocator);
-      }
-      if (!is_expr && stack.len > 0) {
-        ast_add_error(parser, ERROR_KIND_MALFORMED_AST, node->origin,
-                      allocator);
-        PG_ASSERT(0);
-      }
-    }
-  }
-
-  PG_SLICE_AT(fn_defs, fn_idx).node_end.value = (u32)parser->nodes.len;
-
-  return fn_defs;
-}
-
-[[nodiscard]] static PgString ast_fn_name(FnDefinition fn_def,
-                                          AstNodeDyn nodes) {
-  AstNode fn_node = PG_SLICE_AT(nodes, fn_def.node_start.value);
-  return fn_node.u.s;
-}
-
-static void ast_print_fn_def(FnDefinition fn_def, AstNodeDyn nodes) {
-  PgString fn_name = ast_fn_name(fn_def, nodes);
-
-  printf("%.*s:\n", (i32)fn_name.len, fn_name.data);
-
-  for (u32 j = fn_def.node_start.value + 1; j < fn_def.node_end.value; j++) {
-    printf("[%u] ", j);
-    AstNode node = PG_SLICE_AT(nodes, j);
-    ast_print_node(node, fn_def.metadata);
-    printf("\n");
-  }
-
-  printf("\n");
-}
-
-static void ast_print_fn_defs(FnDefinitionDyn fn_defs, AstNodeDyn nodes) {
-  for (u32 i = 0; i < fn_defs.len; i++) {
-    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    ast_print_fn_def(fn_def, nodes);
-  }
 }
 
 static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
