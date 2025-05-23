@@ -27,8 +27,7 @@ typedef struct {
   } u;
   Origin origin;
   MetadataIndex meta_idx;
-  // TODO: Review.
-  VirtualRegister res, lhs, rhs;
+  VirtualRegister lhs, rhs;
 } IrInstruction;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
@@ -99,7 +98,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
       ins.lhs.value = (u32)res.len - 1;
-      ins.res.value = (u32)res.len;
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
@@ -111,7 +109,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       PG_ASSERT(res.len >= 1);
       ins.lhs.value = (u32)res.len - 1;
-      ins.res.value = (u32)res.len;
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
@@ -168,7 +165,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
         ins.kind = IR_INSTRUCTION_KIND_MOV;
         ins.origin = node.origin;
         ins.lhs.value = (u32)idx;
-        ins.res.value = (u32)(res.len);
         *PG_DYN_PUSH(&res, allocator) = ins;
       }
 
@@ -208,35 +204,31 @@ static void ir_print_instructions(IrInstructionDyn instructions) {
       printf("Identifier %.*s", (i32)ins.u.s.len, ins.u.s.data);
       break;
     case IR_INSTRUCTION_KIND_ADD:
-      PG_ASSERT(ins.res.value);
       PG_ASSERT(ins.lhs.value);
       PG_ASSERT(ins.rhs.value);
 
-      printf("Add v%u, v%u, v%u", ins.res.value, ins.lhs.value, ins.rhs.value);
+      printf("Add v%u, v%u, v%u", i, ins.lhs.value, ins.rhs.value);
       break;
     case IR_INSTRUCTION_KIND_COMPARISON:
-      PG_ASSERT(ins.res.value);
       PG_ASSERT(ins.lhs.value);
       PG_ASSERT(ins.rhs.value);
 
-      printf("Cmp v%u, v%u, v%u", ins.res.value, ins.lhs.value, ins.rhs.value);
+      printf("Cmp v%u, v%u, v%u", i, ins.lhs.value, ins.rhs.value);
       break;
 
     case IR_INSTRUCTION_KIND_MOV:
-      PG_ASSERT(ins.res.value);
       PG_ASSERT(ins.lhs.value);
       PG_ASSERT(0 == ins.rhs.value);
 
-      printf("Mov v%u, v%u", ins.res.value, ins.lhs.value);
+      printf("Mov v%u, v%u", i, ins.lhs.value);
       break;
 
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
-      PG_ASSERT(ins.res.value);
       PG_ASSERT(ins.lhs.value);
       PG_ASSERT(0 == ins.rhs.value);
 
       // FIXME: Lhs should be an addr?
-      printf("LoadAddr v%u, v%u", ins.res.value, ins.lhs.value);
+      printf("LoadAddr v%u, v%u", i, ins.lhs.value);
       break;
 
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
@@ -244,11 +236,9 @@ static void ir_print_instructions(IrInstructionDyn instructions) {
       // PG_ASSERT(ins.lhs.value);
       // PG_ASSERT(ins.rhs.value);
 
-      printf("JumpIfFalse v%u, %u, %u", ins.res.value, ins.lhs.value,
-             ins.rhs.value);
+      printf("JumpIfFalse v%u, %u, %u", i, ins.lhs.value, ins.rhs.value);
       break;
     case IR_INSTRUCTION_KIND_JUMP:
-      PG_ASSERT(ins.res.value);
       PG_ASSERT(ins.lhs.value);
       PG_ASSERT(ins.rhs.value);
 
@@ -258,20 +248,17 @@ static void ir_print_instructions(IrInstructionDyn instructions) {
       printf("Syscall");
       break;
     case IR_INSTRUCTION_KIND_FN_DEFINITION:
-      PG_ASSERT(0 == ins.res.value);
       PG_ASSERT(0 == ins.lhs.value);
       PG_ASSERT(0 == ins.rhs.value);
 
       printf("FnDef %.*s", (i32)ins.u.s.len, ins.u.s.data);
       break;
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
-      PG_ASSERT(0 == ins.res.value);
       PG_ASSERT(0 == ins.lhs.value);
       PG_ASSERT(0 == ins.rhs.value);
       printf("Label %.*s", (i32)ins.u.label.value.len, ins.u.label.value.data);
       break;
     case IR_INSTRUCTION_KIND_TRAP:
-      PG_ASSERT(0 == ins.res.value);
       PG_ASSERT(0 == ins.lhs.value);
       PG_ASSERT(0 == ins.rhs.value);
       printf("Trap");
