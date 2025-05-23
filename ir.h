@@ -17,8 +17,11 @@ typedef enum : u8 {
   IR_INSTRUCTION_KIND_TRAP,
 } IrInstructionKind;
 
+#define IR_FLAG_GLOBAL (1 << 0)
+
 typedef struct {
   IrInstructionKind kind;
+  u16 flags;
   union {
     u64 n64;        // Number literal.
     PgString s;     // Variable name.
@@ -102,17 +105,18 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     } break;
 
     case AST_NODE_KIND_ADDRESS_OF: {
-      PG_ASSERT(res.len > 0);
+      PG_ASSERT(res.len >= 1);
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
       ins.origin = node.origin;
-      PG_ASSERT(res.len >= 1);
       ins.lhs.value = (u32)res.len - 1;
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
     case AST_NODE_KIND_BRANCH: {
+      PG_ASSERT(res.len >= 1);
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
       ins.origin = node.origin;
@@ -148,7 +152,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_FN_DEFINITION;
       ins.origin = node.origin;
       ins.u.s = node.u.s;
-      // TODO: Flags.
+
+      if (node.flags & AST_NODE_FLAG_GLOBAL) {
+        ins.flags = IR_FLAG_GLOBAL;
+      }
+
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
@@ -173,8 +181,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
 
       *PG_DYN_PUSH(&res, allocator) = ins;
-
-      // FIXME
     } break;
 
     case AST_NODE_KIND_BUILTIN_ASSERT:
