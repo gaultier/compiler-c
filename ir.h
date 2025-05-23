@@ -19,6 +19,21 @@ typedef enum : u8 {
 
 #define IR_FLAG_GLOBAL (1 << 0)
 
+typedef enum {
+  IR_OPERAND_KIND_NONE,
+  IR_OPERAND_KIND_LABEL,
+  IR_OPERAND_KIND_VREG,
+} IrOperandKind;
+
+typedef struct {
+  IrOperandKind kind;
+
+  union {
+    Label label;
+    VirtualRegister vreg;
+  } u;
+} IrOperand;
+
 typedef struct {
   IrInstructionKind kind;
   u16 flags;
@@ -26,11 +41,10 @@ typedef struct {
     u64 n64;        // Number literal.
     PgString s;     // Variable name.
     u32 args_count; // Function, syscall, etc.
-    Label label;
   } u;
   Origin origin;
   MetadataIndex meta_idx;
-  VirtualRegister lhs, rhs;
+  IrOperand lhs, rhs;
 } IrInstruction;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
@@ -39,15 +53,16 @@ typedef struct {
 } IrEmitter;
 
 [[nodiscard]]
-static IrInstruction ir_node_number(u64 n) {
+static IrInstruction ir_instruction_const(u64 n) {
   IrInstruction res = {.kind = IR_INSTRUCTION_KIND_NUMBER, .u.n64 = n};
   return res;
 }
 
-[[nodiscard]] static Label ir_make_synth_label(u32 *label_current,
-                                               PgAllocator *allocator) {
-  Label res = {0};
-  res.value = pg_u64_to_string(++(*label_current), allocator);
+[[nodiscard]] static IrOperand ir_make_synth_label(u32 *label_current,
+                                                   PgAllocator *allocator) {
+  IrOperand res = {0};
+  res.kind = IR_OPERAND_KIND_LABEL;
+  res.u.label.value = pg_u64_to_string(++(*label_current), allocator);
   return res;
 }
 
@@ -86,8 +101,14 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_ADD;
       ins.origin = node.origin;
       PG_ASSERT(res.len >= 2);
-      ins.lhs.value = (u32)res.len - 2;
-      ins.rhs.value = (u32)res.len - 1;
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 2,
+      };
+      ins.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 1,
+      };
 
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
@@ -97,8 +118,14 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
       ins.origin = node.origin;
       PG_ASSERT(res.len >= 2);
-      ins.lhs.value = (u32)res.len - 2;
-      ins.rhs.value = (u32)res.len - 1;
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 2,
+      };
+      ins.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 1,
+      };
 
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
@@ -113,7 +140,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
-      ins.lhs.value = (u32)res.len - 1;
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 1,
+      };
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
@@ -123,7 +153,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
       ins.origin = node.origin;
-      ins.lhs.value = (u32)res.len - 1;
+      ins.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 1,
+      };
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
 
@@ -145,7 +178,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_JUMP;
       ins.origin = node.origin;
-      ins.u.label = op.u.label;
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_LABEL,
+          .u.label = op.u.label,
+      };
       *PG_DYN_PUSH(&res, allocator) = ins;
 
     } break;
@@ -179,19 +215,25 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       for (u64 j = 0; j < node.u.args_count; j++) {
         u64 idx = i - node.u.args_count + j;
+        PG_ASSERT(idx <= UINT32_MAX);
+
         AstNode op = PG_SLICE_AT(nodes, idx);
         PG_ASSERT(ast_node_is_expr(op));
 
         IrInstruction ins = {0};
         ins.kind = IR_INSTRUCTION_KIND_MOV;
         ins.origin = node.origin;
-        ins.lhs.value = (u32)idx;
+        ins.lhs = (IrOperand){
+            .kind = IR_OPERAND_KIND_VREG,
+            .u.vreg.value = (u32)idx,
+        };
         *PG_DYN_PUSH(&res, allocator) = ins;
       }
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
       ins.origin = node.origin;
+      ins.u.args_count = node.u.args_count;
 
       *PG_DYN_PUSH(&res, allocator) = ins;
     } break;
@@ -200,15 +242,38 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
       ins.origin = node.origin;
-      ins.u.label = ir_make_synth_label(&emitter->label_id, allocator);
+      ins.lhs = ir_make_synth_label(&emitter->label_id, allocator);
 
       *PG_DYN_PUSH(&res, allocator) = ins;
 
     } break;
 
-    case AST_NODE_KIND_BUILTIN_ASSERT:
-      PG_ASSERT(0 && "todo");
-      break;
+    case AST_NODE_KIND_BUILTIN_ASSERT: {
+      PG_ASSERT(res.len >= 1);
+
+      IrInstruction ins_0 = ir_instruction_const(0);
+      *PG_DYN_PUSH(&res, allocator) = ins_0;
+
+      IrInstruction ins_cmp = {0};
+      ins_cmp.kind = IR_INSTRUCTION_KIND_COMPARISON;
+      ins_cmp.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 2,
+      };
+      ins_cmp.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 1,
+      };
+      *PG_DYN_PUSH(&res, allocator) = ins_cmp;
+
+      IrInstruction ins_jmp = {0};
+      ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
+      ins_jmp.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg.value = (u32)res.len - 1,
+      };
+      *PG_DYN_PUSH(&res, allocator) = ins_cmp;
+    } break;
 
     case AST_NODE_KIND_NONE:
     default:
@@ -219,6 +284,24 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   return res;
 }
 
+static void ir_print_operand(IrOperand operand) {
+  switch (operand.kind) {
+  case IR_OPERAND_KIND_LABEL:
+    PG_ASSERT(operand.u.label.value.len);
+    printf("%.*s", (i32)operand.u.label.value.len, operand.u.label.value.data);
+    break;
+
+  case IR_OPERAND_KIND_VREG:
+    PG_ASSERT(operand.u.vreg.value);
+    printf("v%u", operand.u.vreg.value);
+    break;
+
+  case IR_OPERAND_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
 static void ir_print_instructions(IrInstructionDyn instructions) {
   for (u32 i = 0; i < instructions.len; i++) {
     printf("[%u] ", i);
@@ -226,69 +309,85 @@ static void ir_print_instructions(IrInstructionDyn instructions) {
 
     switch (ins.kind) {
     case IR_INSTRUCTION_KIND_NUMBER:
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
+
       printf("Num %lu", ins.u.n64);
       break;
+
     case IR_INSTRUCTION_KIND_IDENTIFIER:
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
+
       printf("Identifier %.*s", (i32)ins.u.s.len, ins.u.s.data);
       break;
+
     case IR_INSTRUCTION_KIND_ADD:
-      PG_ASSERT(ins.lhs.value);
-      PG_ASSERT(ins.rhs.value);
-
-      printf("Add v%u, v%u, v%u", i, ins.lhs.value, ins.rhs.value);
+      printf("Add v%u, ", i);
+      ir_print_operand(ins.lhs);
+      printf(", ");
+      ir_print_operand(ins.rhs);
       break;
-    case IR_INSTRUCTION_KIND_COMPARISON:
-      PG_ASSERT(ins.lhs.value);
-      PG_ASSERT(ins.rhs.value);
 
-      printf("Cmp v%u, v%u, v%u", i, ins.lhs.value, ins.rhs.value);
+    case IR_INSTRUCTION_KIND_COMPARISON:
+      printf("Cmp v%u, ", i);
+      ir_print_operand(ins.lhs);
+      printf(", ");
+      ir_print_operand(ins.rhs);
       break;
 
     case IR_INSTRUCTION_KIND_MOV:
-      PG_ASSERT(ins.lhs.value);
-      PG_ASSERT(0 == ins.rhs.value);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      printf("Mov v%u, v%u", i, ins.lhs.value);
+      printf("Mov v%u, ", i);
+      ir_print_operand(ins.lhs);
       break;
 
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
-      PG_ASSERT(ins.lhs.value);
-      PG_ASSERT(0 == ins.rhs.value);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      // FIXME: Lhs should be an addr?
-      printf("LoadAddr v%u, v%u", i, ins.lhs.value);
+      printf("LoadAddr v%u, ", i);
+      ir_print_operand(ins.lhs);
       break;
 
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
-      // PG_ASSERT(ins.res.value);
-      // PG_ASSERT(ins.lhs.value);
-      // PG_ASSERT(ins.rhs.value);
-
-      printf("JumpIfFalse v%u, %u, %u", i, ins.lhs.value, ins.rhs.value);
+      printf("JumpIfFalse v%u, ", i);
+      ir_print_operand(ins.lhs);
+      printf(", ");
+      ir_print_operand(ins.rhs);
       break;
+
     case IR_INSTRUCTION_KIND_JUMP:
-      PG_ASSERT(ins.lhs.value);
-      PG_ASSERT(ins.rhs.value);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      printf("Jump %.*s", (i32)ins.u.label.value.len, ins.u.label.value.data);
+      printf("Jump ");
+      ir_print_operand(ins.lhs);
       break;
+
     case IR_INSTRUCTION_KIND_SYSCALL:
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
+      PG_ASSERT(ins.u.args_count > 0);
+      PG_ASSERT(ins.u.args_count <= max_syscall_args_count);
+
       printf("Syscall");
       break;
+
     case IR_INSTRUCTION_KIND_FN_DEFINITION:
-      PG_ASSERT(0 == ins.lhs.value);
-      PG_ASSERT(0 == ins.rhs.value);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
       printf("FnDef %.*s", (i32)ins.u.s.len, ins.u.s.data);
       break;
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
-      PG_ASSERT(0 == ins.lhs.value);
-      PG_ASSERT(0 == ins.rhs.value);
-      printf("Label %.*s", (i32)ins.u.label.value.len, ins.u.label.value.data);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
+
+      printf("Label ");
       break;
     case IR_INSTRUCTION_KIND_TRAP:
-      PG_ASSERT(0 == ins.lhs.value);
-      PG_ASSERT(0 == ins.rhs.value);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
+
       printf("Trap");
       break;
 
