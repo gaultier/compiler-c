@@ -708,33 +708,6 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   }
 }
 
-[[nodiscard]] static bool ast_node_is_kind_addressable(AstNode node) {
-  switch (node.kind) {
-  case AST_NODE_KIND_IDENTIFIER:
-  case AST_NODE_KIND_ADDRESS_OF:
-    return true;
-
-  case AST_NODE_KIND_FN_DEFINITION:
-  case AST_NODE_KIND_VAR_DEFINITION:
-  case AST_NODE_KIND_LABEL_DEFINITION:
-  case AST_NODE_KIND_BUILTIN_TRAP:
-  case AST_NODE_KIND_JUMP:
-  case AST_NODE_KIND_NUMBER:
-  case AST_NODE_KIND_LABEL:
-  case AST_NODE_KIND_BUILTIN_ASSERT:
-  case AST_NODE_KIND_ADD:
-  case AST_NODE_KIND_COMPARISON:
-  case AST_NODE_KIND_BRANCH:
-  case AST_NODE_KIND_BLOCK:
-  case AST_NODE_KIND_SYSCALL:
-    return false;
-
-  case AST_NODE_KIND_NONE:
-  default:
-    PG_ASSERT(0);
-  }
-}
-
 [[nodiscard]] static bool ast_node_is_expr(AstNode node) {
   switch (node.kind) {
   case AST_NODE_KIND_IDENTIFIER:
@@ -760,19 +733,6 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   default:
     PG_ASSERT(0);
   }
-}
-
-static void ast_stack_push(AstNodeIndexDyn *stack, AstNodeIndex node_idx,
-                           PgAllocator *allocator) {
-  *PG_DYN_PUSH(stack, allocator) = node_idx;
-}
-
-[[nodiscard]]
-static AstNodeIndex ast_stack_pop(AstNodeIndexDyn *stack) {
-  PG_ASSERT(stack->len);
-  AstNodeIndex res = PG_SLICE_LAST(*stack);
-  stack->len -= 1;
-  return res;
 }
 
 static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,

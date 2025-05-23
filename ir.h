@@ -141,7 +141,7 @@ PG_DYN(FnDefinition) FnDefinitionDyn;
   return (MetadataIndex){(u32)metadata.len - 1};
 }
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static MetadataIndex metadata_make(MetadataDyn *metadata,
                                    PgAllocator *allocator) {
   Metadata res = {0};
@@ -152,6 +152,7 @@ static MetadataIndex metadata_make(MetadataDyn *metadata,
   return metadata_last_idx(*metadata);
 }
 
+[[maybe_unused]]
 static void metadata_start_lifetime(MetadataDyn metadata,
                                     MetadataIndex meta_idx,
                                     InstructionIndex ins_idx) {
@@ -174,6 +175,7 @@ static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
   return nullptr;
 }
 
+[[maybe_unused]]
 static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
                                             IrInstruction ins,
                                             InstructionIndex ins_idx) {
@@ -186,7 +188,8 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
   // TODO: Dataflow.
 
   if (IR_INSTRUCTION_KIND_IDENTIFIER == ins.kind) {
-    Metadata *meta = metadata_find_by_identifier(metadata, ins.u.s);
+    PgString s = PG_S("FIXME");
+    Metadata *meta = metadata_find_by_identifier(metadata, s);
     PG_ASSERT(meta);
     meta->lifetime_end = ins_idx;
   }
@@ -391,6 +394,7 @@ static void print_var(Metadata meta) {
   }
 }
 
+[[maybe_unused]]
 static void metadata_print_meta(Metadata meta) {
 #if 0
   if (meta.tombstone) {
@@ -699,23 +703,30 @@ static FnDefinitionDyn ir_generate_fn_defs(IrInstructionDyn instructions,
                                            PgAllocator *allocator) {
 
   FnDefinitionDyn fn_defs = {0};
-  u32 fn_idx = 0;
   FnDefinition fn_def = {0};
   fn_def.instructions = instructions;
 
   for (u32 i = 0; i < instructions.len; i++) {
     IrInstruction *ins = PG_SLICE_AT_PTR(&instructions, i);
-    InstructionIndex ins_idx = {i};
 
     switch (ins->kind) {
+    case IR_INSTRUCTION_KIND_MOV:
+    case IR_INSTRUCTION_KIND_ADD:
+    case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
+      PG_ASSERT(0);
+
     case IR_INSTRUCTION_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
       // TODO: Scope aware symbol resolution.
       PgString name = PG_S("FIXME");
       Metadata *meta = metadata_find_by_identifier(fn_def.metadata, name);
       if (!meta) {
+        PG_ASSERT(0);
+#if 0
         ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, ins->origin, allocator);
         PG_DYN_LAST(*parser->errors).src_span = node->u.s;
+#endif
       }
     } break;
 
@@ -733,7 +744,6 @@ static FnDefinitionDyn ir_generate_fn_defs(IrInstructionDyn instructions,
       *PG_DYN_PUSH(&fn_def_new.metadata, allocator) = (Metadata){0}; // Dummy.
 
       *PG_DYN_PUSH(&fn_defs, allocator) = fn_def_new;
-      fn_idx = (u32)fn_defs.len - 1;
     } break;
 
     case IR_INSTRUCTION_KIND_COMPARISON: {

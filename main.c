@@ -119,13 +119,10 @@ int main(int argc, char *argv[]) {
     ir_print_instructions(ir_instructions);
   }
 
-  IrInstructionSlice ir_instructions_slice =
-      PG_DYN_SLICE(IrInstructionSlice, ir_instructions);
-  FnDefinitionDyn fn_defs =
-      ir_generate_fn_defs(ir_instructions_slice, allocator);
+  FnDefinitionDyn fn_defs = ir_generate_fn_defs(ir_instructions, allocator);
   if (cli_opts.verbose) {
-    printf("\n------------ AST with metadata ------------\n");
-    ast_print_fn_defs(fn_defs, nodes_input);
+    printf("\n------------ FnDefs ------------\n");
+    ir_print_fn_defs(fn_defs);
   }
 
 #if 0
