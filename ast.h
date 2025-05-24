@@ -523,18 +523,25 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
   }
 
   Label branch_else_label = ast_next_label_name(parser, allocator);
-  Label branch_if_cont_label = ast_next_label_name(parser, allocator);
+  Label branch_if_then_label = ast_next_label_name(parser, allocator);
 
   {
+    AstNode jump_if_then_label = {0};
+    jump_if_then_label.kind = AST_NODE_KIND_LABEL;
+    jump_if_then_label.origin = ast_current_or_last_token(*parser).origin;
+    jump_if_then_label.u.label = branch_if_then_label;
+    ast_push(parser, jump_if_then_label, allocator);
+
     AstNode jump_else_label = {0};
     jump_else_label.kind = AST_NODE_KIND_LABEL;
+    jump_else_label.origin = ast_current_or_last_token(*parser).origin;
     jump_else_label.u.label = branch_else_label;
     ast_push(parser, jump_else_label, allocator);
 
-    AstNode jump_if_false = {0};
-    jump_if_false.kind = AST_NODE_KIND_BRANCH;
-    jump_if_false.u.label = branch_else_label;
-    ast_push(parser, jump_if_false, allocator);
+    AstNode branch = {0};
+    branch.kind = AST_NODE_KIND_BRANCH;
+    branch.origin = token_first.origin;
+    ast_push(parser, branch, allocator);
   }
 
   if (!ast_parse_block(parser, allocator)) {
@@ -546,12 +553,12 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
   {
     AstNode jump_if_cont_label = {0};
     jump_if_cont_label.kind = AST_NODE_KIND_LABEL;
-    jump_if_cont_label.u.label = branch_if_cont_label;
+    jump_if_cont_label.u.label = branch_if_then_label;
     ast_push(parser, jump_if_cont_label, allocator);
 
     AstNode jump = {0};
     jump.kind = AST_NODE_KIND_JUMP;
-    jump.u.label = branch_if_cont_label;
+    jump.u.label = branch_if_then_label;
     ast_push(parser, jump, allocator);
   }
 
@@ -564,7 +571,7 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
 
   AstNode jump_if_cont_label_def = {0};
   jump_if_cont_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
-  jump_if_cont_label_def.u.label = branch_if_cont_label;
+  jump_if_cont_label_def.u.label = branch_if_then_label;
   ast_push(parser, jump_if_cont_label_def, allocator);
 
   return true;
@@ -699,8 +706,10 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
 
   case AST_NODE_KIND_ADD:
   case AST_NODE_KIND_COMPARISON:
-  case AST_NODE_KIND_BRANCH:
     return 2;
+
+  case AST_NODE_KIND_BRANCH:
+    return 3;
 
   case AST_NODE_KIND_BLOCK:
   case AST_NODE_KIND_SYSCALL:
