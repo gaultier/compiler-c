@@ -475,6 +475,8 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
       if (ins.meta_idx.value) {
         PG_SLICE_AT_PTR(&fn_def.metadata, ins.meta_idx.value)->lifetime_start =
             ins_idx;
+        PG_SLICE_AT_PTR(&fn_def.metadata, ins.meta_idx.value)->lifetime_end =
+            ins_idx;
       }
       metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins.lhs,
                                               ins_idx);
@@ -492,8 +494,11 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
     default:
       PG_ASSERT(0);
     }
+  }
 
-    // Sanity check.
+  // Sanity check.
+  for (u32 i = 0; i < fn_def.instructions.len; i++) {
+    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
     InstructionIndex start =
         PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value).lifetime_start;
     InstructionIndex end =
