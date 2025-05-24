@@ -6,7 +6,7 @@ typedef enum : u8 {
   IR_INSTRUCTION_KIND_ADD,
   IR_INSTRUCTION_KIND_MOV,
   IR_INSTRUCTION_KIND_LOAD_ADDRESS,
-  IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
+  IR_INSTRUCTION_KIND_JUMP_IF_TRUE,
   IR_INSTRUCTION_KIND_JUMP,
   IR_INSTRUCTION_KIND_COMPARISON,
   IR_INSTRUCTION_KIND_SYSCALL,
@@ -384,11 +384,11 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       ir_print_operand(ins.rhs, metadata);
     } break;
 
-    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
+    case IR_INSTRUCTION_KIND_JUMP_IF_TRUE: {
       PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 
-      printf("JumpIfFalse " /*, ins.extra_data */);
+      printf("JumpIfTrue ");
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
       ir_print_operand(ins.rhs, metadata);
@@ -473,7 +473,7 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
     case IR_INSTRUCTION_KIND_ADD:
     case IR_INSTRUCTION_KIND_MOV:
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
-    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
+    case IR_INSTRUCTION_KIND_JUMP_IF_TRUE:
     case IR_INSTRUCTION_KIND_COMPARISON:
     case IR_INSTRUCTION_KIND_SYSCALL: {
       if (ins.meta_idx.value) {
@@ -687,7 +687,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(fn_def.instructions.len >= 1);
 
       IrInstruction ins = {0};
-      ins.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
+      ins.kind = IR_INSTRUCTION_KIND_JUMP_IF_TRUE;
       ins.origin = node.origin;
       PG_ASSERT(0 && "todo");
     } break;
@@ -784,13 +784,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
 
-      IrOperand if_then_target =
-          ir_make_synth_label(&emitter->label_id, allocator);
       IrOperand if_end_target =
           ir_make_synth_label(&emitter->label_id, allocator);
 
       IrInstruction ins_jmp = {0};
-      ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
+      ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_TRUE;
       ins_jmp.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = cond_meta_idx,
@@ -798,11 +796,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       // TODO: rflags constraint?
       ins_jmp.rhs = if_end_target;
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp;
-
-      IrInstruction ins_if_then_label = {0};
-      ins_if_then_label.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
-      ins_if_then_label.lhs = if_then_target;
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_if_then_label;
 
       IrInstruction ins_trap = {0};
       ins_trap.kind = IR_INSTRUCTION_KIND_TRAP;

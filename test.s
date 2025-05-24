@@ -3,4 +3,16 @@
 
 .globl _start
 _start:
-cmp rax, 2
+mov rax, 1
+cmp rax, 0
+jz .die
+
+.exit:
+mov rax, 60
+mov rdi, 0
+syscall
+
+.die:
+mov rax, 60
+mov rdi, 1
+syscall

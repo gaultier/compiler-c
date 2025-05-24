@@ -171,6 +171,7 @@ typedef enum {
   AMD64_INSTRUCTION_KIND_CMP,
   AMD64_INSTRUCTION_KIND_JMP,
   AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
+  AMD64_INSTRUCTION_KIND_JMP_IF_ZERO,
   AMD64_INSTRUCTION_KIND_SET_IF_EQ,
   AMD64_INSTRUCTION_KIND_UD2,
 } Amd64InstructionKind;
@@ -340,6 +341,12 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
 
       printf("je ");
+      break;
+    case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
+      PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
+      PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
+
+      printf("jz ");
       break;
     case AMD64_INSTRUCTION_KIND_JMP:
       printf("jmp ");
@@ -1601,7 +1608,7 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, ins_label_def, allocator);
     } break;
 
-    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
+    case IR_INSTRUCTION_KIND_JUMP_IF_TRUE: {
       PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 
