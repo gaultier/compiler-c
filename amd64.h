@@ -1517,11 +1517,29 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, ins_ud2, allocator);
     } break;
 
+    case IR_INSTRUCTION_KIND_JUMP: {
+      PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.lhs.kind);
+
+      Amd64Instruction ins_jmp = {
+          .kind = AMD64_INSTRUCTION_KIND_JMP,
+          .origin = ins.origin,
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
+                                                           fn_def.metadata),
+      };
+      amd64_add_instruction(&section->instructions, ins_jmp, allocator);
+    } break;
+
+    case IR_INSTRUCTION_KIND_SYSCALL: {
+      Amd64Instruction ins_sys = {
+          .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
+          .origin = ins.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_sys, allocator);
+    } break;
+
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
-    case IR_INSTRUCTION_KIND_JUMP:
     case IR_INSTRUCTION_KIND_COMPARISON:
-    case IR_INSTRUCTION_KIND_SYSCALL:
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
       break;
     case IR_INSTRUCTION_KIND_NONE:
