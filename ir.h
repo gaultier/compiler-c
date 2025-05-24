@@ -738,11 +738,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     } break;
 
     case AST_NODE_KIND_SYSCALL: {
-      PG_ASSERT(node.u.args_count > 0);
-      PG_ASSERT(node.u.args_count <= max_syscall_args_count);
+      PG_ASSERT(node.u.stack_args_count > 0);
+      PG_ASSERT(node.u.stack_args_count <= max_syscall_args_count);
 
       // TODO: Set constraint on args vregs.
-      for (i64 j = node.u.args_count - 1; j >= 0; j--) {
+      for (i64 j = node.u.stack_args_count - 1; j >= 0; j--) {
         MetadataIndex arg_meta_idx = PG_DYN_POP(&stack);
         PG_SLICE_AT_PTR(&fn_def.metadata, arg_meta_idx.value)
             ->virtual_register.constraint =
@@ -751,7 +751,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
-      ins.args_count = (u8)node.u.args_count;
+      ins.args_count = (u8)node.u.stack_args_count;
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->virtual_register.constraint =

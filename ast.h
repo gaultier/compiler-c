@@ -38,9 +38,9 @@ typedef struct {
 typedef struct {
   Origin origin;
   union {
-    u64 n64;        // Number literal.
-    PgString s;     // Variable name.
-    u32 args_count; // Function, syscall, etc.
+    u64 n64;              // Number literal.
+    PgString s;           // Variable name.
+    u32 stack_args_count; // Function, syscall, etc.
     Label label;
   } u;
   LexTokenKind token_kind;
@@ -143,9 +143,9 @@ static void ast_print_node(AstNode node) {
     printf("Comparison");
     break;
   case AST_NODE_KIND_SYSCALL: {
-    PG_ASSERT(node.u.args_count > 0);
-    PG_ASSERT(node.u.args_count <= max_syscall_args_count);
-    printf("Syscall(%u)", node.u.args_count);
+    PG_ASSERT(node.u.stack_args_count > 0);
+    PG_ASSERT(node.u.stack_args_count <= max_syscall_args_count);
+    printf("Syscall(%u)", node.u.stack_args_count);
   } break;
   case AST_NODE_KIND_BLOCK: {
     printf("Block");
@@ -472,7 +472,7 @@ static bool ast_parse_syscall(AstParser *parser, PgAllocator *allocator) {
   AstNode node = {0};
   node.origin = token_first.origin;
   node.kind = AST_NODE_KIND_SYSCALL;
-  node.u.args_count = args_count;
+  node.u.stack_args_count = args_count;
   ast_push(parser, node, allocator);
 
   return true;
@@ -494,7 +494,7 @@ static bool ast_parse_block(AstParser *parser, PgAllocator *allocator) {
       AstNode node = {0};
       node.origin = token_first.origin;
       node.kind = AST_NODE_KIND_BLOCK;
-      node.u.args_count = args_count;
+      node.u.stack_args_count = args_count;
       return true;
     }
 
@@ -662,7 +662,7 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
 
     AstNode syscall = {0};
     syscall.kind = AST_NODE_KIND_SYSCALL;
-    syscall.u.args_count = 2;
+    syscall.u.stack_args_count = 2;
     ast_push(parser, syscall, allocator);
   }
 }
@@ -688,7 +688,7 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_emit_program_epilog(parser, allocator);
 }
 
-[[nodiscard]] static u32 ast_node_get_expected_args_count(AstNode node) {
+[[nodiscard]] static u32 ast_node_get_stack_args_count(AstNode node) {
   switch (node.kind) {
   case AST_NODE_KIND_NUMBER:
   case AST_NODE_KIND_IDENTIFIER:
@@ -702,18 +702,16 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   case AST_NODE_KIND_VAR_DEFINITION:
   case AST_NODE_KIND_JUMP:
   case AST_NODE_KIND_BUILTIN_ASSERT:
+  case AST_NODE_KIND_BRANCH:
     return 1;
 
   case AST_NODE_KIND_ADD:
   case AST_NODE_KIND_COMPARISON:
     return 2;
 
-  case AST_NODE_KIND_BRANCH:
-    return 3;
-
   case AST_NODE_KIND_BLOCK:
   case AST_NODE_KIND_SYSCALL:
-    return node.u.args_count;
+    return node.u.stack_args_count;
 
   case AST_NODE_KIND_NONE:
   default:
@@ -764,11 +762,11 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
         stack.len = 0;
       }
 
-      u32 args_count = ast_node_get_expected_args_count(node);
-      PG_ASSERT(stack.len >= args_count);
+      u32 stack_args_count = ast_node_get_stack_args_count(node);
+      PG_ASSERT(stack.len >= stack_args_count);
 
       if (AST_NODE_KIND_ADD == node.kind) {
-        PG_ASSERT(2 == args_count);
+        PG_ASSERT(2 == stack_args_count);
         AstNodeDyn stack_tmp = stack;
         AstNode rhs = PG_DYN_POP(&stack_tmp);
         AstNode lhs = PG_DYN_POP(&stack_tmp);
@@ -791,7 +789,7 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
       }
 
       if (AST_NODE_KIND_COMPARISON == node.kind) {
-        PG_ASSERT(2 == args_count);
+        PG_ASSERT(2 == stack_args_count);
         AstNodeDyn stack_tmp = stack;
         AstNode rhs = PG_DYN_POP(&stack_tmp);
         AstNode lhs = PG_DYN_POP(&stack_tmp);
@@ -813,7 +811,7 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
         }
       }
 
-      for (u32 j = 0; j < args_count; j++) {
+      for (u32 j = 0; j < stack_args_count; j++) {
         AstNode top = PG_DYN_POP(&stack);
 
         if (is_expr) {
@@ -824,7 +822,6 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
       if (is_expr) {
         *PG_DYN_PUSH(&stack, allocator) = node;
       }
-      PG_ASSERT(is_expr || stack.len == 0);
     }
     *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
