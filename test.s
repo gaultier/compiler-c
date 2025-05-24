@@ -3,9 +3,11 @@
 
 .globl _start
 _start:
-mov rax, 1
+mov rax, 0
 cmp rax, 0
-je .die
+jnz .next
+ud2
+.next:
 
 .exit:
 mov rax, 60
