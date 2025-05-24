@@ -886,6 +886,29 @@ static void amd64_encode_instruction_je(Pgu8Dyn *sb,
   pg_byte_buffer_append_u32(sb, 0, allocator);
 }
 
+static void amd64_encode_instruction_jz(Pgu8Dyn *sb,
+                                        Amd64Instruction instruction,
+                                        AsmProgram *program,
+                                        PgAllocator *allocator) {
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_JMP_IF_EQ == instruction.kind);
+  PG_ASSERT(AMD64_OPERAND_KIND_LABEL == instruction.lhs.kind);
+  PG_ASSERT(instruction.lhs.u.label.value.len);
+
+  u8 opcode1 = 0x0f;
+  *PG_DYN_PUSH(sb, allocator) = opcode1;
+
+  u8 opcode2 = 0x84;
+  *PG_DYN_PUSH(sb, allocator) = opcode2;
+
+  *PG_DYN_PUSH(&program->jumps_to_backpatch, allocator) = (LabelAddress){
+      .label = instruction.lhs.u.label,
+      .code_address = sb->len,
+  };
+
+  // Backpatched with `program.label_addresses`.
+  pg_byte_buffer_append_u32(sb, 0, allocator);
+}
+
 static void amd64_encode_instruction_jmp(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          AsmProgram *program,
@@ -1066,6 +1089,10 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
 
   case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
     amd64_encode_instruction_je(sb, instruction, &asm_emitter->program,
+                                allocator);
+    break;
+  case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
+    amd64_encode_instruction_jz(sb, instruction, &asm_emitter->program,
                                 allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP:

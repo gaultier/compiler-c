@@ -5,7 +5,7 @@
 _start:
 mov rax, 1
 cmp rax, 0
-jz .die
+je .die
 
 .exit:
 mov rax, 60
