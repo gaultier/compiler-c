@@ -1,11 +1,10 @@
 #if 0
 #include "amd64.h"
-#include "asm.h"
 #include "elf.h"
 #include "type_check.h"
 #endif
+#include "asm.h"
 #include "ir.h"
-#include "register_alloc.h"
 
 typedef struct {
   bool verbose;
@@ -128,11 +127,13 @@ int main(int argc, char *argv[]) {
     goto err;
   }
 
+  AsmEmitter *asm_emitter = nullptr;
 #if 0
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
   AsmEmitter *asm_emitter =
       amd64_make_asm_emitter(nodes_input, exe_path, allocator);
+#endif
   asm_emit(asm_emitter, fn_defs, cli_opts.verbose, allocator);
 
   if (cli_opts.verbose) {
@@ -142,6 +143,7 @@ int main(int argc, char *argv[]) {
     asm_emitter->print_program(*asm_emitter);
   }
 
+#if 0
   PgError err_write = elf_write_exe(asm_emitter, allocator);
   if (err_write) {
     fprintf(stderr, "failed to write to file %.*s: %u\n",

@@ -1,5 +1,4 @@
 #pragma once
-#include "ast.h"
 #include "register_alloc.h"
 
 typedef struct {
@@ -22,7 +21,7 @@ typedef struct {
 
 typedef struct {
   PgString name;
-  AstNodeFlag flags;
+  u16 flags;
   PgAnyDyn instructions;
 } AsmCodeSection;
 PG_DYN(AsmCodeSection) AsmCodeSectionDyn;
@@ -346,11 +345,10 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
       pg_adjacency_matrix_clone(fn_def->interference_graph, allocator);
 
   if (verbose) {
-    PgString fn_name = ast_fn_name(*fn_def, emitter->nodes);
     printf("\n------------ Adjacency matrix of interference graph before "
            "pre-coloring %.*s"
            "------------\n\n",
-           (i32)fn_name.len, fn_name.data);
+           (i32)fn_def->name.len, fn_def->name.data);
     pg_adjacency_matrix_print(fn_def->interference_graph);
   }
   GprSet gprs_precolored = {
@@ -360,11 +358,10 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
   asm_color_do_precoloring(emitter, fn_def, node_tombstones_bitfield,
                            &gprs_precolored, verbose);
   if (verbose) {
-    PgString fn_name = ast_fn_name(*fn_def, emitter->nodes);
     printf("\n------------ Adjacency matrix of interference graph after "
            "pre-coloring %.*s"
            "------------\n\n",
-           (i32)fn_name.len, fn_name.data);
+           (i32)fn_def->name.len, fn_def->name.data);
     for (u64 i = 0; i < fn_def->interference_graph.nodes_count; i++) {
       bool removed = pg_bitfield_get(node_tombstones_bitfield, i);
       printf("%s%lu%s ", removed ? "\x1B[9m" : "", i, removed ? "\x1B[0m" : "");
@@ -508,20 +505,19 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
 
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    AstNode fn_node = PG_SLICE_AT(asm_emitter->nodes, fn_def.node_start.value);
 
     fn_def.interference_graph =
         reg_build_interference_graph(fn_def.metadata, allocator);
     if (verbose) {
       printf("\n------------ Interference graph %.*s ------------\n",
-             (i32)fn_node.u.s.len, fn_node.u.s.data);
+             (i32)fn_def.name.len, fn_def.name.data);
       reg_print_interference_graph(fn_def.interference_graph, fn_def.metadata);
     }
 
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, false);
     asm_color_interference_graph(asm_emitter, &fn_def, verbose, allocator);
-    ast_print_fn_def(fn_def, asm_emitter->nodes);
+    ir_print_fn_def(fn_def);
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, true);
 
