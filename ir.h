@@ -47,6 +47,7 @@ PG_DYN(VirtualRegister) VirtualRegisterDyn;
 typedef struct {
   u32 value;
 } MetadataIndex;
+PG_DYN(MetadataIndex) MetadataIndexDyn;
 
 typedef struct {
   IrOperandKind kind;
@@ -404,7 +405,8 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       // PG_ASSERT(ins.extra_data > 0);
       // PG_ASSERT(ins.extra_data <= max_syscall_args_count);
 
-      printf("Syscall");
+      printf("Syscall ");
+      // TODO: args.
     } break;
 
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
@@ -524,6 +526,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   FnDefinitionDyn fn_defs = {0};
   FnDefinition fn_def = {0};
 
+  MetadataIndexDyn stack = {0};
+  PG_DYN_ENSURE_CAP(&stack, 512, allocator);
+
   for (u32 i = 0; i < nodes.len; i++) {
     AstNode node = PG_SLICE_AT(nodes, i);
 
@@ -542,6 +547,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .u.u64 = node.u.n64,
       };
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+
+      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
     } break;
 
     case AST_NODE_KIND_IDENTIFIER: {
@@ -570,6 +577,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       };
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+
+      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
     } break;
 
     case AST_NODE_KIND_ADD: {
@@ -578,21 +587,21 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
 
-      PG_ASSERT(fn_def.instructions.len >= 2);
-      IrInstruction rhs_ins = PG_SLICE_LAST(fn_def.instructions);
-      IrInstruction lhs_ins =
-          PG_SLICE_AT(fn_def.instructions, fn_def.instructions.len - 2);
+      MetadataIndex rhs_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex lhs_meta_idx = PG_DYN_POP(&stack);
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = lhs_ins.meta_idx,
+          .u.vreg_meta_idx = lhs_meta_idx,
       };
       ins.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = rhs_ins.meta_idx,
+          .u.vreg_meta_idx = rhs_meta_idx,
       };
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+
+      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
     } break;
 
     case AST_NODE_KIND_COMPARISON: {
@@ -601,22 +610,21 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
 
-      PG_ASSERT(fn_def.instructions.len >= 2);
-      IrInstruction rhs_ins = PG_SLICE_LAST(fn_def.instructions);
-      IrInstruction lhs_ins =
-          PG_SLICE_AT(fn_def.instructions, fn_def.instructions.len - 2);
+      MetadataIndex rhs_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex lhs_meta_idx = PG_DYN_POP(&stack);
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = lhs_ins.meta_idx,
+          .u.vreg_meta_idx = lhs_meta_idx,
       };
       ins.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = rhs_ins.meta_idx,
+          .u.vreg_meta_idx = rhs_meta_idx,
       };
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
 
+      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
     } break;
 
     case AST_NODE_KIND_BLOCK: {
@@ -634,14 +642,15 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
 
-      IrInstruction op_ins = PG_SLICE_LAST(fn_def.instructions);
+      MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
+
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = ins.meta_idx,
       };
       ins.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = op_ins.meta_idx,
+          .u.vreg_meta_idx = op_meta_idx,
       };
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
@@ -655,8 +664,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
 
-      IrInstruction op = PG_SLICE_LAST(fn_def.instructions);
-      PG_SLICE_AT_PTR(&fn_def.metadata, op.meta_idx.value)
+      MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
+      PG_SLICE_AT_PTR(&fn_def.metadata, op_meta_idx.value)
           ->virtual_register.addressable = true;
 
       ins.lhs = (IrOperand){
@@ -665,9 +674,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       };
       ins.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = op.meta_idx,
+          .u.vreg_meta_idx = op_meta_idx,
       };
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+
+      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
     } break;
 
     case AST_NODE_KIND_BRANCH: {
@@ -710,6 +721,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       if (fn_def.instructions.len > 0) {
         *PG_DYN_PUSH(&fn_defs, allocator) = fn_def;
       }
+      stack.len = 0;
 
       PgString name = node.u.s;
       PG_ASSERT(name.len);
@@ -733,11 +745,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(node.u.args_count <= max_syscall_args_count);
 
       // TODO: Set constraint on args vregs.
-      for (u64 j = 0; j < node.u.args_count; j++) {
-        u64 idx = i - node.u.args_count + j;
-        PG_ASSERT(idx <= UINT32_MAX);
-
-        // PG_ASSERT(0 && "todo");
+      for (i64 j = node.u.args_count - 1; j >= 0; j--) {
+        MetadataIndex arg_meta_idx = PG_DYN_POP(&stack);
+        PG_SLICE_AT_PTR(&fn_def.metadata, arg_meta_idx.value)
+            ->virtual_register.constraint =
+            (VirtualRegisterConstraint)((i64)VREG_CONSTRAINT_SYSCALL_NUM + j);
       }
 
       IrInstruction ins = {0};
@@ -749,6 +761,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       // TODO: args_count.
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+
+      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
     } break;
 
     case AST_NODE_KIND_LABEL_DEFINITION: {
@@ -765,7 +779,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     case AST_NODE_KIND_BUILTIN_ASSERT: {
       PG_ASSERT(fn_def.instructions.len >= 1);
 
-      IrInstruction cond_ins = PG_SLICE_LAST(fn_def.instructions);
+      MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
 
       IrInstruction ins_cmp = {0};
       ins_cmp.kind = IR_INSTRUCTION_KIND_COMPARISON;
@@ -776,7 +790,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       };
       ins_cmp.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = cond_ins.meta_idx,
+          .u.vreg_meta_idx = cond_meta_idx,
       };
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_cmp;
 
