@@ -688,64 +688,6 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_emit_program_epilog(parser, allocator);
 }
 
-[[nodiscard]] static u32 ast_node_get_stack_args_count(AstNode node) {
-  switch (node.kind) {
-  case AST_NODE_KIND_NUMBER:
-  case AST_NODE_KIND_IDENTIFIER:
-  case AST_NODE_KIND_FN_DEFINITION:
-  case AST_NODE_KIND_LABEL_DEFINITION:
-  case AST_NODE_KIND_LABEL:
-  case AST_NODE_KIND_BUILTIN_TRAP:
-    return 0;
-
-  case AST_NODE_KIND_ADDRESS_OF:
-  case AST_NODE_KIND_VAR_DEFINITION:
-  case AST_NODE_KIND_JUMP:
-  case AST_NODE_KIND_BUILTIN_ASSERT:
-  case AST_NODE_KIND_BRANCH:
-    return 1;
-
-  case AST_NODE_KIND_ADD:
-  case AST_NODE_KIND_COMPARISON:
-    return 2;
-
-  case AST_NODE_KIND_BLOCK:
-  case AST_NODE_KIND_SYSCALL:
-    return node.u.stack_args_count;
-
-  case AST_NODE_KIND_NONE:
-  default:
-    PG_ASSERT(0);
-  }
-}
-
-[[nodiscard]] static bool ast_node_is_expr(AstNode node) {
-  switch (node.kind) {
-  case AST_NODE_KIND_IDENTIFIER:
-  case AST_NODE_KIND_NUMBER:
-  case AST_NODE_KIND_ADD:
-  case AST_NODE_KIND_COMPARISON:
-  case AST_NODE_KIND_ADDRESS_OF:
-  case AST_NODE_KIND_SYSCALL:
-    return true;
-
-  case AST_NODE_KIND_JUMP:
-  case AST_NODE_KIND_FN_DEFINITION:
-  case AST_NODE_KIND_VAR_DEFINITION:
-  case AST_NODE_KIND_LABEL_DEFINITION:
-  case AST_NODE_KIND_LABEL:
-  case AST_NODE_KIND_BUILTIN_ASSERT:
-  case AST_NODE_KIND_BRANCH:
-  case AST_NODE_KIND_BLOCK:
-  case AST_NODE_KIND_BUILTIN_TRAP:
-    return false;
-
-  case AST_NODE_KIND_NONE:
-  default:
-    PG_ASSERT(0);
-  }
-}
-
 static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
                               PgAllocator *allocator) {
 
@@ -754,75 +696,83 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
 
   for (u32 i = 0; i < nodes_before.len; i++) {
     AstNode node = PG_SLICE_AT(nodes_before, i);
-    bool is_expr = ast_node_is_expr(node);
 
-    // Stack.
-    {
-      if (AST_NODE_KIND_FN_DEFINITION == node.kind) {
-        stack.len = 0;
+    switch (node.kind) {
+    case AST_NODE_KIND_LABEL:
+    case AST_NODE_KIND_LABEL_DEFINITION:
+    case AST_NODE_KIND_IDENTIFIER:
+    case AST_NODE_KIND_NUMBER: {
+      *PG_DYN_PUSH(&stack, allocator) = node;
+    } break;
+
+    case AST_NODE_KIND_ADD: {
+      AstNode rhs = PG_DYN_POP(&stack);
+      AstNode lhs = PG_DYN_POP(&stack);
+
+      if (AST_NODE_KIND_NUMBER == lhs.kind &&
+          AST_NODE_KIND_NUMBER == rhs.kind) {
+        AstNode folded = lhs;
+        folded.u.n64 += rhs.u.n64;
+
+        PG_DYN_POP(nodes_after);
+        PG_DYN_POP(nodes_after);
+
+        *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
+        *PG_DYN_PUSH(&stack, allocator) = folded;
+        continue;
       }
+      *PG_DYN_PUSH(&stack, allocator) = node;
+    } break;
 
-      u32 stack_args_count = ast_node_get_stack_args_count(node);
-      PG_ASSERT(stack.len >= stack_args_count);
+    case AST_NODE_KIND_COMPARISON: {
+      AstNode rhs = PG_DYN_POP(&stack);
+      AstNode lhs = PG_DYN_POP(&stack);
 
-      if (AST_NODE_KIND_ADD == node.kind) {
-        PG_ASSERT(2 == stack_args_count);
-        AstNodeDyn stack_tmp = stack;
-        AstNode rhs = PG_DYN_POP(&stack_tmp);
-        AstNode lhs = PG_DYN_POP(&stack_tmp);
+      if (AST_NODE_KIND_NUMBER == lhs.kind &&
+          AST_NODE_KIND_NUMBER == rhs.kind) {
+        AstNode folded = lhs;
+        folded.u.n64 = lhs.u.n64 == rhs.u.n64;
 
-        if (AST_NODE_KIND_NUMBER == lhs.kind &&
-            AST_NODE_KIND_NUMBER == rhs.kind) {
-          AstNode folded = lhs;
-          folded.u.n64 += rhs.u.n64;
+        PG_DYN_POP(nodes_after);
+        PG_DYN_POP(nodes_after);
 
-          PG_DYN_POP(&stack);
-          PG_DYN_POP(&stack);
-
-          PG_DYN_POP(nodes_after);
-          PG_DYN_POP(nodes_after);
-
-          *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
-          *PG_DYN_PUSH(&stack, allocator) = folded;
-          continue;
-        }
+        *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
+        *PG_DYN_PUSH(&stack, allocator) = folded;
+        continue;
       }
+      *PG_DYN_PUSH(&stack, allocator) = node;
+    } break;
 
-      if (AST_NODE_KIND_COMPARISON == node.kind) {
-        PG_ASSERT(2 == stack_args_count);
-        AstNodeDyn stack_tmp = stack;
-        AstNode rhs = PG_DYN_POP(&stack_tmp);
-        AstNode lhs = PG_DYN_POP(&stack_tmp);
+    case AST_NODE_KIND_FN_DEFINITION: {
+      stack.len = 0;
+    } break;
 
-        if (AST_NODE_KIND_NUMBER == lhs.kind &&
-            AST_NODE_KIND_NUMBER == rhs.kind) {
-          AstNode folded = lhs;
-          folded.u.n64 = lhs.u.n64 == rhs.u.n64;
+    case AST_NODE_KIND_JUMP:
+    case AST_NODE_KIND_ADDRESS_OF:
+    case AST_NODE_KIND_BUILTIN_ASSERT:
+    case AST_NODE_KIND_VAR_DEFINITION: {
+      PG_DYN_POP(&stack);
+    } break;
 
-          PG_DYN_POP(&stack);
-          PG_DYN_POP(&stack);
+    case AST_NODE_KIND_BRANCH: {
+      PG_DYN_POP(&stack);
+      PG_DYN_POP(&stack);
+      PG_DYN_POP(&stack);
+    } break;
 
-          PG_DYN_POP(nodes_after);
-          PG_DYN_POP(nodes_after);
-
-          *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
-          *PG_DYN_PUSH(&stack, allocator) = folded;
-          continue;
-        }
+    case AST_NODE_KIND_BLOCK:
+    case AST_NODE_KIND_SYSCALL: {
+      for (u64 k = 0; k < node.u.stack_args_count; k++) {
+        PG_DYN_POP(&stack);
       }
+    } break;
 
-      for (u32 j = 0; j < stack_args_count; j++) {
-        AstNode top = PG_DYN_POP(&stack);
+    case AST_NODE_KIND_BUILTIN_TRAP:
+      break;
 
-        if (is_expr) {
-          PG_ASSERT(ast_node_is_expr(top));
-        }
-      }
-
-      if (is_expr) {
-        *PG_DYN_PUSH(&stack, allocator) = node;
-      }
+    case AST_NODE_KIND_NONE:
+    default:
+      PG_ASSERT(0);
     }
-    *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
 }
