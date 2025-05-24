@@ -141,7 +141,9 @@ static void ast_print_node(AstNode node) {
     printf("Comparison");
     break;
   case AST_NODE_KIND_SYSCALL: {
-    printf("Syscall");
+    PG_ASSERT(node.u.args_count > 0);
+    PG_ASSERT(node.u.args_count <= max_syscall_args_count);
+    printf("Syscall(%u)", node.u.args_count);
   } break;
   case AST_NODE_KIND_BLOCK: {
     printf("Block");
