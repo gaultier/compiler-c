@@ -1066,53 +1066,53 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
 }
 
 [[nodiscard]] static Amd64Operand
-amd64_convert_node_to_amd64_operand(AstNode node, MetadataDyn metadata) {
-  if (AST_NODE_KIND_NUMBER == node.kind) {
+amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataDyn metadata) {
+  if (IR_OPERAND_KIND_NUM == op.kind) {
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-        .u.immediate = node.u.n64,
+        .u.immediate = op.u.u64,
     };
   }
 
-  if (AST_NODE_KIND_LABEL == node.kind) {
-    PG_ASSERT(node.u.label.value.len);
+  if (IR_OPERAND_KIND_LABEL == op.kind) {
+    PG_ASSERT(op.u.label.value.len);
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_LABEL,
-        .u.label = node.u.label,
+        .u.label = op.u.label,
     };
   }
 
-  if (ast_node_is_expr(node) || AST_NODE_KIND_VAR_DEFINITION == node.kind) {
-    MemoryLocation mem_loc =
-        PG_SLICE_AT(metadata, node.meta_idx.value).memory_location;
-    switch (mem_loc.kind) {
-    case MEMORY_LOCATION_KIND_REGISTER: {
-      PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
-      PG_ASSERT(mem_loc.u.reg.value);
+  PG_ASSERT(IR_OPERAND_KIND_VREG == op.kind);
+  PG_ASSERT(op.u.vreg_meta_idx.value);
+  MemoryLocation mem_loc =
+      PG_SLICE_AT(metadata, op.u.vreg_meta_idx.value).memory_location;
+  switch (mem_loc.kind) {
+  case MEMORY_LOCATION_KIND_REGISTER: {
+    PG_ASSERT(MEMORY_LOCATION_KIND_REGISTER == mem_loc.kind);
+    PG_ASSERT(mem_loc.u.reg.value);
 
-      return (Amd64Operand){
-          .kind = AMD64_OPERAND_KIND_REGISTER,
-          .u.reg = mem_loc.u.reg,
-      };
-    }
-    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      PG_ASSERT(0 && "todo");
-      break;
-    case MEMORY_LOCATION_KIND_STACK: {
-      PG_ASSERT(mem_loc.u.base_pointer_offset);
-      return (Amd64Operand){
-          .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
-          .u.effective_address =
-              {
-                  .base = amd64_rbp,
-                  .displacement = -mem_loc.u.base_pointer_offset,
-              },
-      };
-    }
-    case MEMORY_LOCATION_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
+    return (Amd64Operand){
+        .kind = AMD64_OPERAND_KIND_REGISTER,
+        .u.reg = mem_loc.u.reg,
+    };
+  }
+  case MEMORY_LOCATION_KIND_STATUS_REGISTER:
+    PG_ASSERT(0 && "todo");
+    break;
+  case MEMORY_LOCATION_KIND_STACK: {
+    PG_ASSERT(mem_loc.u.base_pointer_offset);
+    return (Amd64Operand){
+        .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+        .u.effective_address =
+            {
+                .base = amd64_rbp,
+                .displacement = -mem_loc.u.base_pointer_offset,
+            },
+    };
+  }
+  case MEMORY_LOCATION_KIND_NONE:
+  default:
+    PG_ASSERT(0);
   }
 
   PG_ASSERT(0);
@@ -1456,49 +1456,49 @@ static void amd64_lir_to_asm(Amd64Emitter *emitter, AsmCodeSection *section,
 
 static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
                                FnDefinition fn_def, PgAllocator *allocator) {
-  AstNodeIndexDyn stack = {0};
-  PG_DYN_ENSURE_CAP(&stack, 512, allocator);
+  (void)emitter;
 
-  for (u32 i = fn_def.node_start.value + 1; i < fn_def.node_end.value; i++) {
-    AstNode node = PG_SLICE_AT(emitter->nodes, i);
-    AstNodeIndex node_idx = {i};
-    bool is_expr = ast_node_is_expr(node);
+  for (u32 i = 0; i < fn_def.instructions.len; i++) {
+    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
 
-    switch (node.kind) {
-    case AST_NODE_KIND_ADD: {
-      AstNodeIndexDyn stack_tmp = stack;
-      AstNodeIndex rhs_idx = ast_stack_pop(&stack_tmp);
-      AstNodeIndex lhs_idx = ast_stack_pop(&stack_tmp);
-      AstNode lhs = PG_SLICE_AT(emitter->nodes, lhs_idx.value);
-      AstNode rhs = PG_SLICE_AT(emitter->nodes, rhs_idx.value);
-      PG_ASSERT(lhs.kind);
-      PG_ASSERT(rhs.kind);
+    switch (ins.kind) {
+    case IR_INSTRUCTION_KIND_MOV: {
+      PG_ASSERT(ins.meta_idx.value);
+      Amd64Instruction ins_mov = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
+                                                           fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.rhs,
+                                                           fn_def.metadata),
+          .origin = ins.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_mov, allocator);
 
-      // TODO: Asserts.
+    } break;
+    case IR_INSTRUCTION_KIND_ADD: {
+      PG_ASSERT(ins.lhs.kind);
+      PG_ASSERT(ins.rhs.kind);
+      PG_ASSERT(ins.meta_idx.value);
 
-      PG_ASSERT(ast_node_is_expr(lhs));
-      PG_ASSERT(ast_node_is_expr(rhs));
-      PG_ASSERT(!(AST_NODE_KIND_NUMBER == lhs.kind &&
-                  AST_NODE_KIND_NUMBER == rhs.kind));
-
+#if 0
       MemoryLocation lhs_mem_loc =
-          PG_SLICE_AT(fn_def.metadata, lhs.meta_idx.value).memory_location;
+          PG_SLICE_AT(fn_def.metadata, ins.lhs.meta_idx.value).memory_location;
 
       // Easy case: `add rax, 123` or `add rax, [rbp-8]`.
       if (MEMORY_LOCATION_KIND_REGISTER == lhs_mem_loc.kind) {
         Amd64Instruction ins_mov = {
             .kind = AMD64_INSTRUCTION_KIND_MOV,
-            .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
+            .lhs = amd64_convert_node_to_amd64_operand(ins, fn_def.metadata),
             .rhs = amd64_convert_node_to_amd64_operand(lhs, fn_def.metadata),
-            .origin = node.origin,
+            .origin = ins.origin,
         };
         amd64_add_instruction(&section->instructions, ins_mov, allocator);
 
         Amd64Instruction ins_add = {
             .kind = AMD64_INSTRUCTION_KIND_ADD,
-            .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
+            .lhs = amd64_convert_node_to_amd64_operand(ins, fn_def.metadata),
             .rhs = amd64_convert_node_to_amd64_operand(rhs, fn_def.metadata),
-            .origin = node.origin,
+            .origin = ins.origin,
         };
         amd64_add_instruction(&section->instructions, ins_add, allocator);
         return;
@@ -1520,7 +1520,7 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
 
       Amd64Instruction ins_add = {
           .kind = AMD64_INSTRUCTION_KIND_ADD,
-          .origin = node.origin,
+          .origin = ins.origin,
           .lhs = ins_load.lhs,
           .rhs = amd64_convert_node_to_amd64_operand(rhs, fn_def.metadata),
       };
@@ -1530,69 +1530,32 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .lhs = amd64_convert_node_to_amd64_operand(lhs, fn_def.metadata),
           .rhs = ins_load.lhs,
-          .origin = node.origin,
+          .origin = ins.origin,
       };
 
       amd64_add_instruction(&section->instructions, ins_store, allocator);
+#endif
     } break;
 
-    case AST_NODE_KIND_VAR_DEFINITION: {
-      AstNodeIndexDyn stack_tmp = stack;
-      AstNodeIndex op_idx = ast_stack_pop(&stack_tmp);
-      AstNode op = PG_SLICE_AT(emitter->nodes, op_idx.value);
-
-      Amd64Instruction instruction = {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_node_to_amd64_operand(node, fn_def.metadata),
-          .rhs = amd64_convert_node_to_amd64_operand(op, fn_def.metadata),
-          .origin = node.origin,
-      };
-
-      amd64_add_instruction(&section->instructions, instruction, allocator);
-    } break;
-
-    case AST_NODE_KIND_BUILTIN_ASSERT: {
-      PG_ASSERT(0);
-    } break;
-
-    case AST_NODE_KIND_BUILTIN_TRAP: {
+    case IR_INSTRUCTION_KIND_TRAP: {
       Amd64Instruction ins_ud2 = {
           .kind = AMD64_INSTRUCTION_KIND_UD2,
-          .origin = node.origin,
+          .origin = ins.origin,
       };
       amd64_add_instruction(&section->instructions, ins_ud2, allocator);
     } break;
 
-    case AST_NODE_KIND_NUMBER:
-    case AST_NODE_KIND_IDENTIFIER:
-    case AST_NODE_KIND_BLOCK:
-    case AST_NODE_KIND_ADDRESS_OF:
-    case AST_NODE_KIND_BRANCH:
-    case AST_NODE_KIND_JUMP:
-    case AST_NODE_KIND_COMPARISON:
-    case AST_NODE_KIND_SYSCALL:
-    case AST_NODE_KIND_FN_DEFINITION:
-    case AST_NODE_KIND_LABEL_DEFINITION:
-    case AST_NODE_KIND_LABEL:
+    case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
+    case IR_INSTRUCTION_KIND_JUMP:
+    case IR_INSTRUCTION_KIND_COMPARISON:
+    case IR_INSTRUCTION_KIND_SYSCALL:
+    case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
       break;
-    case AST_NODE_KIND_NONE:
+    case IR_INSTRUCTION_KIND_NONE:
     default:
       PG_ASSERT(0);
     }
-
-    u32 args_count = ast_node_get_expected_args_count(node);
-    PG_ASSERT(stack.len >= args_count);
-
-    for (u32 j = 0; j < args_count; j++) {
-      (void)ast_stack_pop(&stack);
-    }
-
-    if (is_expr) {
-      ast_stack_push(&stack, node_idx, allocator);
-    }
-
-    // Remainder on the stack, no valid.
-    PG_ASSERT(!(!is_expr && stack.len > 0));
   }
 }
 
@@ -1631,10 +1594,9 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
 
   (void)verbose;
 
-  AstNode fn_node = PG_SLICE_AT(asm_emitter->nodes, fn_def.node_start.value);
   AsmCodeSection section = {
-      .name = fn_node.u.s,
-      .flags = fn_node.flags,
+      .name = fn_def.name,
+      .flags = fn_def.flags,
   };
   amd64_emit_prolog(&section, allocator);
 

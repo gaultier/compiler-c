@@ -21,7 +21,6 @@ typedef enum {
   IR_OPERAND_KIND_NUM,
   IR_OPERAND_KIND_LABEL,
   IR_OPERAND_KIND_VREG,
-  IR_OPERAND_KIND_STRING,
 } IrOperandKind;
 
 typedef enum {
@@ -57,7 +56,6 @@ typedef struct {
     Label label;
     MetadataIndex vreg_meta_idx;
     u64 u64;
-    PgString s;
   } u;
 } IrOperand;
 
@@ -234,11 +232,6 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata) {
   switch (operand.kind) {
   case IR_OPERAND_KIND_NUM:
     printf("%lu", operand.u.u64);
-    break;
-
-  case IR_OPERAND_KIND_STRING:
-    PG_ASSERT(operand.u.s.len);
-    printf("%.*s", (i32)operand.u.s.len, operand.u.s.data);
     break;
 
   case IR_OPERAND_KIND_LABEL:
