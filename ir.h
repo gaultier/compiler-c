@@ -460,6 +460,58 @@ static void ir_print_fn_defs(FnDefinitionDyn fn_defs) {
   return res;
 }
 
+static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
+  for (u32 i = 0; i < fn_def.instructions.len; i++) {
+    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
+    InstructionIndex ins_idx = {i};
+
+    switch (ins.kind) {
+    case IR_INSTRUCTION_KIND_ADD:
+    case IR_INSTRUCTION_KIND_MOV:
+    case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
+    case IR_INSTRUCTION_KIND_COMPARISON:
+    case IR_INSTRUCTION_KIND_SYSCALL: {
+      if (ins.meta_idx.value) {
+        PG_SLICE_AT_PTR(&fn_def.metadata, ins.meta_idx.value)->lifetime_start =
+            ins_idx;
+      }
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins.lhs,
+                                              ins_idx);
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins.rhs,
+                                              ins_idx);
+    } break;
+
+      // Nothing to do.
+    case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
+    case IR_INSTRUCTION_KIND_JUMP:
+    case IR_INSTRUCTION_KIND_TRAP:
+      break;
+
+    case IR_INSTRUCTION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+
+    // Sanity check.
+    InstructionIndex start =
+        PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value).lifetime_start;
+    InstructionIndex end =
+        PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value).lifetime_end;
+
+    PG_ASSERT(start.value < fn_def.instructions.len);
+    PG_ASSERT(end.value < fn_def.instructions.len);
+    PG_ASSERT(start.value <= end.value);
+  }
+}
+
+static void ir_compute_fn_defs_lifetimes(FnDefinitionDyn fn_defs) {
+  for (u64 i = 0; i < fn_defs.len; i++) {
+    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
+    ir_compute_fn_def_lifetimes(fn_def);
+  }
+}
+
 [[nodiscard]] static FnDefinitionDyn
 ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_FN_DEFINITION == PG_SLICE_AT(nodes, 0).kind);
@@ -761,6 +813,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   if (fn_def.instructions.len > 0) {
     *PG_DYN_PUSH(&fn_defs, allocator) = fn_def;
   }
+
+  ir_compute_fn_defs_lifetimes(fn_defs);
 
   return fn_defs;
 }
