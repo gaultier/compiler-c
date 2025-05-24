@@ -5,6 +5,7 @@
 #include "type_check.h"
 #endif
 #include "ir.h"
+#include "register_alloc.h"
 
 typedef struct {
   bool verbose;

@@ -38,6 +38,7 @@ typedef enum {
 } VirtualRegisterConstraint;
 
 typedef struct {
+  // TODO: Remove.
   u32 value;
   VirtualRegisterConstraint constraint;
   bool addressable;
@@ -256,6 +257,14 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata) {
   case IR_OPERAND_KIND_NONE:
   default:
     PG_ASSERT(0);
+  }
+}
+
+static void metadata_print_var(Metadata meta) {
+  if (meta.identifier.len) {
+    printf("%.*s", (i32)meta.identifier.len, meta.identifier.data);
+  } else {
+    printf("v%u", meta.virtual_register.value);
   }
 }
 

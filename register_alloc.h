@@ -1,12 +1,12 @@
 #pragma once
-#include "ast.h"
+#include "ir.h"
 
 typedef struct {
   u32 value;
 } InterferenceNodeIndex;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
-[[nodiscard]]
+[[maybe_unused]] [[nodiscard]]
 static InterferenceGraph reg_build_interference_graph(MetadataDyn metadata,
                                                       PgAllocator *allocator) {
   InterferenceGraph graph = {0};
@@ -65,6 +65,7 @@ static InterferenceGraph reg_build_interference_graph(MetadataDyn metadata,
   return graph;
 }
 
+[[maybe_unused]]
 static void reg_print_interference_graph(InterferenceGraph graph,
                                          MetadataDyn metadata) {
 
@@ -79,9 +80,9 @@ static void reg_print_interference_graph(InterferenceGraph graph,
 
       Metadata a_meta = PG_SLICE_AT(metadata, row);
       Metadata b_meta = PG_SLICE_AT(metadata, col);
-      print_var(a_meta);
+      metadata_print_var(a_meta);
       printf(" -> ");
-      print_var(b_meta);
+      metadata_print_var(b_meta);
       printf("\n");
     }
   }
