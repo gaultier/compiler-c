@@ -368,7 +368,7 @@ static void ir_print_instructions(IrInstructionDyn instructions,
 
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS: {
       PG_ASSERT(IR_OPERAND_KIND_VREG == ins.lhs.kind);
-      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_VREG == ins.rhs.kind);
 
       VirtualRegister vreg =
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
@@ -376,6 +376,8 @@ static void ir_print_instructions(IrInstructionDyn instructions,
 
       printf("LoadAddr v%u, ", i);
       ir_print_operand(ins.lhs, metadata);
+      printf(", ");
+      ir_print_operand(ins.rhs, metadata);
     } break;
 
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
@@ -596,13 +598,17 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
 
-      IrInstruction lhs_ins = PG_SLICE_LAST(fn_def.instructions);
-      PG_SLICE_AT_PTR(&fn_def.metadata, lhs_ins.meta_idx.value)
+      IrInstruction op = PG_SLICE_LAST(fn_def.instructions);
+      PG_SLICE_AT_PTR(&fn_def.metadata, op.meta_idx.value)
           ->virtual_register.addressable = true;
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = lhs_ins.meta_idx,
+          .u.vreg_meta_idx = ins.meta_idx,
+      };
+      ins.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg_meta_idx = op.meta_idx,
       };
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
     } break;
