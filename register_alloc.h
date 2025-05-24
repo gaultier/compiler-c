@@ -6,7 +6,7 @@ typedef struct {
 } InterferenceNodeIndex;
 PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
-[[maybe_unused]] [[nodiscard]]
+[[nodiscard]]
 static InterferenceGraph reg_build_interference_graph(MetadataDyn metadata,
                                                       PgAllocator *allocator) {
   InterferenceGraph graph = {0};
@@ -65,7 +65,6 @@ static InterferenceGraph reg_build_interference_graph(MetadataDyn metadata,
   return graph;
 }
 
-[[maybe_unused]]
 static void reg_print_interference_graph(InterferenceGraph graph,
                                          MetadataDyn metadata) {
 
