@@ -112,17 +112,10 @@ int main(int argc, char *argv[]) {
   }
 
   IrEmitter ir_emitter = {0};
-  IrInstructionDyn ir_instructions =
+  FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ IR ------------\n");
-    ir_print_instructions(ir_instructions);
-  }
-
-  FnDefinitionDyn fn_defs =
-      ir_generate_fn_defs(ir_instructions, nodes_input, allocator);
-  if (cli_opts.verbose) {
-    printf("\n------------ FnDefs ------------\n");
     ir_print_fn_defs(fn_defs);
   }
 
