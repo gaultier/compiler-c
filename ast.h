@@ -774,5 +774,6 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     default:
       PG_ASSERT(0);
     }
+    *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
 }
