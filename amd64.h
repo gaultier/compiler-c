@@ -1334,12 +1334,22 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       Amd64Instruction ins_lea = {
           .kind = AMD64_INSTRUCTION_KIND_LEA,
           .origin = ins.origin,
-          .lhs = amd64_convert_memory_location_to_amd64_operand(
-              ins.meta_idx, fn_def.metadata),
-          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
+                                                           fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.rhs,
                                                            fn_def.metadata),
       };
       amd64_add_instruction(&section->instructions, ins_lea, allocator);
+
+      Amd64Instruction ins_mov = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .origin = ins.origin,
+          .lhs = amd64_convert_memory_location_to_amd64_operand(
+              ins.meta_idx, fn_def.metadata),
+          .rhs = ins_lea.lhs,
+      };
+      amd64_add_instruction(&section->instructions, ins_mov, allocator);
+
     } break;
 
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
