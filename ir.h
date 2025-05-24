@@ -3,7 +3,6 @@
 
 typedef enum : u8 {
   IR_INSTRUCTION_KIND_NONE,
-  IR_INSTRUCTION_KIND_IDENTIFIER,
   IR_INSTRUCTION_KIND_ADD,
   IR_INSTRUCTION_KIND_MOV,
   IR_INSTRUCTION_KIND_LOAD_ADDRESS,
@@ -258,6 +257,59 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata) {
   }
 }
 
+static void metadata_print_meta(Metadata meta) {
+#if 0
+  if (meta.tombstone) {
+    printf("\x1B[9m"); // Strikethrough.
+  }
+#endif
+
+  printf("identifier=`%.*s`", (i32)meta.identifier.len, meta.identifier.data);
+  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
+         meta.lifetime_end.value);
+
+  if (meta.virtual_register.value) {
+    printf(" vreg=v%u{constraint=%s, addressable=%s}",
+           meta.virtual_register.value,
+           register_constraint_to_cstr(meta.virtual_register.constraint),
+           meta.virtual_register.addressable ? "true" : "false");
+  }
+
+  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
+    printf(" mem_loc=");
+
+    switch (meta.memory_location.kind) {
+    case MEMORY_LOCATION_KIND_REGISTER:
+    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
+      printf("reg(todo)");
+      // TODO
+#if 0
+      amd64_print_register(meta.memory_location.reg);
+#endif
+      break;
+    case MEMORY_LOCATION_KIND_STACK: {
+      printf("[sp");
+      i32 offset = meta.memory_location.u.base_pointer_offset;
+      printf("-%" PRIi32 "]", offset);
+    } break;
+#if 0
+    case MEMORY_LOCATION_KIND_MEMORY:
+      printf("%#lx", loc.memory_address);
+      break;
+#endif
+    case MEMORY_LOCATION_KIND_NONE:
+    default:
+      PG_ASSERT(0);
+    }
+  }
+
+#if 0
+  if (meta.tombstone) {
+    printf("\x1B[0m"); // Strikethrough.
+  }
+#endif
+}
+
 static void ir_print_instructions(IrInstructionDyn instructions,
                                   MetadataDyn metadata) {
   for (u32 i = 0; i < instructions.len; i++) {
@@ -267,14 +319,6 @@ static void ir_print_instructions(IrInstructionDyn instructions,
     printf(": ");
 
     switch (ins.kind) {
-    case IR_INSTRUCTION_KIND_IDENTIFIER: {
-      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
-      PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
-      PgString name = PG_SLICE_AT(metadata, ins.meta_idx.value).identifier;
-
-      printf("Identifier %.*s", (i32)name.len, name.data);
-    } break;
-
     case IR_INSTRUCTION_KIND_ADD: {
       PG_ASSERT(IR_OPERAND_KIND_NUM == ins.lhs.kind ||
                 IR_OPERAND_KIND_VREG == ins.lhs.kind);
@@ -379,6 +423,11 @@ static void ir_print_instructions(IrInstructionDyn instructions,
     default:
       break;
     }
+
+    if (ins.meta_idx.value) {
+      printf(" // ");
+      metadata_print_meta(PG_SLICE_AT(metadata, ins.meta_idx.value));
+    }
     printf("\n");
   }
 }
@@ -398,74 +447,6 @@ static void ir_print_fn_defs(FnDefinitionDyn fn_defs) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
     ir_print_fn_def(fn_def);
   }
-}
-
-static void print_var(Metadata meta) {
-  if (0 == meta.virtual_register.value) {
-    return;
-  }
-
-  if (!pg_string_is_empty(meta.identifier)) {
-    printf("%.*s%%%" PRIu32, (i32)meta.identifier.len, meta.identifier.data,
-           meta.virtual_register.value);
-  } else {
-    printf("%%%" PRIu32, meta.virtual_register.value);
-  }
-}
-
-[[maybe_unused]]
-static void metadata_print_meta(Metadata meta) {
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[9m"); // Strikethrough.
-  }
-#endif
-
-  printf("var=");
-  print_var(meta);
-  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
-         meta.lifetime_end.value);
-
-  if (meta.virtual_register.value) {
-    printf(" vreg=v%u{constraint=%s, addressable=%s}",
-           meta.virtual_register.value,
-           register_constraint_to_cstr(meta.virtual_register.constraint),
-           meta.virtual_register.addressable ? "true" : "false");
-  }
-
-  if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
-    printf(" mem_loc=");
-
-    switch (meta.memory_location.kind) {
-    case MEMORY_LOCATION_KIND_REGISTER:
-    case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      printf("reg(todo)");
-      // TODO
-#if 0
-      amd64_print_register(meta.memory_location.reg);
-#endif
-      break;
-    case MEMORY_LOCATION_KIND_STACK: {
-      printf("[sp");
-      i32 offset = meta.memory_location.u.base_pointer_offset;
-      printf("-%" PRIi32 "]", offset);
-    } break;
-#if 0
-    case MEMORY_LOCATION_KIND_MEMORY:
-      printf("%#lx", loc.memory_address);
-      break;
-#endif
-    case MEMORY_LOCATION_KIND_NONE:
-    default:
-      PG_ASSERT(0);
-    }
-  }
-
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[0m"); // Strikethrough.
-  }
-#endif
 }
 
 [[nodiscard]] static IrOperand ir_make_synth_label(u32 *label_current,
@@ -509,15 +490,25 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(name.len);
 
       IrInstruction ins = {0};
-      ins.kind = IR_INSTRUCTION_KIND_IDENTIFIER;
+      ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
-      Metadata *meta = metadata_find_by_identifier(fn_def.metadata, name);
-      if (!meta) {
+      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
+
+      Metadata *op_meta = metadata_find_by_identifier(fn_def.metadata, name);
+      if (!op_meta) {
         PG_ASSERT(0 && "todo");
       }
-      PG_ASSERT(pg_string_eq(meta->identifier, name));
+      PG_ASSERT(pg_string_eq(op_meta->identifier, name));
 
-      ins.meta_idx = (MetadataIndex){(u32)(meta - fn_def.metadata.data)};
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg_meta_idx = ins.meta_idx,
+      };
+      ins.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg_meta_idx =
+              (MetadataIndex){(u32)(op_meta - fn_def.metadata.data)},
+      };
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
     } break;
@@ -715,6 +706,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrInstruction ins_cmp = {0};
       ins_cmp.kind = IR_INSTRUCTION_KIND_COMPARISON;
+      ins_cmp.meta_idx = metadata_make(&fn_def.metadata, allocator);
       ins_cmp.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_NUM,
           .u.u64 = 0,
