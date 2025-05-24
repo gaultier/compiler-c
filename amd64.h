@@ -296,13 +296,13 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
     printf("[%" PRIu64 "] ", i);
 
-    Amd64Instruction instruction = PG_SLICE_AT(instructions, i);
+    Amd64Instruction ins = PG_SLICE_AT(instructions, i);
 
-    origin_print(instruction.origin);
+    origin_print(ins.origin);
     printf(": ");
 
     // TODO: Validate operands?
-    switch (instruction.kind) {
+    switch (ins.kind) {
     case AMD64_INSTRUCTION_KIND_NONE:
       PG_ASSERT(0);
     case AMD64_INSTRUCTION_KIND_UD2:
@@ -336,6 +336,9 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       // The operand carries the actual label.
       break;
     case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
+      PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
+      PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
+
       printf("je ");
       break;
     case AMD64_INSTRUCTION_KIND_JMP:
@@ -352,18 +355,18 @@ static void amd64_print_instructions(Amd64InstructionSlice instructions) {
       break;
     }
 
-    if (AMD64_OPERAND_KIND_NONE != instruction.lhs.kind) {
-      amd64_print_operand(instruction.lhs);
+    if (AMD64_OPERAND_KIND_NONE != ins.lhs.kind) {
+      amd64_print_operand(ins.lhs);
     }
 
-    if (AMD64_OPERAND_KIND_NONE != instruction.rhs.kind) {
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE != instruction.lhs.kind);
+    if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
+      PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
 
       printf(", ");
-      amd64_print_operand(instruction.rhs);
+      amd64_print_operand(ins.rhs);
     }
 
-    if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == instruction.kind) {
+    if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
       printf(":");
     }
 
@@ -901,29 +904,37 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_CMP == instruction.kind);
 
-  if (AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind) {
+  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
+    Register reg = instruction.lhs.u.reg;
+    u64 immediate = instruction.rhs.u.immediate;
+
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.lhs.u.reg)) {
+    if (amd64_is_register_64_bits_only(reg)) {
       rex |= AMD64_REX_MASK_B;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
 
-    PG_ASSERT(instruction.rhs.u.immediate <= INT32_MAX);
+    PG_ASSERT(immediate <= INT32_MAX);
 
     u8 opcode = 0x81;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
     u8 modrm = (0b11 << 6) | (u8)(7 << 3) |
-               (u8)(amd64_encode_register_value(instruction.lhs.u.reg) & 0b111);
+               (u8)(amd64_encode_register_value(reg) & 0b111);
     *PG_DYN_PUSH(sb, allocator) = modrm;
 
-    pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.u.immediate, allocator);
+    pg_byte_buffer_append_u32(sb, (u32)immediate, allocator);
     return;
   }
 
-  if (AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind &&
-      AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind) {
+  if (AMD64_OPERAND_KIND_IMMEDIATE == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
+    PG_ASSERT(0 && "unsupported");
+  }
+
+  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
     u64 immediate = instruction.rhs.u.immediate;
     Amd64EffectiveAddress effective_address =
         instruction.lhs.u.effective_address;
@@ -1594,12 +1605,23 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 
-      Amd64Instruction ins_je = {
-          .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
+      Amd64Instruction ins_cmp = {
+          .kind = AMD64_INSTRUCTION_KIND_CMP,
           .origin = ins.origin,
           .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
                                                            fn_def.metadata),
           .rhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                  .u.immediate = 0,
+              },
+      };
+      amd64_add_instruction(&section->instructions, ins_cmp, allocator);
+
+      Amd64Instruction ins_je = {
+          .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
+          .origin = ins.origin,
+          .lhs =
               (Amd64Operand){
                   .kind = AMD64_OPERAND_KIND_LABEL,
                   .u.label = ins.rhs.u.label,

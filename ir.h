@@ -784,33 +784,18 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
 
-      IrInstruction ins_cmp = {0};
-      ins_cmp.kind = IR_INSTRUCTION_KIND_COMPARISON;
-      ins_cmp.meta_idx = metadata_make(&fn_def.metadata, allocator);
-      ins_cmp.lhs = (IrOperand){
-          .kind = IR_OPERAND_KIND_NUM,
-          .u.u64 = 0,
-      };
-      ins_cmp.rhs = (IrOperand){
-          .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = cond_meta_idx,
-      };
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_cmp;
-
-      IrInstruction ins_jmp = {0};
-      ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
-
       IrOperand if_then_target =
           ir_make_synth_label(&emitter->label_id, allocator);
       IrOperand if_end_target =
           ir_make_synth_label(&emitter->label_id, allocator);
 
+      IrInstruction ins_jmp = {0};
+      ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
       ins_jmp.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx = ins_cmp.meta_idx,
+          .u.vreg_meta_idx = cond_meta_idx,
       };
-      // TODO: rflags constraint.
-
+      // TODO: rflags constraint?
       ins_jmp.rhs = if_end_target;
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp;
 
