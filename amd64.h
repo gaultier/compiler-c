@@ -1506,8 +1506,7 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
           .origin = ins.origin,
       };
       amd64_add_instruction(&section->instructions, ins_add, allocator);
-      return;
-    }
+    } break;
 
     case IR_INSTRUCTION_KIND_TRAP: {
       Amd64Instruction ins_ud2 = {
@@ -1537,7 +1536,18 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, ins_sys, allocator);
     } break;
 
-    case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
+    case IR_INSTRUCTION_KIND_LOAD_ADDRESS: {
+      Amd64Instruction ins_lea = {
+          .kind = AMD64_INSTRUCTION_KIND_LEA,
+          .origin = ins.origin,
+          .lhs = amd64_convert_memory_location_to_amd64_operand(
+              ins.meta_idx, fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
+                                                           fn_def.metadata),
+      };
+      amd64_add_instruction(&section->instructions, ins_lea, allocator);
+    } break;
+
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
     case IR_INSTRUCTION_KIND_COMPARISON:
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
