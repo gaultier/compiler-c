@@ -141,7 +141,7 @@ PG_DYN(FnDefinition) FnDefinitionDyn;
   return (MetadataIndex){(u32)metadata.len - 1};
 }
 
-[[maybe_unused]] [[nodiscard]]
+[[nodiscard]]
 static MetadataIndex metadata_make(MetadataDyn *metadata,
                                    PgAllocator *allocator) {
   Metadata res = {0};
@@ -152,7 +152,6 @@ static MetadataIndex metadata_make(MetadataDyn *metadata,
   return metadata_last_idx(*metadata);
 }
 
-[[maybe_unused]]
 static void metadata_start_lifetime(MetadataDyn metadata,
                                     MetadataIndex meta_idx,
                                     InstructionIndex ins_idx) {
@@ -188,7 +187,6 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
   // TODO: Dataflow.
 }
 
-[[maybe_unused]]
 static void metadata_extend_operand_lifetime_on_use(MetadataDyn metadata,
                                                     IrOperand op,
                                                     InstructionIndex ins_idx) {
@@ -477,10 +475,7 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
     case IR_INSTRUCTION_KIND_COMPARISON:
     case IR_INSTRUCTION_KIND_SYSCALL: {
       if (ins.meta_idx.value) {
-        PG_SLICE_AT_PTR(&fn_def.metadata, ins.meta_idx.value)->lifetime_start =
-            ins_idx;
-        PG_SLICE_AT_PTR(&fn_def.metadata, ins.meta_idx.value)->lifetime_end =
-            ins_idx;
+        metadata_start_lifetime(fn_def.metadata, ins.meta_idx, ins_idx);
       }
       metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins.lhs,
                                               ins_idx);
