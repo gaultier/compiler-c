@@ -681,10 +681,32 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     case AST_NODE_KIND_BRANCH: {
       PG_ASSERT(fn_def.instructions.len >= 1);
 
-      IrInstruction ins = {0};
-      ins.kind = IR_INSTRUCTION_KIND_JUMP_IF_TRUE;
-      ins.origin = node.origin;
-      PG_ASSERT(0 && "todo");
+      // FIXME: Negate condition!
+
+      IrInstruction ins_jmp_else = {0};
+      ins_jmp_else.kind = IR_INSTRUCTION_KIND_JUMP_IF_TRUE;
+      ins_jmp_else.origin = node.origin;
+
+      MetadataIndex else_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex then_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
+
+      ins_jmp_else.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg_meta_idx = cond_meta_idx,
+      };
+      ins_jmp_else.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_LABEL, .u.label = {0}, // FIXME
+      };
+      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp_else;
+
+      IrInstruction ins_jmp_end = {0};
+      ins_jmp_end.kind = IR_INSTRUCTION_KIND_JUMP;
+      ins_jmp_end.origin = node.origin;
+      ins_jmp_end.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_LABEL, .u.label = {0}, // FIXME
+      };
+      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp_end;
     } break;
 
     case AST_NODE_KIND_JUMP: {
