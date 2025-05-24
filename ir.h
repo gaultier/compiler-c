@@ -105,6 +105,7 @@ PG_DYN(Metadata) MetadataDyn;
 
 typedef struct {
   IrInstructionKind kind;
+  u8 args_count; // For IR readability only.
   u16 flags;
   Origin origin;
   MetadataIndex meta_idx;
@@ -402,11 +403,10 @@ static void ir_print_instructions(IrInstructionDyn instructions,
     case IR_INSTRUCTION_KIND_SYSCALL: {
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
-      // PG_ASSERT(ins.extra_data > 0);
-      // PG_ASSERT(ins.extra_data <= max_syscall_args_count);
+      PG_ASSERT(ins.args_count > 0);
+      PG_ASSERT(ins.args_count <= max_syscall_args_count);
 
-      printf("Syscall ");
-      // TODO: args.
+      printf("Syscall(%u)", ins.args_count);
     } break;
 
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
@@ -754,6 +754,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
+      ins.args_count = (u8)node.u.args_count;
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->virtual_register.constraint =
