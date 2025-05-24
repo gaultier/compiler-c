@@ -1367,7 +1367,7 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, ins_label_def, allocator);
     } break;
 
-    case IR_INSTRUCTION_KIND_JUMP_IF_TRUE: {
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
       PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 

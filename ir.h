@@ -6,7 +6,7 @@ typedef enum : u8 {
   IR_INSTRUCTION_KIND_ADD,
   IR_INSTRUCTION_KIND_MOV,
   IR_INSTRUCTION_KIND_LOAD_ADDRESS,
-  IR_INSTRUCTION_KIND_JUMP_IF_TRUE,
+  IR_INSTRUCTION_KIND_JUMP_IF_FALSE,
   IR_INSTRUCTION_KIND_JUMP,
   IR_INSTRUCTION_KIND_COMPARISON,
   IR_INSTRUCTION_KIND_SYSCALL,
@@ -382,11 +382,11 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       ir_print_operand(ins.rhs, metadata);
     } break;
 
-    case IR_INSTRUCTION_KIND_JUMP_IF_TRUE: {
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
       PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 
-      printf("JumpIfTrue ");
+      printf("JumpIfFalse ");
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
       ir_print_operand(ins.rhs, metadata);
@@ -471,7 +471,7 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
     case IR_INSTRUCTION_KIND_ADD:
     case IR_INSTRUCTION_KIND_MOV:
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
-    case IR_INSTRUCTION_KIND_JUMP_IF_TRUE:
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
     case IR_INSTRUCTION_KIND_COMPARISON:
     case IR_INSTRUCTION_KIND_SYSCALL: {
       if (ins.meta_idx.value) {
@@ -681,10 +681,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     case AST_NODE_KIND_BRANCH: {
       PG_ASSERT(fn_def.instructions.len >= 1);
 
-      // FIXME: Negate condition!
-
       IrInstruction ins_jmp_else = {0};
-      ins_jmp_else.kind = IR_INSTRUCTION_KIND_JUMP_IF_TRUE;
+      ins_jmp_else.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
       ins_jmp_else.origin = node.origin;
 
       MetadataIndex else_meta_idx = PG_DYN_POP(&stack);
@@ -800,12 +798,13 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(fn_def.instructions.len >= 1);
 
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
+      // FIXME: Add negation of condition!
 
       IrOperand if_end_target =
           ir_make_synth_label(&emitter->label_id, allocator);
 
       IrInstruction ins_jmp = {0};
-      ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_TRUE;
+      ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
       ins_jmp.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = cond_meta_idx,
