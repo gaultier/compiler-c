@@ -110,6 +110,10 @@ typedef struct {
   Origin origin;
   MetadataIndex meta_idx;
   IrOperand lhs, rhs;
+  // - For Identifier: node_idx
+  // - For JumpIfFalse: ir instruction of the condition (vreg)
+  // - For Syscall: args_count
+  // TODO: Just use a union???!!!
   u64 extra_data;
 } IrInstruction;
 PG_DYN(IrInstruction) IrInstructionDyn;
@@ -175,25 +179,30 @@ static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
   return nullptr;
 }
 
-[[maybe_unused]]
 static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
-                                            IrInstruction ins,
+                                            MetadataIndex meta_idx,
                                             InstructionIndex ins_idx) {
-  PG_SLICE_AT(metadata, ins.meta_idx.value).lifetime_end = ins_idx;
+  PG_ASSERT(meta_idx.value);
+  PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 
   // TODO: Variable pointed to needs to live at least as long as the pointer to
   // it.
   // TODO: If there are multiple aliases to the same pointer, all aliases
   // should have their meta extended to this point!
   // TODO: Dataflow.
-
-  if (IR_INSTRUCTION_KIND_IDENTIFIER == ins.kind) {
-    PgString s = PG_S("FIXME");
-    Metadata *meta = metadata_find_by_identifier(metadata, s);
-    PG_ASSERT(meta);
-    meta->lifetime_end = ins_idx;
-  }
 }
+
+static void metadata_extend_operand_lifetime_on_use(MetadataDyn metadata,
+                                                    IrOperand op,
+                                                    InstructionIndex ins_idx) {
+  // No-op.
+  if (IR_OPERAND_KIND_VREG != op.kind) {
+    return;
+  }
+  MetadataIndex meta_idx = {op.u.vreg.value};
+  metadata_extend_lifetime_on_use(metadata, meta_idx, ins_idx);
+}
+
 [[nodiscard]]
 static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
   switch (constraint) {
@@ -700,31 +709,66 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
 [[nodiscard]]
 static FnDefinitionDyn ir_generate_fn_defs(IrInstructionDyn instructions,
+                                           AstNodeDyn nodes,
                                            PgAllocator *allocator) {
 
   FnDefinitionDyn fn_defs = {0};
   FnDefinition fn_def = {0};
   fn_def.instructions = instructions;
+  PG_DYN_ENSURE_CAP(&fn_def.metadata, instructions.len, allocator);
 
   for (u32 i = 0; i < instructions.len; i++) {
     IrInstruction *ins = PG_SLICE_AT_PTR(&instructions, i);
+    InstructionIndex ins_idx = {i};
 
     switch (ins->kind) {
     case IR_INSTRUCTION_KIND_MOV: {
-      PG_ASSERT(0 && "todo");
+      ins->meta_idx = metadata_make(&fn_def.metadata, allocator);
+
+      if (ins->extra_data) {
+        AstNode node = PG_SLICE_AT(nodes, ins->extra_data);
+        PG_ASSERT(AST_NODE_KIND_VAR_DEFINITION == node.kind);
+        PgString name = node.u.s;
+        PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
+      }
+
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->lhs,
+                                              ins_idx);
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->rhs,
+                                              ins_idx);
     } break;
-    case IR_INSTRUCTION_KIND_ADD:
-    case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
-    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
-      PG_ASSERT(0);
+
+    case IR_INSTRUCTION_KIND_LOAD_ADDRESS: {
+      ins->meta_idx = metadata_make(&fn_def.metadata, allocator);
+      PG_SLICE_LAST_PTR(&fn_def.metadata)->virtual_register.addressable = true;
+
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->lhs,
+                                              ins_idx);
+    } break;
+
+    case IR_INSTRUCTION_KIND_ADD: {
+      ins->meta_idx = metadata_make(&fn_def.metadata, allocator);
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->lhs,
+                                              ins_idx);
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->rhs,
+                                              ins_idx);
+    } break;
+
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
+      PG_ASSERT(ins->extra_data);
+      IrInstruction cond = PG_SLICE_AT(instructions, ins->extra_data);
+      metadata_extend_lifetime_on_use(fn_def.metadata, cond.meta_idx, ins_idx);
+    } break;
 
     case IR_INSTRUCTION_KIND_IDENTIFIER: {
       // Here the variable name is resolved.
       // TODO: Scope aware symbol resolution.
-      PgString name = PG_S("FIXME");
+      PG_ASSERT(IR_OPERAND_KIND_STRING == ins->lhs.kind);
+      PgString name = ins->lhs.u.s;
+      PG_ASSERT(name.len);
       Metadata *meta = metadata_find_by_identifier(fn_def.metadata, name);
       if (!meta) {
-        PG_ASSERT(0);
+        PG_ASSERT(0 && "todo");
 #if 0
         ast_add_error(parser, ERROR_KIND_UNDEFINED_VAR, ins->origin, allocator);
         PG_DYN_LAST(*parser->errors).src_span = node->u.s;
@@ -740,24 +784,36 @@ static FnDefinitionDyn ir_generate_fn_defs(IrInstructionDyn instructions,
           (u64)(PG_SLICE_AT_PTR(&instructions, i) - fn_def.instructions.data);
       *PG_DYN_PUSH(&fn_defs, allocator) = fn_def;
 
-      FnDefinition fn_def_new = {.instructions =
-                                     PG_SLICE_RANGE_START(instructions, i)};
-      // TODO: Still needed?
-      *PG_DYN_PUSH(&fn_def_new.metadata, allocator) = (Metadata){0}; // Dummy.
+      fn_def = (FnDefinition){
+          .instructions = PG_SLICE_RANGE_START(instructions, i),
+      };
+      PG_DYN_ENSURE_CAP(&fn_def.metadata, instructions.len, allocator);
 
-      *PG_DYN_PUSH(&fn_defs, allocator) = fn_def_new;
+      // TODO: Still needed?
+      *PG_DYN_PUSH(&fn_def.metadata, allocator) = (Metadata){0}; // Dummy.
+
     } break;
 
     case IR_INSTRUCTION_KIND_COMPARISON: {
       PG_SLICE_AT(fn_def.metadata, ins->meta_idx.value)
           .virtual_register.constraint = VREG_CONSTRAINT_CONDITION_FLAGS;
+
+      ins->meta_idx = metadata_make(&fn_def.metadata, allocator);
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->lhs,
+                                              ins_idx);
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->rhs,
+                                              ins_idx);
     } break;
 
     case IR_INSTRUCTION_KIND_SYSCALL: {
       PG_SLICE_AT(fn_def.metadata, ins->meta_idx.value)
           .virtual_register.constraint = VREG_CONSTRAINT_SYSCALL_RET;
+
+      // TODO: args constraints.
+      // TODO: args lifetimes.
     } break;
 
+      // Nothing to do.
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
     case IR_INSTRUCTION_KIND_JUMP:
     case IR_INSTRUCTION_KIND_TRAP:

@@ -119,7 +119,8 @@ int main(int argc, char *argv[]) {
     ir_print_instructions(ir_instructions);
   }
 
-  FnDefinitionDyn fn_defs = ir_generate_fn_defs(ir_instructions, allocator);
+  FnDefinitionDyn fn_defs =
+      ir_generate_fn_defs(ir_instructions, nodes_input, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ FnDefs ------------\n");
     ir_print_fn_defs(fn_defs);
