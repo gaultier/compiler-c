@@ -1,6 +1,7 @@
 #pragma once
 #include "asm.h"
 #include "ast.h"
+#include "ir.h"
 
 typedef enum {
   AMD64_OPERAND_KIND_NONE,
@@ -281,6 +282,7 @@ static void amd64_print_operand(Amd64Operand op) {
            op.u.effective_address.displacement);
   } break;
   case AMD64_OPERAND_KIND_LABEL:
+    PG_ASSERT(op.u.label.value.data);
     PG_ASSERT(op.u.label.value.len);
 
     printf("%.*s", (i32)op.u.label.value.len, op.u.label.value.data);
@@ -1482,6 +1484,31 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, ins_mov, allocator);
 
     } break;
+
+    case IR_INSTRUCTION_KIND_COMPARISON: {
+      PG_ASSERT(ins.lhs.kind);
+      PG_ASSERT(ins.rhs.kind);
+      PG_ASSERT(ins.meta_idx.value);
+
+      Amd64Instruction ins_cmp = {
+          .kind = AMD64_INSTRUCTION_KIND_CMP,
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
+                                                           fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.rhs,
+                                                           fn_def.metadata),
+          .origin = ins.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_cmp, allocator);
+
+      Amd64Instruction ins_sete = {
+          .kind = AMD64_INSTRUCTION_KIND_SET_IF_EQ,
+          .lhs = amd64_convert_memory_location_to_amd64_operand(
+              ins.meta_idx, fn_def.metadata),
+          .origin = ins.origin,
+      };
+      amd64_add_instruction(&section->instructions, ins_sete, allocator);
+    } break;
+
     case IR_INSTRUCTION_KIND_ADD: {
       PG_ASSERT(ins.lhs.kind);
       PG_ASSERT(ins.rhs.kind);
@@ -1548,10 +1575,39 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
       amd64_add_instruction(&section->instructions, ins_lea, allocator);
     } break;
 
-    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
-    case IR_INSTRUCTION_KIND_COMPARISON:
-    case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
-      break;
+    case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
+      PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.lhs.kind);
+
+      Amd64Instruction ins_label_def = {
+          .kind = AMD64_INSTRUCTION_KIND_LABEL_DEFINITION,
+          .origin = ins.origin,
+          .lhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_LABEL,
+                  .u.label = ins.lhs.u.label,
+              },
+      };
+      amd64_add_instruction(&section->instructions, ins_label_def, allocator);
+    } break;
+
+    case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
+      PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
+
+      Amd64Instruction ins_je = {
+          .kind = AMD64_INSTRUCTION_KIND_JMP_IF_EQ,
+          .origin = ins.origin,
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
+                                                           fn_def.metadata),
+          .rhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_LABEL,
+                  .u.label = ins.rhs.u.label,
+              },
+      };
+      amd64_add_instruction(&section->instructions, ins_je, allocator);
+    } break;
+
     case IR_INSTRUCTION_KIND_NONE:
     default:
       PG_ASSERT(0);

@@ -385,7 +385,7 @@ static void ir_print_instructions(IrInstructionDyn instructions,
     } break;
 
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
-      PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.lhs.kind);
+      PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 
       printf("JumpIfFalse " /*, ins.extra_data */);
@@ -799,15 +799,18 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrInstruction ins_jmp = {0};
       ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
-      // FIXME: Need IR_OPERAND_KIND_LIST
-      // ins_jmp.extra_data = res.len - 1;
 
       IrOperand if_then_target =
           ir_make_synth_label(&emitter->label_id, allocator);
       IrOperand if_end_target =
           ir_make_synth_label(&emitter->label_id, allocator);
 
-      ins_jmp.lhs = if_then_target;
+      ins_jmp.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg_meta_idx = ins_cmp.meta_idx,
+      };
+      // TODO: rflags constraint.
+
       ins_jmp.rhs = if_end_target;
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp;
 
