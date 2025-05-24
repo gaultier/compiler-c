@@ -1487,12 +1487,6 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
     };
 
     amd64_add_instruction(&section.instructions, stack_add, allocator);
-  } else {
-#if 0
-    PG_C_ARRAY_AT_PTR((Amd64Instruction *)section->instructions.data,
-                      section->instructions.len, stack_sub_instruction_idx)
-        ->tombstone = true;
-#endif
   }
   amd64_emit_epilog(&section, allocator);
 

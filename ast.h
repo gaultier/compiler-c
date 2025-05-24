@@ -68,7 +68,9 @@ typedef struct {
 [[nodiscard]]
 static Label ast_next_label_name(AstParser *parser, PgAllocator *allocator) {
   Label id = {
-      .value = pg_u64_to_string(++parser->label_id, allocator),
+      .value = pg_string_concat(PG_S(".L"),
+                                pg_u64_to_string(++parser->label_id, allocator),
+                                allocator),
   };
   return id;
 }
