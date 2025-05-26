@@ -55,7 +55,12 @@ typedef struct {
 PG_DYN(AstNodeIndex) AstNodeIndexDyn;
 
 typedef struct {
-  AstNodeIndex *entries;
+  PgString key;
+  AstNodeIndex value;
+} SymbolEntry;
+
+typedef struct {
+  SymbolEntry *entries;
   u32 len;
   u32 exp;
 } SymbolMap;
@@ -84,59 +89,55 @@ PG_DYN(MetadataIndex) MetadataIndexDyn;
   SymbolMap res = {0};
   u32 ffs = (u32)__builtin_ffs((i32)cap);
   PG_ASSERT(ffs > 0);
-  res.exp = ffs - 1;
-  res.entries =
-      pg_alloc(allocator, sizeof(AstNodeIndex), _Alignof(AstNodeIndex), cap);
+  res.exp = ffs;
+  res.entries = pg_alloc(allocator, sizeof(*res.entries),
+                         _Alignof(*res.entries), 1UL << res.exp);
 
   return res;
 }
 
-[[nodiscard]] static u32 resolver_lookup(u64 hash, u32 exp, u32 idx) {
+[[nodiscard]] static u32 msi_lookup(u64 hash, u32 exp, u32 idx) {
   u32 mask = (u32)(1UL << exp) - 1UL;
   u32 step = (u32)(hash >> (64 - exp)) | 1UL;
 
   return (idx + step) & mask;
 }
 
-[[nodiscard]] static AstNodeIndex *symbols_lookup(SymbolMap map,
-                                                  PgString name) {
+[[nodiscard]] static SymbolEntry *symbols_lookup(SymbolMap map, PgString name) {
   PG_ASSERT(map.exp <= 32UL);
 
   u64 hash = pg_hash_fnv(name);
   for (u32 i = (u32)hash;;) {
-    i = resolver_lookup(hash, map.exp, i);
+    i = msi_lookup(hash, map.exp, i);
     PG_ASSERT(i < (1UL << map.exp));
 
-    if (0 == map.entries[i].value) {
-      // Empty, insert here.
-      if ((u32)map.len + 1 == (u32)1UL << map.exp) {
-        return nullptr; // OOM.
-      }
-      return &map.entries[i];
-    } else {
+    if (0 == map.entries[i].key.len) {
+      return nullptr;
+    } else if (pg_string_eq(map.entries[i].key, name)) {
       return &map.entries[i];
     }
   }
 }
 
-[[nodiscard]] static AstNodeIndex *symbols_insert(SymbolMap *map, PgString name,
-                                                  AstNodeIndex node_idx) {
+[[nodiscard]] static SymbolEntry *symbols_insert(SymbolMap *map, PgString name,
+                                                 AstNodeIndex node_idx) {
   PG_ASSERT(map->exp <= 32UL);
 
   u64 hash = pg_hash_fnv(name);
   for (u32 i = (u32)hash;;) {
-    i = resolver_lookup(hash, map->exp, i);
+    i = msi_lookup(hash, map->exp, i);
     PG_ASSERT(i < (1UL << map->exp));
 
-    if (0 == map->entries[i].value) {
+    if (0 == map->entries[i].key.len) {
       // Empty, insert here.
       if ((u32)map->len + 1 == (u32)1UL << map->exp) {
         return nullptr; // OOM.
       }
       map->len += 1;
-      map->entries[i] = node_idx;
+      map->entries[i] = (SymbolEntry){.key = name, .value = node_idx};
       return &map->entries[i];
-    } else if (map->entries[i].value == node_idx.value) {
+    } else if (pg_string_eq(map->entries[i].key, name)) {
+      PG_ASSERT(node_idx.value == map->entries[i].value.value);
       return &map->entries[i];
     }
   }
@@ -341,10 +342,10 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
   ast_push(parser, node, allocator);
 
   AstNodeIndex node_idx = {(u32)parser->nodes.len - 1};
-  AstNodeIndex *insert =
+  SymbolEntry *entry =
       symbols_insert(&parser->symbols, token_first.s, node_idx);
-  PG_ASSERT(insert);
-  if (insert->value != node_idx.value) {
+  PG_ASSERT(entry);
+  if (entry->value.value != node_idx.value) {
     PG_ASSERT(0 && "todo");
   }
 
@@ -646,10 +647,10 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     ast_push(parser, jump_if_then_label_def, allocator);
 
     AstNodeIndex node_idx = {(u32)parser->nodes.len - 1};
-    AstNodeIndex *insert =
+    SymbolEntry *entry =
         symbols_insert(&parser->symbols, branch_then_label.value, node_idx);
-    PG_ASSERT(insert);
-    if (insert->value != node_idx.value) {
+    PG_ASSERT(entry);
+    if (entry->value.value != node_idx.value) {
       PG_ASSERT(0 && "todo");
     }
   }

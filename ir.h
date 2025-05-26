@@ -558,6 +558,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
 
+      SymbolEntry *op_entry = symbols_lookup(emitter->symbols, name);
+      if (!op_entry) {
+        PG_ASSERT(0 && "todo");
+      }
+
       Metadata *op_meta = metadata_find_by_identifier(fn_def.metadata, name);
       if (!op_meta) {
         PG_ASSERT(0 && "todo");
