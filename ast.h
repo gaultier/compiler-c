@@ -66,11 +66,11 @@ typedef struct {
 } AstParser;
 
 [[nodiscard]]
-static Label ast_next_label_name(AstParser *parser, PgAllocator *allocator) {
+static Label ast_next_label_name(AstParser *parser, PgString hint,
+                                 PgAllocator *allocator) {
   Label id = {
-      .value = pg_string_concat(PG_S(".L"),
-                                pg_u64_to_string(++parser->label_id, allocator),
-                                allocator),
+      .value = pg_string_concat(
+          hint, pg_u64_to_string(++parser->label_id, allocator), allocator),
   };
   return id;
 }
@@ -522,14 +522,18 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  Label branch_else_label = ast_next_label_name(parser, allocator);
-  Label branch_if_then_label = ast_next_label_name(parser, allocator);
+  Label branch_then_label =
+      ast_next_label_name(parser, PG_S("if-then-"), allocator);
+  Label branch_else_label =
+      ast_next_label_name(parser, PG_S("if-else-"), allocator);
+  Label branch_end_label =
+      ast_next_label_name(parser, PG_S("if-end-"), allocator);
 
   {
     AstNode jump_if_then_label = {0};
     jump_if_then_label.kind = AST_NODE_KIND_LABEL;
     jump_if_then_label.origin = ast_current_or_last_token(*parser).origin;
-    jump_if_then_label.u.label = branch_if_then_label;
+    jump_if_then_label.u.label = branch_then_label;
     ast_push(parser, jump_if_then_label, allocator);
 
     AstNode jump_else_label = {0};
@@ -538,10 +542,23 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     jump_else_label.u.label = branch_else_label;
     ast_push(parser, jump_else_label, allocator);
 
+    AstNode jump_end_label = {0};
+    jump_end_label.kind = AST_NODE_KIND_LABEL;
+    jump_end_label.origin = ast_current_or_last_token(*parser).origin;
+    jump_end_label.u.label = branch_end_label;
+    ast_push(parser, jump_end_label, allocator);
+
     AstNode branch = {0};
     branch.kind = AST_NODE_KIND_BRANCH;
     branch.origin = token_first.origin;
     ast_push(parser, branch, allocator);
+
+    // Not absolutely needed but makes AST more readable and useful later for
+    // the CFG.
+    AstNode jump_if_then_label_def = {0};
+    jump_if_then_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
+    jump_if_then_label_def.u.label = branch_then_label;
+    ast_push(parser, jump_if_then_label_def, allocator);
   }
 
   if (!ast_parse_block(parser, allocator)) {
@@ -551,14 +568,14 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
   }
 
   {
-    AstNode jump_if_cont_label = {0};
-    jump_if_cont_label.kind = AST_NODE_KIND_LABEL;
-    jump_if_cont_label.u.label = branch_if_then_label;
-    ast_push(parser, jump_if_cont_label, allocator);
+    AstNode jump_if_end_label = {0};
+    jump_if_end_label.kind = AST_NODE_KIND_LABEL;
+    jump_if_end_label.u.label = branch_end_label;
+    ast_push(parser, jump_if_end_label, allocator);
 
     AstNode jump = {0};
     jump.kind = AST_NODE_KIND_JUMP;
-    jump.u.label = branch_if_then_label;
+    jump.u.label = branch_then_label;
     ast_push(parser, jump, allocator);
   }
 
@@ -569,10 +586,10 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
 
   // TODO: optional else.
 
-  AstNode jump_if_cont_label_def = {0};
-  jump_if_cont_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
-  jump_if_cont_label_def.u.label = branch_if_then_label;
-  ast_push(parser, jump_if_cont_label_def, allocator);
+  AstNode jump_if_end_label_def = {0};
+  jump_if_end_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
+  jump_if_end_label_def.u.label = branch_end_label;
+  ast_push(parser, jump_if_end_label_def, allocator);
 
   return true;
 }

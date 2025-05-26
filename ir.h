@@ -94,7 +94,9 @@ PG_DYN(MemoryLocation) MemoryLocationDyn;
 typedef struct {
   InstructionIndex lifetime_start, lifetime_end;
   VirtualRegister virtual_register;
+  Label label;
   MemoryLocation memory_location;
+  // TODO: Remove.
   PgString identifier;
 #if 0
   bool tombstone;
@@ -275,6 +277,9 @@ static void metadata_print_meta(Metadata meta) {
            meta.virtual_register.value,
            register_constraint_to_cstr(meta.virtual_register.constraint),
            meta.virtual_register.addressable ? "true" : "false");
+  }
+  if (meta.label.value.len) {
+    printf(" label=%.*s", (i32)meta.label.value.len, meta.label.value.data);
   }
 
   if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
@@ -473,6 +478,7 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE:
     case IR_INSTRUCTION_KIND_COMPARISON:
+    case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
     case IR_INSTRUCTION_KIND_SYSCALL: {
       if (ins.meta_idx.value) {
         metadata_start_lifetime(fn_def.metadata, ins.meta_idx, ins_idx);
@@ -484,7 +490,6 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
     } break;
 
       // Nothing to do.
-    case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
     case IR_INSTRUCTION_KIND_JUMP:
     case IR_INSTRUCTION_KIND_TRAP:
       break;
@@ -689,12 +694,16 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       MetadataIndex then_meta_idx = PG_DYN_POP(&stack);
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
 
+      Metadata else_meta = PG_SLICE_AT(fn_def.metadata, else_meta_idx.value);
+      Metadata then_meta = PG_SLICE_AT(fn_def.metadata, then_meta_idx.value);
+
       ins_jmp_else.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = cond_meta_idx,
       };
       ins_jmp_else.rhs = (IrOperand){
-          .kind = IR_OPERAND_KIND_LABEL, .u.label = {0}, // FIXME
+          .kind = IR_OPERAND_KIND_LABEL,
+          .u.label = else_meta.label,
       };
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp_else;
 
@@ -702,7 +711,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins_jmp_end.kind = IR_INSTRUCTION_KIND_JUMP;
       ins_jmp_end.origin = node.origin;
       ins_jmp_end.lhs = (IrOperand){
-          .kind = IR_OPERAND_KIND_LABEL, .u.label = {0}, // FIXME
+          .kind = IR_OPERAND_KIND_LABEL,
+          .u.label = then_meta.label,
       };
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp_end;
     } break;
@@ -789,6 +799,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
       ins.origin = node.origin;
       ins.lhs = ir_make_synth_label(&emitter->label_id, allocator);
+      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
+      PG_SLICE_LAST_PTR(&fn_def.metadata)->label = ins.lhs.u.label;
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
 
