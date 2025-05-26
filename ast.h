@@ -917,5 +917,17 @@ static SymbolMap resolver_build_symbols(AstNodeDyn nodes, ErrorDyn *errors,
     }
   }
 
+  for (u32 i = 0; i < nodes.len; i++) {
+    AstNode node = PG_SLICE_AT(nodes, i);
+
+    if (AST_NODE_KIND_LABEL == node.kind) {
+      SymbolEntry *entry = symbols_lookup(symbols, node.u.label.value);
+      if (!entry) {
+        (void)errors;
+        PG_ASSERT(0 && "todo: label undefined");
+      }
+    }
+  }
+
   return symbols;
 }
