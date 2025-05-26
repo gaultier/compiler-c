@@ -63,6 +63,9 @@ typedef struct {
   // Gets incremented.
   u32 label_id;
 
+  // Name resolution.
+  AstNodeIndexDyn labels_to_resolve;
+  AstNodeIndexDyn vars_to_resolve;
 } AstParser;
 
 [[nodiscard]]
@@ -523,11 +526,11 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
   }
 
   Label branch_then_label =
-      ast_next_label_name(parser, PG_S("if-then-"), allocator);
+      ast_next_label_name(parser, PG_S(".if-then-"), allocator);
   Label branch_else_label =
-      ast_next_label_name(parser, PG_S("if-else-"), allocator);
+      ast_next_label_name(parser, PG_S(".if-else-"), allocator);
   Label branch_end_label =
-      ast_next_label_name(parser, PG_S("if-end-"), allocator);
+      ast_next_label_name(parser, PG_S(".if-end-"), allocator);
 
   {
     AstNode jump_if_then_label = {0};
@@ -793,4 +796,10 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     }
     *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
+}
+
+// Map<String, AstNodeIndex>
+[[nodiscard]] static int /* FIXME*/
+ast_resolve_names(AstNodeDyn nodes, AstNodeIndexDyn names_to_resolve) {
+  return 0;
 }

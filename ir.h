@@ -690,9 +690,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins_jmp_else.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
       ins_jmp_else.origin = node.origin;
 
-      MetadataIndex else_meta_idx = PG_DYN_POP(&stack);
-      MetadataIndex then_meta_idx = PG_DYN_POP(&stack);
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex then_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex else_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex end_meta_idx = PG_DYN_POP(&stack);
+      (void)end_meta_idx;
 
       Metadata else_meta = PG_SLICE_AT(fn_def.metadata, else_meta_idx.value);
       Metadata then_meta = PG_SLICE_AT(fn_def.metadata, then_meta_idx.value);
@@ -734,8 +736,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
     } break;
 
-    case AST_NODE_KIND_LABEL:
-      break;
+    case AST_NODE_KIND_LABEL: {
+      MetadataIndex meta_idx = {0}; // FIXME
+      *PG_DYN_PUSH(&stack, allocator) = meta_idx;
+    } break;
 
     case AST_NODE_KIND_BUILTIN_TRAP: {
       IrInstruction ins = {0};
@@ -803,7 +807,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_SLICE_LAST_PTR(&fn_def.metadata)->label = ins.lhs.u.label;
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
-
     } break;
 
     case AST_NODE_KIND_BUILTIN_ASSERT: {
