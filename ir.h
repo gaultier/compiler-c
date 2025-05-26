@@ -45,11 +45,6 @@ typedef struct {
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
 
 typedef struct {
-  u32 value;
-} MetadataIndex;
-PG_DYN(MetadataIndex) MetadataIndexDyn;
-
-typedef struct {
   IrOperandKind kind;
 
   union {

@@ -55,6 +55,12 @@ typedef struct {
 PG_DYN(AstNodeIndex) AstNodeIndexDyn;
 
 typedef struct {
+  AstNodeIndex *entries;
+  u32 len;
+  u32 exp;
+} SymbolMap;
+
+typedef struct {
   Lexer lexer;
   u64 tokens_consumed;
   ErrorDyn *errors;
@@ -64,10 +70,56 @@ typedef struct {
   u32 label_id;
 
   // Name resolution.
-  AstNodeIndexDyn labels_to_resolve;
-  AstNodeIndexDyn vars_to_resolve;
+  SymbolMap symbols;
 } AstParser;
 
+typedef struct {
+  u32 value;
+} MetadataIndex;
+PG_DYN(MetadataIndex) MetadataIndexDyn;
+
+[[nodiscard]] static SymbolMap symbols_make(u32 cap, PgAllocator *allocator) {
+  PG_ASSERT(1 == __builtin_popcount(cap));
+
+  SymbolMap res = {0};
+  u32 ffs = (u32)__builtin_ffs((i32)cap);
+  PG_ASSERT(ffs > 0);
+  res.exp = ffs - 1;
+  res.entries =
+      pg_alloc(allocator, sizeof(AstNodeIndex), _Alignof(AstNodeIndex), cap);
+
+  return res;
+}
+
+[[nodiscard]] static u32 resolver_lookup(u64 hash, u32 exp, u32 idx) {
+  u32 mask = (u32)(1UL << exp) - 1UL;
+  u32 step = (u32)(hash >> (64 - exp)) | 1UL;
+
+  return (idx + step) & mask;
+}
+
+[[nodiscard]] static AstNodeIndex *symbols_insert(SymbolMap *map, PgString name,
+                                                  AstNodeIndex node_idx) {
+  PG_ASSERT(map->exp <= 32UL);
+
+  u64 hash = pg_hash_fnv(name);
+  for (u32 i = (u32)hash;;) {
+    i = resolver_lookup(hash, map->exp, i);
+    PG_ASSERT(i < (1UL << map->exp));
+
+    if (0 == map->entries[i].value) {
+      // Empty, insert here.
+      if ((u32)map->len + 1 == (u32)1UL << map->exp) {
+        return nullptr; // OOM.
+      }
+      map->len += 1;
+      map->entries[i] = node_idx;
+      return &map->entries[i];
+    } else if (map->entries[i].value == node_idx.value) {
+      return &map->entries[i];
+    }
+  }
+}
 [[nodiscard]]
 static Label ast_next_label_name(AstParser *parser, PgString hint,
                                  PgAllocator *allocator) {
@@ -265,6 +317,14 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
   node.origin = token_first.origin;
   node.u.s = token_first.s;
   ast_push(parser, node, allocator);
+
+  AstNodeIndex node_idx = {(u32)parser->nodes.len - 1};
+  AstNodeIndex *insert =
+      symbols_insert(&parser->symbols, token_first.s, node_idx);
+  PG_ASSERT(insert);
+  if (insert->value != node_idx.value) {
+    PG_ASSERT(0 && "todo");
+  }
 
   return true;
 }
@@ -562,6 +622,14 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     jump_if_then_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
     jump_if_then_label_def.u.label = branch_then_label;
     ast_push(parser, jump_if_then_label_def, allocator);
+
+    AstNodeIndex node_idx = {(u32)parser->nodes.len - 1};
+    AstNodeIndex *insert =
+        symbols_insert(&parser->symbols, branch_then_label.value, node_idx);
+    PG_ASSERT(insert);
+    if (insert->value != node_idx.value) {
+      PG_ASSERT(0 && "todo");
+    }
   }
 
   if (!ast_parse_block(parser, allocator)) {
@@ -796,10 +864,4 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     }
     *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
-}
-
-// Map<String, AstNodeIndex>
-[[nodiscard]] static int /* FIXME*/
-ast_resolve_names(AstNodeDyn nodes, AstNodeIndexDyn names_to_resolve) {
-  return 0;
 }

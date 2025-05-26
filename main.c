@@ -78,7 +78,11 @@ int main(int argc, char *argv[]) {
     lex_tokens_print(lexer.tokens);
   }
 
-  AstParser parser = {.lexer = lexer, .errors = &errors};
+  AstParser parser = {
+      .lexer = lexer,
+      .errors = &errors,
+      .symbols = symbols_make((u32)lexer.tokens.cap, allocator),
+  };
   ast_emit(&parser, allocator);
 
   AstNodeDyn nodes_input = parser.nodes;
