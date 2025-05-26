@@ -114,7 +114,11 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  SymbolMap symbols = resolver_build_symbols(parser.nodes, &errors, allocator);
+  SymbolMap symbols =
+      resolver_build_symbols(parser.nodes, &errors, lexer.src, allocator);
+  if (errors.len) {
+    goto err;
+  }
 
   IrEmitter ir_emitter = {.symbols = symbols};
   FnDefinitionDyn fn_defs =
@@ -128,9 +132,6 @@ int main(int argc, char *argv[]) {
   TypeChecker type_checker = types_make_type_checker(allocator);
   (void)type_checker; // TODO
 #endif
-  if (errors.len) {
-    goto err;
-  }
 
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);

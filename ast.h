@@ -134,7 +134,6 @@ PG_DYN(MetadataIndex) MetadataIndexDyn;
       map->entries[i] = (SymbolEntry){.key = name, .value = node_idx};
       return &map->entries[i];
     } else if (pg_string_eq(map->entries[i].key, name)) {
-      PG_ASSERT(node_idx.value == map->entries[i].value.value);
       return &map->entries[i];
     }
   }
@@ -872,12 +871,12 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
 
 [[nodiscard]]
 static SymbolMap resolver_build_symbols(AstNodeDyn nodes, ErrorDyn *errors,
-                                        PgAllocator *allocator) {
+                                        PgString src, PgAllocator *allocator) {
   SymbolMap symbols = symbols_make((u32)nodes.cap, allocator);
 
   for (u32 i = 0; i < nodes.len; i++) {
     AstNode node = PG_SLICE_AT(nodes, i);
-    AstNodeIndex node_idx = {(u32)nodes.len - 1};
+    AstNodeIndex node_idx = {i};
 
     if (AST_NODE_KIND_LABEL_DEFINITION == node.kind) {
       SymbolEntry *entry =
@@ -891,14 +890,29 @@ static SymbolMap resolver_build_symbols(AstNodeDyn nodes, ErrorDyn *errors,
       SymbolEntry *entry = symbols_insert(&symbols, node.u.s, node_idx);
       PG_ASSERT(entry);
       if (entry->value.value != node_idx.value) {
-        (void)errors;
-        PG_ASSERT(0 && "todo: var shadowing");
+        Error err = {
+            .kind = ERROR_KIND_VAR_SHADOWING,
+            .origin = node.origin,
+            .src = src,
+            .src_span =
+                PG_SLICE_RANGE(src, node.origin.file_offset_start,
+                               node.origin.file_offset_start + node.u.s.len),
+        };
+        *PG_DYN_PUSH(errors, allocator) = err;
       }
     } else if (AST_NODE_KIND_IDENTIFIER == node.kind) {
 
       SymbolEntry *entry = symbols_lookup(symbols, node.u.s);
       if (!entry) {
-        PG_ASSERT(0 && "todo: var undefined");
+        Error err = {
+            .kind = ERROR_KIND_VAR_UNDEFINED,
+            .origin = node.origin,
+            .src = src,
+            .src_span =
+                PG_SLICE_RANGE(src, node.origin.file_offset_start,
+                               node.origin.file_offset_start + node.u.s.len),
+        };
+        *PG_DYN_PUSH(errors, allocator) = err;
       }
     }
   }

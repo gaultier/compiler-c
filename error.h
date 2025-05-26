@@ -19,7 +19,8 @@ typedef enum {
   ERROR_KIND_PARSE_EQUALITY_MISSING_RHS,
   ERROR_KIND_PARSE_UNARY_MISSING_RHS,
   ERROR_KIND_PARSE_STATEMENT,
-  ERROR_KIND_UNDEFINED_VAR,
+  ERROR_KIND_VAR_UNDEFINED,
+  ERROR_KIND_VAR_SHADOWING,
   ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
   ERROR_KIND_PARSE_IF_MISSING_CONDITION,
   ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK,
@@ -123,8 +124,11 @@ static void error_print(Error err) {
   case ERROR_KIND_PARSE_UNARY_MISSING_RHS:
     printf("missing right operand in !/-/& operation");
     break;
-  case ERROR_KIND_UNDEFINED_VAR:
+  case ERROR_KIND_VAR_UNDEFINED:
     printf("undefined variable");
+    break;
+  case ERROR_KIND_VAR_SHADOWING:
+    printf("shadowed variable");
     break;
   case ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE:
     printf("trying to take address of something that is not addressable");
