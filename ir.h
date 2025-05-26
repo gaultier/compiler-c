@@ -111,6 +111,7 @@ PG_DYN(IrInstruction) IrInstructionDyn;
 
 typedef struct {
   u32 label_id;
+  SymbolMap symbols;
 } IrEmitter;
 
 // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge

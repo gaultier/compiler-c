@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  IrEmitter ir_emitter = {0};
+  IrEmitter ir_emitter = {.symbols = parser.symbols};
   FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
   if (cli_opts.verbose) {

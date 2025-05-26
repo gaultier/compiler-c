@@ -98,6 +98,27 @@ PG_DYN(MetadataIndex) MetadataIndexDyn;
   return (idx + step) & mask;
 }
 
+[[nodiscard]] static AstNodeIndex *symbols_lookup(SymbolMap map,
+                                                  PgString name) {
+  PG_ASSERT(map.exp <= 32UL);
+
+  u64 hash = pg_hash_fnv(name);
+  for (u32 i = (u32)hash;;) {
+    i = resolver_lookup(hash, map.exp, i);
+    PG_ASSERT(i < (1UL << map.exp));
+
+    if (0 == map.entries[i].value) {
+      // Empty, insert here.
+      if ((u32)map.len + 1 == (u32)1UL << map.exp) {
+        return nullptr; // OOM.
+      }
+      return &map.entries[i];
+    } else {
+      return &map.entries[i];
+    }
+  }
+}
+
 [[nodiscard]] static AstNodeIndex *symbols_insert(SymbolMap *map, PgString name,
                                                   AstNodeIndex node_idx) {
   PG_ASSERT(map->exp <= 32UL);
@@ -120,6 +141,7 @@ PG_DYN(MetadataIndex) MetadataIndexDyn;
     }
   }
 }
+
 [[nodiscard]]
 static Label ast_next_label_name(AstParser *parser, PgString hint,
                                  PgAllocator *allocator) {
