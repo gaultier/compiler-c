@@ -73,9 +73,6 @@ typedef struct {
 
   // Gets incremented.
   u32 label_id;
-
-  // Name resolution.
-  SymbolMap symbols;
 } AstParser;
 
 typedef struct {
@@ -340,14 +337,6 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
   node.origin = token_first.origin;
   node.u.s = token_first.s;
   ast_push(parser, node, allocator);
-
-  AstNodeIndex node_idx = {(u32)parser->nodes.len - 1};
-  SymbolEntry *entry =
-      symbols_insert(&parser->symbols, token_first.s, node_idx);
-  PG_ASSERT(entry);
-  if (entry->value.value != node_idx.value) {
-    PG_ASSERT(0 && "todo");
-  }
 
   return true;
 }
@@ -645,14 +634,6 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     jump_if_then_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
     jump_if_then_label_def.u.label = branch_then_label;
     ast_push(parser, jump_if_then_label_def, allocator);
-
-    AstNodeIndex node_idx = {(u32)parser->nodes.len - 1};
-    SymbolEntry *entry =
-        symbols_insert(&parser->symbols, branch_then_label.value, node_idx);
-    PG_ASSERT(entry);
-    if (entry->value.value != node_idx.value) {
-      PG_ASSERT(0 && "todo");
-    }
   }
 
   if (!ast_parse_block(parser, allocator)) {
@@ -887,4 +868,40 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     }
     *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
+}
+
+[[nodiscard]]
+static SymbolMap resolver_build_symbols(AstNodeDyn nodes, ErrorDyn *errors,
+                                        PgAllocator *allocator) {
+  SymbolMap symbols = symbols_make((u32)nodes.cap, allocator);
+
+  for (u32 i = 0; i < nodes.len; i++) {
+    AstNode node = PG_SLICE_AT(nodes, i);
+    AstNodeIndex node_idx = {(u32)nodes.len - 1};
+
+    if (AST_NODE_KIND_LABEL_DEFINITION == node.kind) {
+      SymbolEntry *entry =
+          symbols_insert(&symbols, node.u.label.value, node_idx);
+      PG_ASSERT(entry);
+      if (entry->value.value != node_idx.value) {
+        (void)errors;
+        PG_ASSERT(0 && "todo: label shadowing");
+      }
+    } else if (AST_NODE_KIND_VAR_DEFINITION == node.kind) {
+      SymbolEntry *entry = symbols_insert(&symbols, node.u.s, node_idx);
+      PG_ASSERT(entry);
+      if (entry->value.value != node_idx.value) {
+        (void)errors;
+        PG_ASSERT(0 && "todo: var shadowing");
+      }
+    } else if (AST_NODE_KIND_IDENTIFIER == node.kind) {
+
+      SymbolEntry *entry = symbols_lookup(symbols, node.u.s);
+      if (!entry) {
+        PG_ASSERT(0 && "todo: var undefined");
+      }
+    }
+  }
+
+  return symbols;
 }

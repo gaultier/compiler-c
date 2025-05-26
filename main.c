@@ -81,7 +81,6 @@ int main(int argc, char *argv[]) {
   AstParser parser = {
       .lexer = lexer,
       .errors = &errors,
-      .symbols = symbols_make((u32)lexer.tokens.cap, allocator),
   };
   ast_emit(&parser, allocator);
 
@@ -115,7 +114,9 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  IrEmitter ir_emitter = {.symbols = parser.symbols};
+  SymbolMap symbols = resolver_build_symbols(parser.nodes, &errors, allocator);
+
+  IrEmitter ir_emitter = {.symbols = symbols};
   FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
   if (cli_opts.verbose) {
