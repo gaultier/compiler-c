@@ -9,4 +9,4 @@
 [x] codegen: find a way to shorten codegen
 [x] unwind parser to the top on error to avoid partial token consumption
 [x] codegen: migrate from function pointers (polymorphism) to enum for all architectures
-[ ] array based locals, scope depth aware
+[x] array based locals, scope depth aware
