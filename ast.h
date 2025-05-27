@@ -323,6 +323,10 @@ static bool ast_parse_syscall(AstParser *parser, PgAllocator *allocator);
 
 [[nodiscard]]
 static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   LexToken token_first =
       ast_match_token_kind(parser, LEX_TOKEN_KIND_IDENTIFIER);
   if (!token_first.kind) {
@@ -355,6 +359,10 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_primary(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   LexToken first = ast_match_token_kind1_or_kind2(
       parser, LEX_TOKEN_KIND_LITERAL_NUMBER, LEX_TOKEN_KIND_IDENTIFIER);
 
@@ -386,6 +394,10 @@ static bool ast_parse_primary(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_call(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   return ast_parse_primary(parser, allocator);
 }
 
@@ -396,6 +408,10 @@ static bool ast_parse_call(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   LexToken token_first = ast_match_token_kind(parser, LEX_TOKEN_KIND_AMPERSAND);
   if (!token_first.kind) {
     return ast_parse_call(parser, allocator);
@@ -423,11 +439,19 @@ static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_factor(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   return ast_parse_unary(parser, allocator);
 }
 
 [[nodiscard]]
 static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   if (!ast_parse_factor(parser, allocator)) {
     return false;
   }
@@ -454,11 +478,19 @@ static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_comparison(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   return ast_parse_term(parser, allocator);
 }
 
 [[nodiscard]]
 static bool ast_parse_equality(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   if (!ast_parse_comparison(parser, allocator)) {
     return false;
   }
@@ -487,21 +519,37 @@ static bool ast_parse_equality(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_logic_and(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   return ast_parse_equality(parser, allocator);
 }
 
 [[nodiscard]]
 static bool ast_parse_logic_or(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   return ast_parse_logic_and(parser, allocator);
 }
 
 [[nodiscard]]
 static bool ast_parse_assignment(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   return ast_parse_logic_or(parser, allocator);
 }
 
 [[nodiscard]]
 static bool ast_parse_expr(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   if (ast_parse_syscall(parser, allocator)) {
     return true;
   }
@@ -515,6 +563,10 @@ static bool ast_parse_expr(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_syscall(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   LexToken token_first =
       ast_match_token_kind(parser, LEX_TOKEN_KIND_KEYWORD_SYSCALL);
   if (!token_first.kind) {
@@ -578,6 +630,10 @@ static bool ast_parse_syscall(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_block(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   LexToken token_first =
       ast_match_token_kind(parser, LEX_TOKEN_KIND_CURLY_LEFT);
   if (!token_first.kind) {
@@ -608,6 +664,10 @@ static bool ast_parse_block(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   LexToken token_first =
       ast_match_token_kind(parser, LEX_TOKEN_KIND_KEYWORD_IF);
   if (!token_first.kind) {
@@ -697,6 +757,10 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
 [[nodiscard]]
 static bool ast_parse_statement_assert(AstParser *parser,
                                        PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   LexToken token_first =
       ast_match_token_kind(parser, LEX_TOKEN_KIND_KEYWORD_ASSERT);
   if (!token_first.kind) {
@@ -735,6 +799,10 @@ static bool ast_parse_statement_assert(AstParser *parser,
 
 [[nodiscard]]
 static bool ast_parse_statement(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   if (ast_parse_statement_if(parser, allocator)) {
     return true;
   }
@@ -752,6 +820,10 @@ static bool ast_parse_statement(AstParser *parser, PgAllocator *allocator) {
 
 [[nodiscard]]
 static bool ast_parse_declaration(AstParser *parser, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
   if (ast_parse_var_decl(parser, allocator)) {
     return true;
   }
