@@ -7,11 +7,8 @@ typedef struct {
 } Origin;
 
 static void origin_print(Origin origin) {
-  if (origin.line) {
-    printf("%.*s:%" PRIu32 ":%" PRIu32 ":%" PRIu32, (i32)origin.file_path.len,
-           origin.file_path.data, origin.line, origin.column,
-           origin.file_offset_start);
-  } else {
-    printf("(synth)");
-  }
+  PG_ASSERT(origin.line);
+  printf("%.*s:%" PRIu32 ":%" PRIu32 ":%" PRIu32, (i32)origin.file_path.len,
+         origin.file_path.data, origin.line, origin.column,
+         origin.file_offset_start);
 }

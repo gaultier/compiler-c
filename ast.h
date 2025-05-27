@@ -371,8 +371,8 @@ static bool ast_parse_primary(AstParser *parser, PgAllocator *allocator) {
 
   if (LEX_TOKEN_KIND_LITERAL_NUMBER == first.kind) {
     AstNode node = {0};
-    node.origin = first.origin;
     node.kind = AST_NODE_KIND_NUMBER;
+    node.origin = first.origin;
     PgParseNumberResult parse_res = pg_string_parse_u64(first.s);
     PG_ASSERT(parse_res.present);
     PG_ASSERT(pg_string_is_empty(parse_res.remaining));
@@ -433,8 +433,8 @@ static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
   }
 
   AstNode node = {0};
-  node.origin = token_first.origin;
   node.kind = AST_NODE_KIND_ADDRESS_OF;
+  node.origin = token_first.origin;
   ast_push(parser, node, allocator);
 
   return true;
@@ -471,8 +471,8 @@ static bool ast_parse_term(AstParser *parser, PgAllocator *allocator) {
       return false;
     }
     AstNode node = {0};
-    node.origin = token.origin;
     node.kind = AST_NODE_KIND_ADD;
+    node.origin = token.origin;
     ast_push(parser, node, allocator);
   }
   return ast_match_token_kind(parser, LEX_TOKEN_KIND_EOF).kind !=
@@ -511,8 +511,8 @@ static bool ast_parse_equality(AstParser *parser, PgAllocator *allocator) {
     }
 
     AstNode node = {0};
-    node.origin = token.origin;
     node.kind = AST_NODE_KIND_COMPARISON;
+    node.origin = token.origin;
     node.token_kind = token.kind;
     ast_push(parser, node, allocator);
   }
@@ -623,8 +623,8 @@ static bool ast_parse_syscall(AstParser *parser, PgAllocator *allocator) {
   }
 
   AstNode node = {0};
-  node.origin = token_first.origin;
   node.kind = AST_NODE_KIND_SYSCALL;
+  node.origin = token_first.origin;
   node.u.stack_args_count = args_count;
   ast_push(parser, node, allocator);
 
@@ -649,8 +649,8 @@ static bool ast_parse_block(AstParser *parser, PgAllocator *allocator) {
     LexToken token = ast_match_token_kind(parser, LEX_TOKEN_KIND_CURLY_RIGHT);
     if (token.kind) {
       AstNode node = {0};
-      node.origin = token_first.origin;
       node.kind = AST_NODE_KIND_BLOCK;
+      node.origin = token_first.origin;
       node.u.stack_args_count = args_count;
       return true;
     }
@@ -720,6 +720,7 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     // the CFG.
     AstNode jump_if_then_label_def = {0};
     jump_if_then_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
+    jump_if_then_label_def.origin = token_first.origin;
     jump_if_then_label_def.u.label = branch_then_label;
     ast_push(parser, jump_if_then_label_def, allocator);
   }
@@ -733,17 +734,20 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
   {
     AstNode jump_if_end_label = {0};
     jump_if_end_label.kind = AST_NODE_KIND_LABEL;
+    jump_if_end_label.origin = token_first.origin;
     jump_if_end_label.u.label = branch_end_label;
     ast_push(parser, jump_if_end_label, allocator);
 
     AstNode jump = {0};
     jump.kind = AST_NODE_KIND_JUMP;
+    jump.origin = token_first.origin;
     jump.u.label = branch_then_label;
     ast_push(parser, jump, allocator);
   }
 
   AstNode jump_else_label_def = {0};
   jump_else_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
+  jump_else_label_def.origin = token_first.origin;
   jump_else_label_def.u.label = branch_else_label;
   ast_push(parser, jump_else_label_def, allocator);
 
@@ -751,6 +755,7 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
 
   AstNode jump_if_end_label_def = {0};
   jump_if_end_label_def.kind = AST_NODE_KIND_LABEL_DEFINITION;
+  jump_if_end_label_def.origin = token_first.origin;
   jump_if_end_label_def.u.label = branch_end_label;
   ast_push(parser, jump_if_end_label_def, allocator);
 
@@ -793,8 +798,8 @@ static bool ast_parse_statement_assert(AstParser *parser,
   }
 
   AstNode node = {0};
-  node.origin = token_first.origin;
   node.kind = AST_NODE_KIND_BUILTIN_ASSERT;
+  node.origin = token_first.origin;
   ast_push(parser, node, allocator);
 
   return true;
@@ -840,20 +845,24 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
     fn.kind = AST_NODE_KIND_FN_DEFINITION;
     fn.u.s = PG_S("__builtin_exit");
     fn.flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
+    fn.origin = (Origin){.line = 1};
     ast_push(parser, fn, allocator);
 
     AstNode op0 = {0};
     op0.kind = AST_NODE_KIND_NUMBER;
     op0.u.n64 = 60; // FIXME: Only on Linux amd64.
+    op0.origin = (Origin){.line = 1};
     ast_push(parser, op0, allocator);
 
     AstNode op1 = {0};
     op1.kind = AST_NODE_KIND_NUMBER;
     op1.u.n64 = 0;
+    op1.origin = (Origin){.line = 1};
     ast_push(parser, op1, allocator);
 
     AstNode syscall = {0};
     syscall.kind = AST_NODE_KIND_SYSCALL;
+    syscall.origin = (Origin){.line = 1};
     syscall.u.stack_args_count = 2;
     ast_push(parser, syscall, allocator);
   }
@@ -862,6 +871,7 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
 static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   AstNode fn_start = {0};
   fn_start.kind = AST_NODE_KIND_FN_DEFINITION;
+  fn_start.origin = (Origin){.line = 1};
   fn_start.u.s = PG_S("_start");
   fn_start.flags = AST_NODE_FLAG_GLOBAL;
   // TODO: Do not define this function to avoid recursive calls to it.

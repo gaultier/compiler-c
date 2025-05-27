@@ -412,7 +412,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     } break;
     }
   }
-  lex_add_token(lexer, LEX_TOKEN_KIND_EOF, (Origin){0}, allocator);
+  lex_add_token(lexer, LEX_TOKEN_KIND_EOF, lex_lexer_origin(*lexer), allocator);
 }
 
 static void lex_tokens_print(LexTokenDyn tokens) {
