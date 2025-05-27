@@ -41,7 +41,7 @@ typedef struct {
 PG_DYN(Error) ErrorDyn;
 
 static void err_print_src_span(PgString src, PgString src_span) {
-  PG_ASSERT(src.data < src_span.data);
+  PG_ASSERT(src.data <= src_span.data);
 
   u64 excerpt_start = (u64)(src_span.data - src.data);
   u64 excerpt_end = (u64)src_span.data - (u64)src.data + src_span.len;
