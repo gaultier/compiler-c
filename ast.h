@@ -845,24 +845,20 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
     fn.kind = AST_NODE_KIND_FN_DEFINITION;
     fn.u.s = PG_S("__builtin_exit");
     fn.flags = AST_NODE_FLAG_FN_NO_FRAME_POINTERS;
-    fn.origin = (Origin){.line = 1};
     ast_push(parser, fn, allocator);
 
     AstNode op0 = {0};
     op0.kind = AST_NODE_KIND_NUMBER;
     op0.u.n64 = 60; // FIXME: Only on Linux amd64.
-    op0.origin = (Origin){.line = 1};
     ast_push(parser, op0, allocator);
 
     AstNode op1 = {0};
     op1.kind = AST_NODE_KIND_NUMBER;
     op1.u.n64 = 0;
-    op1.origin = (Origin){.line = 1};
     ast_push(parser, op1, allocator);
 
     AstNode syscall = {0};
     syscall.kind = AST_NODE_KIND_SYSCALL;
-    syscall.origin = (Origin){.line = 1};
     syscall.u.stack_args_count = 2;
     ast_push(parser, syscall, allocator);
   }
@@ -871,7 +867,6 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
 static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   AstNode fn_start = {0};
   fn_start.kind = AST_NODE_KIND_FN_DEFINITION;
-  fn_start.origin = (Origin){.line = 1};
   fn_start.u.s = PG_S("_start");
   fn_start.flags = AST_NODE_FLAG_GLOBAL;
   // TODO: Do not define this function to avoid recursive calls to it.

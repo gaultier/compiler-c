@@ -775,8 +775,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
-      ins.args_count = (u8)node.u.stack_args_count;
       ins.origin = node.origin;
+      ins.args_count = (u8)node.u.stack_args_count;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->virtual_register.constraint =
           VREG_CONSTRAINT_SYSCALL_RET;
@@ -815,6 +815,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrInstruction ins_jmp = {0};
       ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
+      ins_jmp.origin = node.origin;
       ins_jmp.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = cond_meta_idx,
@@ -825,10 +826,12 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrInstruction ins_trap = {0};
       ins_trap.kind = IR_INSTRUCTION_KIND_TRAP;
+      ins_trap.origin = node.origin;
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_trap;
 
       IrInstruction ins_if_end_label = {0};
       ins_if_end_label.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
+      ins_if_end_label.origin = node.origin;
       ins_if_end_label.lhs = if_end_target;
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_if_end_label;
     } break;
