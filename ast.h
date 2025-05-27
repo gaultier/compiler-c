@@ -384,7 +384,7 @@ static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  if (ast_node_is_addressable(PG_SLICE_LAST(parser->nodes))) {
+  if (!ast_node_is_addressable(PG_SLICE_LAST(parser->nodes))) {
     ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
                   token_first.origin, allocator);
     return false;
