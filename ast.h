@@ -171,6 +171,8 @@ static void ast_add_error(AstParser *parser, ErrorKind error_kind,
   }
   parser->err_mode = true;
 
+  PG_ASSERT(origin.line);
+
   *PG_DYN_PUSH(parser->errors, allocator) = (Error){
       .kind = error_kind,
       .origin = origin,
@@ -194,12 +196,13 @@ static LexToken ast_current_or_last_token(AstParser parser) {
   }
 
   res = PG_SLICE_AT(parser.lexer.tokens, parser.tokens_consumed);
-  if (res.kind) {
+  PG_ASSERT(res.kind);
+  if (LEX_TOKEN_KIND_EOF != res.kind) {
     return res;
   }
 
-  return PG_SLICE_AT(parser.lexer.tokens,
-                     parser.tokens_consumed ? parser.tokens_consumed - 1 : 0);
+  PG_ASSERT(parser.tokens_consumed > 0);
+  return PG_SLICE_AT(parser.lexer.tokens, parser.tokens_consumed - 1);
 }
 
 static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
