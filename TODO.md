@@ -33,3 +33,4 @@
 - [x] test: split files with expected errors from valid files
 - [ ] test: consider checking output of compiled binary
 - [ ] compiler: UI to show data about each phase in a visual way
+- [ ] constant fold/optimization: use equivalence classes with union-dataset structures
