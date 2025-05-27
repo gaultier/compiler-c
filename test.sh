@@ -7,16 +7,18 @@ WITH_VALGRIND="${WITH_VALGRIND:-0}"
 
 for f in testdata/*.unicorn; do
   echo "$f"
+  bin="$(dirname "$f")/$(basename -s ".unicorn" "$f").bin"
+
   if [ "$WITH_VALGRIND" -eq 1 ]; then
     valgrind --quiet ./main.bin "$f"
-    valgrind --quiet ./"$(basename $f)".bin
+    valgrind --quiet "$bin"
     valgrind --quiet -v ./main.bin "$f"
-    valgrind --quiet ./"$(basename $f)".bin
+    valgrind --quiet "$bin"
   else
    ./main.bin "$f"
-   ./"$(basename $f)".bin
+   ./"$bin"
    ./main.bin -v "$f"
-   ./"$(basename $f)".bin
+   ./"$bin"
   fi
 done
 

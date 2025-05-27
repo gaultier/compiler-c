@@ -131,8 +131,8 @@ int main(int argc, char *argv[]) {
   (void)type_checker; // TODO
 #endif
 
-  PgString base_path = pg_path_base_name(file_path);
-  PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
+  PgString stem = pg_path_stem(file_path);
+  PgString exe_path = pg_string_concat(stem, PG_S(".bin"), allocator);
   ArchitectureKind arch_target = ARCH_KIND_AMD64; // TODO: CLI opt.
   // TODO: function.
   AsmEmitter asm_emitter = {
