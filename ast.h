@@ -215,7 +215,7 @@ static void ast_print_node(AstNode node) {
     printf("Block");
   } break;
   case AST_NODE_KIND_VAR_DEFINITION:
-    printf("VarDecl %.*s", (i32)node.u.s.len, node.u.s.data);
+    printf("VarDef %.*s", (i32)node.u.s.len, node.u.s.data);
     break;
   case AST_NODE_KIND_BRANCH:
     printf("Branch");
@@ -831,10 +831,14 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     } break;
 
     case AST_NODE_KIND_JUMP:
-    case AST_NODE_KIND_ADDRESS_OF:
     case AST_NODE_KIND_BUILTIN_ASSERT:
     case AST_NODE_KIND_VAR_DEFINITION: {
       PG_DYN_POP(&stack);
+    } break;
+
+    case AST_NODE_KIND_ADDRESS_OF: {
+      PG_DYN_POP(&stack);
+      *PG_DYN_PUSH(&stack, allocator) = node;
     } break;
 
     case AST_NODE_KIND_BRANCH: {
