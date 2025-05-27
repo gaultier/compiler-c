@@ -139,16 +139,6 @@ PG_DYN(MetadataIndex) MetadataIndexDyn;
   }
 }
 
-[[nodiscard]]
-static Label ast_next_label_name(AstParser *parser, PgString hint,
-                                 PgAllocator *allocator) {
-  Label id = {
-      .value = pg_string_concat(
-          hint, pg_u64_to_string(++parser->label_id, allocator), allocator),
-  };
-  return id;
-}
-
 static void ast_add_error(AstParser *parser, ErrorKind error_kind,
                           Origin origin, PgAllocator *allocator) {
   *PG_DYN_PUSH(parser->errors, allocator) = (Error){
@@ -596,12 +586,14 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
     return false;
   }
 
-  Label branch_then_label =
-      ast_next_label_name(parser, PG_S(".if-then-"), allocator);
-  Label branch_else_label =
-      ast_next_label_name(parser, PG_S(".if-else-"), allocator);
-  Label branch_end_label =
-      ast_next_label_name(parser, PG_S(".if-end-"), allocator);
+  PgString label_prefix = pg_string_concat(
+      PG_S(".if-"), pg_u64_to_string(++parser->label_id, allocator), allocator);
+  Label branch_then_label = {
+      pg_string_concat(label_prefix, PG_S("-then"), allocator)};
+  Label branch_else_label = {
+      pg_string_concat(label_prefix, PG_S("-else"), allocator)};
+  Label branch_end_label = {
+      pg_string_concat(label_prefix, PG_S("-end"), allocator)};
 
   {
     AstNode jump_if_then_label = {0};

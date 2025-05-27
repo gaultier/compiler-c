@@ -559,9 +559,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
 
       SymbolEntry *op_entry = symbols_lookup(emitter->symbols, name);
-      if (!op_entry) {
-        PG_ASSERT(0 && "todo");
-      }
+      PG_ASSERT(op_entry);
+      PG_ASSERT(op_entry->value.value);
 
       Metadata *op_meta = metadata_find_by_identifier(fn_def.metadata, name);
       if (!op_meta) {
@@ -692,13 +691,14 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins_jmp_else.origin = node.origin;
 
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
-      MetadataIndex then_meta_idx = PG_DYN_POP(&stack);
-      MetadataIndex else_meta_idx = PG_DYN_POP(&stack);
-      MetadataIndex end_meta_idx = PG_DYN_POP(&stack);
-      (void)end_meta_idx;
-
-      Metadata else_meta = PG_SLICE_AT(fn_def.metadata, else_meta_idx.value);
-      Metadata then_meta = PG_SLICE_AT(fn_def.metadata, then_meta_idx.value);
+      AstNode end_label = PG_SLICE_AT(nodes, i - 1);
+      AstNode else_label = PG_SLICE_AT(nodes, i - 2);
+      AstNode then_label = PG_SLICE_AT(nodes, i - 3);
+      PG_ASSERT(AST_NODE_KIND_LABEL == end_label.kind);
+      PG_ASSERT(AST_NODE_KIND_LABEL == else_label.kind);
+      PG_ASSERT(AST_NODE_KIND_LABEL == then_label.kind);
+      PG_ASSERT(then_label.u.label.value.len);
+      PG_ASSERT(else_label.u.label.value.len);
 
       ins_jmp_else.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -706,18 +706,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       };
       ins_jmp_else.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_LABEL,
-          .u.label = else_meta.label,
+          .u.label = else_label.u.label,
       };
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp_else;
-
-      IrInstruction ins_jmp_end = {0};
-      ins_jmp_end.kind = IR_INSTRUCTION_KIND_JUMP;
-      ins_jmp_end.origin = node.origin;
-      ins_jmp_end.lhs = (IrOperand){
-          .kind = IR_OPERAND_KIND_LABEL,
-          .u.label = then_meta.label,
-      };
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp_end;
     } break;
 
     case AST_NODE_KIND_JUMP: {
@@ -737,10 +728,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
     } break;
 
-    case AST_NODE_KIND_LABEL: {
-      MetadataIndex meta_idx = {0}; // FIXME
-      *PG_DYN_PUSH(&stack, allocator) = meta_idx;
-    } break;
+    case AST_NODE_KIND_LABEL:
+      break;
 
     case AST_NODE_KIND_BUILTIN_TRAP: {
       IrInstruction ins = {0};
@@ -800,10 +789,15 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
     case AST_NODE_KIND_LABEL_DEFINITION: {
       // TODO: Support labels with names predefined in the source.
+      PG_ASSERT(node.u.label.value.len);
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
       ins.origin = node.origin;
-      ins.lhs = ir_make_synth_label(&emitter->label_id, allocator);
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_LABEL,
+          .u.label = node.u.label,
+      };
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->label = ins.lhs.u.label;
 
