@@ -134,6 +134,13 @@ typedef struct {
 } FnDefinition;
 PG_DYN(FnDefinition) FnDefinitionDyn;
 
+typedef struct {
+  AstNodeIndex node_idx;
+  MetadataIndex meta_idx;
+  u32 scope_depth;
+} IrLocalVar;
+PG_DYN(IrLocalVar) IrLocalVarDyn;
+
 [[nodiscard]] static MetadataIndex metadata_last_idx(MetadataDyn metadata) {
   PG_ASSERT(metadata.len > 0);
   return (MetadataIndex){(u32)metadata.len - 1};
@@ -155,21 +162,6 @@ static void metadata_start_lifetime(MetadataDyn metadata,
                                     InstructionIndex ins_idx) {
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_start = ins_idx;
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
-}
-
-// TODO: Scopes.
-// TODO: Detect shadowing.
-// TODO: LUT to cache result.
-[[nodiscard]]
-static Metadata *metadata_find_by_identifier(MetadataDyn metadata,
-                                             PgString identifier) {
-  for (u64 i = 0; i < metadata.len; i++) {
-    Metadata *meta = PG_SLICE_AT_PTR(&metadata, i);
-    if (pg_string_eq(meta->identifier, identifier)) {
-      return meta;
-    }
-  }
-  return nullptr;
 }
 
 static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
@@ -517,12 +509,28 @@ static void ir_compute_fn_defs_lifetimes(FnDefinitionDyn fn_defs) {
   }
 }
 
+[[nodiscard]] static IrLocalVar *
+ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, AstNodeDyn nodes) {
+  for (i64 i = (i64)local_vars.len - 1; i >= 0; i--) {
+    IrLocalVar var = PG_SLICE_AT(local_vars, i);
+    PgString identifier = PG_SLICE_AT(nodes, var.node_idx.value).u.s;
+    if (pg_string_eq(identifier, name)) {
+      return PG_SLICE_AT_PTR(&local_vars, i);
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] static FnDefinitionDyn
 ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_FN_DEFINITION == PG_SLICE_AT(nodes, 0).kind);
 
   FnDefinitionDyn fn_defs = {0};
   FnDefinition fn_def = {0};
+
+  u32 scope_depth = 0;
+  IrLocalVarDyn local_vars = {0};
+  PG_DYN_ENSURE_CAP(&local_vars, 256, allocator);
 
   MetadataIndexDyn stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
@@ -558,15 +566,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
 
-      SymbolEntry *op_entry = symbols_lookup(emitter->symbols, name);
-      PG_ASSERT(op_entry);
-      PG_ASSERT(op_entry->value.value);
-
-      Metadata *op_meta = metadata_find_by_identifier(fn_def.metadata, name);
-      if (!op_meta) {
+      IrLocalVar *var = ir_local_vars_find(local_vars, name, nodes);
+      if (!var) {
         PG_ASSERT(0 && "todo");
       }
-      PG_ASSERT(pg_string_eq(op_meta->identifier, name));
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -574,8 +577,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       };
       ins.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
-          .u.vreg_meta_idx =
-              (MetadataIndex){(u32)(op_meta - fn_def.metadata.data)},
+          .u.vreg_meta_idx = var->meta_idx,
       };
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
@@ -643,6 +645,12 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
+
+      *PG_DYN_PUSH(&local_vars, allocator) = (IrLocalVar){
+          .node_idx = {i},
+          .scope_depth = scope_depth,
+          .meta_idx = ins.meta_idx,
+      };
 
       MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
 
@@ -742,6 +750,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       if (fn_def.instructions.len > 0) {
         *PG_DYN_PUSH(&fn_defs, allocator) = fn_def;
       }
+
+      local_vars.len = 0;
       stack.len = 0;
 
       PgString name = node.u.s;
