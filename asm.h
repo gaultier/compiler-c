@@ -568,8 +568,6 @@ static AsmCodeSection asm_emit_fn_definition(ArchitectureKind arch_kind,
 static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
                      bool verbose, PgAllocator *allocator) {
 
-  (void)asm_emitter;
-
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
 
