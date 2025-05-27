@@ -657,6 +657,21 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
 
+      IrLocalVar *var = ir_local_vars_find(local_vars, name, nodes);
+      if (var) {
+        Error err = {
+            .kind = ERROR_KIND_VAR_SHADOWING,
+            .origin = node.origin,
+            .src = emitter->src,
+            .src_span =
+                PG_SLICE_RANGE(emitter->src, node.origin.file_offset_start,
+                               node.origin.file_offset_start + node.u.s.len),
+        };
+        // TODO: Include `var` in the error!
+        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        continue;
+      }
+
       *PG_DYN_PUSH(&local_vars, allocator) = (IrLocalVar){
           .node_idx = {i},
           .scope_depth = scope_depth,
