@@ -139,6 +139,24 @@ PG_DYN(MetadataIndex) MetadataIndexDyn;
   }
 }
 
+static void ast_advance_to_next_line(AstParser *parser) {
+  // Already at EOF.
+  if (parser->tokens_consumed >= parser->lexer.tokens.len) {
+    return;
+  }
+
+  u32 line =
+      PG_SLICE_AT(parser->lexer.tokens, parser->tokens_consumed).origin.line;
+
+  for (; parser->tokens_consumed < parser->lexer.tokens.len;
+       parser->tokens_consumed++) {
+    LexToken token = PG_SLICE_AT(parser->lexer.tokens, parser->tokens_consumed);
+    if (token.origin.line > line) {
+      break;
+    }
+  }
+}
+
 static void ast_add_error(AstParser *parser, ErrorKind error_kind,
                           Origin origin, PgAllocator *allocator) {
   *PG_DYN_PUSH(parser->errors, allocator) = (Error){
@@ -151,14 +169,7 @@ static void ast_add_error(AstParser *parser, ErrorKind error_kind,
   };
 
   // Skip to the next newline to avoid having cascading errors.
-
-  for (; parser->tokens_consumed < parser->lexer.tokens.len;
-       parser->tokens_consumed++) {
-    LexToken token = PG_SLICE_AT(parser->lexer.tokens, parser->tokens_consumed);
-    if (token.origin.line > origin.line) {
-      break;
-    }
-  }
+  ast_advance_to_next_line(parser);
 }
 
 // Best effort to find the closest token when doing error reporting.
@@ -779,6 +790,7 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
     }
 
     if (!ast_parse_declaration(parser, allocator)) {
+      ast_advance_to_next_line(parser);
       continue;
     }
   }
