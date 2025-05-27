@@ -1,4 +1,4 @@
-- [ ] ast: move to 'stack vm bytecode' representation
+- [x] ast: move to 'stack vm bytecode' representation
 - [ ] ir: phi nodes
 - [ ] generate dwarf debug information
 - [ ] ir: optimization: show diff output in each step, like git diff
@@ -23,13 +23,13 @@
 - [ ] typechecker, pass type information to codegen for sizes
 - [ ] lang: strings
 - [x] spill registers
-- [ ] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
+- [x] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
 - [x] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
 - [x] lang: builtin assert
 - [ ] codegen: link with libc & call linker
 - [ ] codegen: make graph coloring more debuggable and track register pressure metric
 - [x] errors: report all errors
 - [ ] test: consider bytecode vm to test correctness
-- [ ] test: split files with expected errors from valid files
+- [x] test: split files with expected errors from valid files
 - [ ] test: consider checking output of compiled binary
 - [ ] compiler: UI to show data about each phase in a visual way
