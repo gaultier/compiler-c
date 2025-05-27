@@ -1,7 +1,5 @@
 #pragma once
-#include "asm.h"
-#include "ast.h"
-#include "ir.h"
+#include "asm_common.h"
 
 typedef enum {
   AMD64_OPERAND_KIND_NONE,
@@ -184,10 +182,6 @@ typedef struct {
 } Amd64Instruction;
 PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
 PG_DYN(Amd64Instruction) Amd64InstructionDyn;
-
-typedef struct {
-  ASM_EMITTER_FIELDS
-} Amd64Emitter;
 
 static void amd64_print_register(Register reg) {
   PgString s = PG_SLICE_AT(amd64_register_to_string_slice, reg.value);
@@ -403,14 +397,6 @@ static void amd64_print_section(AsmCodeSection section) {
       .len = section.instructions.len,
   };
   amd64_print_instructions(instructions);
-}
-
-static void amd64_print_program(AsmEmitter emitter) {
-  for (u64 i = 0; i < emitter.program.text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(emitter.program.text, i);
-    amd64_print_section(section);
-    printf("\n");
-  }
 }
 
 [[nodiscard]]
@@ -1071,10 +1057,9 @@ static void amd64_encode_instruction_sete(Pgu8Dyn *sb,
   *PG_DYN_PUSH(sb, allocator) = modrm;
 }
 
-static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
+static void amd64_encode_instruction(AsmProgram *program, Pgu8Dyn *sb,
                                      Amd64Instruction instruction,
                                      PgAllocator *allocator) {
-  (void)asm_emitter;
 
   switch (instruction.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
@@ -1110,28 +1095,23 @@ static void amd64_encode_instruction(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
   case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
     PG_ASSERT(instruction.lhs.u.label.value.len);
 
-    *PG_DYN_PUSH(&asm_emitter->program.label_addresses, allocator) =
-        (LabelAddress){
-            .label = instruction.lhs.u.label,
-            .code_address = sb->len,
-        };
+    *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
+        .label = instruction.lhs.u.label,
+        .code_address = sb->len,
+    };
     break;
 
   case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
-    amd64_encode_instruction_je(sb, instruction, &asm_emitter->program,
-                                allocator);
+    amd64_encode_instruction_je(sb, instruction, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_NOT_EQ:
-    amd64_encode_instruction_jne(sb, instruction, &asm_emitter->program,
-                                 allocator);
+    amd64_encode_instruction_jne(sb, instruction, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
-    amd64_encode_instruction_jz(sb, instruction, &asm_emitter->program,
-                                allocator);
+    amd64_encode_instruction_jz(sb, instruction, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP:
-    amd64_encode_instruction_jmp(sb, instruction, &asm_emitter->program,
-                                 allocator);
+    amd64_encode_instruction_jmp(sb, instruction, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_CMP:
     amd64_encode_instruction_cmp(sb, instruction, allocator);
@@ -1206,10 +1186,7 @@ amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataDyn metadata) {
                                                         metadata);
 }
 
-static void amd64_sanity_check_section(Amd64Emitter *emitter,
-                                       AsmCodeSection section) {
-  (void)emitter;
-
+static void amd64_sanity_check_section(AsmCodeSection section) {
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction ins =
         PG_C_ARRAY_AT((Amd64Instruction *)section.instructions.data,
@@ -1230,9 +1207,8 @@ static void amd64_sanity_check_section(Amd64Emitter *emitter,
   }
 }
 
-static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
-                               FnDefinition fn_def, PgAllocator *allocator) {
-  (void)emitter;
+static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
+                               PgAllocator *allocator) {
 
   for (u32 i = 0; i < fn_def.instructions.len; i++) {
     IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
@@ -1403,11 +1379,9 @@ static void amd64_emit_fn_body(Amd64Emitter *emitter, AsmCodeSection *section,
   }
 }
 
+[[nodiscard]]
 static Register
-amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
-                                 VirtualRegisterConstraint constraint) {
-  (void)asm_emitter;
-
+amd64_map_constraint_to_register(VirtualRegisterConstraint constraint) {
   switch (constraint) {
   case VREG_CONSTRAINT_NONE:
     return (Register){0};
@@ -1430,12 +1404,9 @@ amd64_map_constraint_to_register(AsmEmitter *asm_emitter,
 }
 
 [[nodiscard]]
-static AsmCodeSection
-amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
-                         bool verbose, PgAllocator *allocator) {
-  Amd64Emitter *amd64_emitter = (Amd64Emitter *)asm_emitter;
-  (void)amd64_emitter;
-
+static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
+                                               bool verbose,
+                                               PgAllocator *allocator) {
   (void)verbose;
 
   AsmCodeSection section = {
@@ -1462,7 +1433,7 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
   }
   u64 stack_sub_instruction_idx_maybe = section.instructions.len - 1;
 
-  amd64_emit_fn_body(amd64_emitter, &section, fn_def, allocator);
+  amd64_emit_fn_body(&section, fn_def, allocator);
 
   if (fn_def.stack_base_pointer_offset > 0) {
     u32 rsp_max_offset_aligned_16 =
@@ -1490,40 +1461,39 @@ amd64_emit_fn_definition(AsmEmitter *asm_emitter, FnDefinition fn_def,
   }
   amd64_emit_epilog(&section, allocator);
 
-  amd64_sanity_check_section(amd64_emitter, section);
+  amd64_sanity_check_section(section);
   return section;
 }
 
-static void amd64_encode_section(AsmEmitter *asm_emitter, Pgu8Dyn *sb,
+static void amd64_encode_section(AsmProgram *program, Pgu8Dyn *sb,
                                  AsmCodeSection section,
                                  PgAllocator *allocator) {
   PG_ASSERT(section.name.len);
 
-  *PG_DYN_PUSH(&asm_emitter->program.label_addresses, allocator) =
-      (LabelAddress){
-          .label = {section.name},
-          .code_address = sb->len,
-      };
+  *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
+      .label = {section.name},
+      .code_address = sb->len,
+  };
 
   for (u64 i = 0; i < section.instructions.len; i++) {
     Amd64Instruction ins =
         PG_C_ARRAY_AT((Amd64Instruction *)section.instructions.data,
                       section.instructions.len, i);
-    amd64_encode_instruction(asm_emitter, sb, ins, allocator);
+    amd64_encode_instruction(program, sb, ins, allocator);
   }
 }
 
-static void amd64_section_resolve_jumps(AsmEmitter *asm_emitter, Pgu8Dyn sb) {
-  for (u64 i = 0; i < asm_emitter->program.jumps_to_backpatch.len; i++) {
+static void amd64_section_resolve_jumps(AsmProgram *program, Pgu8Dyn sb) {
+  for (u64 i = 0; i < program->jumps_to_backpatch.len; i++) {
     LabelAddress jump_to_backpatch =
-        PG_SLICE_AT(asm_emitter->program.jumps_to_backpatch, i);
+        PG_SLICE_AT(program->jumps_to_backpatch, i);
     PG_ASSERT(jump_to_backpatch.label.value.len);
     PG_ASSERT(jump_to_backpatch.code_address > 0);
     PG_ASSERT(jump_to_backpatch.code_address <= sb.len - 1);
 
     LabelAddress label = {0};
-    for (u64 j = 0; j < asm_emitter->program.label_addresses.len; j++) {
-      label = PG_SLICE_AT(asm_emitter->program.label_addresses, j);
+    for (u64 j = 0; j < program->label_addresses.len; j++) {
+      label = PG_SLICE_AT(program->label_addresses, j);
       PG_ASSERT(label.label.value.len);
       PG_ASSERT(label.code_address <= sb.len - 1);
 
@@ -1545,39 +1515,17 @@ static void amd64_section_resolve_jumps(AsmEmitter *asm_emitter, Pgu8Dyn sb) {
 }
 
 [[nodiscard]]
-static Pgu8Slice amd64_encode_program_text(AsmEmitter *asm_emitter,
+static Pgu8Slice amd64_encode_program_text(AsmProgram *program,
                                            PgAllocator *allocator) {
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, 4 * PG_KiB, allocator);
 
-  for (u64 i = 0; i < asm_emitter->program.text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(asm_emitter->program.text, i);
-    amd64_encode_section(asm_emitter, &sb, section, allocator);
+  for (u64 i = 0; i < program->text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(program->text, i);
+    amd64_encode_section(program, &sb, section, allocator);
   }
 
-  amd64_section_resolve_jumps(asm_emitter, sb);
+  amd64_section_resolve_jumps(program, sb);
 
   return PG_DYN_SLICE(Pgu8Slice, sb);
-}
-
-[[nodiscard]]
-static AsmEmitter *amd64_make_asm_emitter(AstNodeDyn nodes, PgString exe_path,
-                                          PgAllocator *allocator) {
-  Amd64Emitter *amd64_emitter =
-      pg_alloc(allocator, sizeof(Amd64Emitter), _Alignof(Amd64Emitter), 1);
-  amd64_emitter->emit_fn_definition = amd64_emit_fn_definition;
-  amd64_emitter->print_program = amd64_print_program;
-  amd64_emitter->map_constraint_to_register = amd64_map_constraint_to_register;
-  amd64_emitter->encode_program_text = amd64_encode_program_text;
-  amd64_emitter->print_register = amd64_print_register;
-
-  amd64_emitter->nodes = nodes;
-
-  amd64_emitter->arch = amd64_arch;
-  amd64_emitter->program.file_path = exe_path;
-  amd64_emitter->program.vm_start = 1 << 22;
-  // TODO: rodata.
-  // u64 rodata_offset = 0x2000;
-
-  return (AsmEmitter *)amd64_emitter;
 }

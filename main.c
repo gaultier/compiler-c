@@ -135,22 +135,29 @@ int main(int argc, char *argv[]) {
 
   PgString base_path = pg_path_base_name(file_path);
   PgString exe_path = pg_string_concat(base_path, PG_S(".bin"), allocator);
-  AsmEmitter *asm_emitter =
-      amd64_make_asm_emitter(nodes_input, exe_path, allocator);
-  asm_emit(asm_emitter, fn_defs, cli_opts.verbose, allocator);
+  ArchitectureKind arch_target = ARCH_KIND_AMD64; // TODO: CLI opt.
+  // TODO: function.
+  AsmEmitter asm_emitter = {
+      .arch_kind = arch_target,
+      .nodes = nodes_input,
+      .arch = amd64_arch,
+      .program.file_path = exe_path,
+      .program.vm_start = 1 << 22,
+  };
+  asm_emit(&asm_emitter, fn_defs, cli_opts.verbose, allocator);
 
   if (cli_opts.verbose) {
     printf("\n------------ ASM %.*s ------------\n",
-           (i32)asm_emitter->program.file_path.len,
-           asm_emitter->program.file_path.data);
-    asm_emitter->print_program(*asm_emitter);
+           (i32)asm_emitter.program.file_path.len,
+           asm_emitter.program.file_path.data);
+    asm_print_program(asm_emitter);
   }
 
-  PgError err_write = elf_write_exe(asm_emitter, allocator);
+  PgError err_write = elf_write_exe(&asm_emitter, allocator);
   if (err_write) {
     fprintf(stderr, "failed to write to file %.*s: %u\n",
-            (i32)asm_emitter->program.file_path.len,
-            asm_emitter->program.file_path.data, err_write);
+            (i32)asm_emitter.program.file_path.len,
+            asm_emitter.program.file_path.data, err_write);
     return 1;
   }
 

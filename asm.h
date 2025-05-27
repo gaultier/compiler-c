@@ -1,84 +1,54 @@
 #pragma once
+#include "amd64.h"
 #include "register_alloc.h"
 
-typedef struct {
-  u32 indices_occupied_bitfield;
-  RegisterSlice registers;
-} GprSet;
-
-typedef struct {
-  Register return_value;
-  RegisterSlice caller_saved;
-  RegisterSlice callee_saved;
-  RegisterSlice calling_convention;
-  Register syscall_num;
-  RegisterSlice syscall_calling_convention;
-  Register syscall_ret;
-  Register stack_pointer;
-  Register base_pointer;
-  RegisterSlice gprs;
-} Architecture;
-
-typedef struct {
-  PgString name;
-  u16 flags;
-  PgAnyDyn instructions;
-} AsmCodeSection;
-PG_DYN(AsmCodeSection) AsmCodeSectionDyn;
-
 typedef enum {
-  ASM_CONSTANT_KIND_NONE,
-  ASM_CONSTANT_KIND_U64,
-  ASM_CONSTANT_KIND_BYTES,
-} AsmConstantKind;
+  ARCH_KIND_NONE,
+  ARCH_KIND_AMD64,
+  // TODO: More.
+} ArchitectureKind;
 
 typedef struct {
-  PgString name;
-  u64 address_absolute;
-  AsmConstantKind kind;
-  union {
-    u64 n64;
-    PgString bytes;
-  } u;
-} AsmConstant;
-PG_DYN(AsmConstant) AsmConstantDyn;
-
-typedef struct {
-  Label label;
-  u64 code_address;
-} LabelAddress;
-PG_DYN(LabelAddress) LabelAddressDyn;
-
-typedef struct {
-  AsmCodeSectionDyn text;
-  AsmConstantDyn rodata;
-  u64 vm_start;
-  LabelAddressDyn label_addresses;
-  LabelAddressDyn jumps_to_backpatch;
-
-  PgString file_path;
-} AsmProgram;
-
-typedef struct AsmEmitter AsmEmitter;
-
-#define ASM_EMITTER_FIELDS                                                     \
-  AsmCodeSection (*emit_fn_definition)(AsmEmitter * asm_emitter,               \
-                                       FnDefinition fn_def, bool verbose,      \
-                                       PgAllocator *allocator);                \
-  Pgu8Slice (*encode_program_text)(AsmEmitter * asm_emitter,                   \
-                                   PgAllocator * allocator);                   \
-  void (*print_program)(AsmEmitter asm_emitter);                               \
-  Register (*map_constraint_to_register)(                                      \
-      AsmEmitter * asm_emitter, VirtualRegisterConstraint constraint);         \
-  void (*print_register)(Register reg);                                        \
-                                                                               \
-  Architecture arch;                                                           \
-  AstNodeDyn nodes;                                                            \
+  ArchitectureKind arch_kind;
+  Architecture arch;
+  AstNodeDyn nodes;
   AsmProgram program;
+  union {
+    Amd64InstructionDyn amd64_instructions;
+  } u;
+} AsmEmitter;
 
-struct AsmEmitter {
-  ASM_EMITTER_FIELDS
-};
+static void asm_print_section(ArchitectureKind arch_kind,
+                              AsmCodeSection section) {
+  switch (arch_kind) {
+  case ARCH_KIND_AMD64:
+    amd64_print_section(section);
+    break;
+  case ARCH_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void asm_print_program(AsmEmitter emitter) {
+  for (u64 i = 0; i < emitter.program.text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(emitter.program.text, i);
+    asm_print_section(emitter.arch_kind, section);
+    printf("\n");
+  }
+}
+
+[[nodiscard]]
+static Pgu8Slice asm_encode_program_text(AsmEmitter *emitter,
+                                         PgAllocator *allocator) {
+  switch (emitter->arch_kind) {
+  case ARCH_KIND_AMD64:
+    return amd64_encode_program_text(&emitter->program, allocator);
+  case ARCH_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
 
 static void asm_gpr_set_add_idx(GprSet *set, u32 idx) {
   PG_ASSERT(set->registers.len > 0);
@@ -220,10 +190,35 @@ static void asm_color_spill_remaining_nodes_in_graph(
   }
 }
 
+[[nodiscard]]
 static Register asm_get_free_register(GprSet *gpr_set) {
   // TODO: Smarter free register selection.
   // E.g. favor caller-saved registers, etc.
   return asm_gpr_pop_first_unset(gpr_set);
+}
+
+[[nodiscard]]
+static Register
+asm_map_constraint_to_register(ArchitectureKind arch_kind,
+                               VirtualRegisterConstraint constraint) {
+  switch (arch_kind) {
+  case ARCH_KIND_AMD64:
+    return amd64_map_constraint_to_register(constraint);
+  case ARCH_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+static void asm_print_register(ArchitectureKind arch_kind, Register reg) {
+  switch (arch_kind) {
+  case ARCH_KIND_AMD64:
+    amd64_print_register(reg);
+    break;
+  case ARCH_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
 }
 
 static void asm_color_do_precoloring(AsmEmitter *emitter, FnDefinition *fn_def,
@@ -241,8 +236,8 @@ static void asm_color_do_precoloring(AsmEmitter *emitter, FnDefinition *fn_def,
       break;
     case VREG_CONSTRAINT_CONDITION_FLAGS:
       meta->memory_location.kind = MEMORY_LOCATION_KIND_STATUS_REGISTER;
-      meta->memory_location.u.reg = emitter->map_constraint_to_register(
-          emitter, meta->virtual_register.constraint);
+      meta->memory_location.u.reg = asm_map_constraint_to_register(
+          emitter->arch_kind, meta->virtual_register.constraint);
       pg_adjacency_matrix_remove_node(&fn_def->interference_graph,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
@@ -257,8 +252,8 @@ static void asm_color_do_precoloring(AsmEmitter *emitter, FnDefinition *fn_def,
     case VREG_CONSTRAINT_SYSCALL4:
     case VREG_CONSTRAINT_SYSCALL5:
       meta->memory_location.kind = MEMORY_LOCATION_KIND_REGISTER;
-      meta->memory_location.u.reg = emitter->map_constraint_to_register(
-          emitter, meta->virtual_register.constraint);
+      meta->memory_location.u.reg = asm_map_constraint_to_register(
+          emitter->arch_kind, meta->virtual_register.constraint);
       pg_adjacency_matrix_remove_node(&fn_def->interference_graph,
                                       node_idx.value);
       pg_bitfield_set(tombstones_bitfield, row, true);
@@ -271,7 +266,7 @@ static void asm_color_do_precoloring(AsmEmitter *emitter, FnDefinition *fn_def,
         printf("asm: precoloring assigned register: ");
         metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
         printf(" -> ");
-        emitter->print_register(meta->memory_location.u.reg);
+        asm_print_register(emitter->arch_kind, meta->memory_location.u.reg);
         printf("\n");
       }
       break;
@@ -450,7 +445,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
         printf("asm: coloring assigned register: ");
         metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
         printf(" -> ");
-        emitter->print_register(reg);
+        asm_print_register(emitter->arch_kind, reg);
         printf("\n");
       }
     }
@@ -498,6 +493,19 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
   }
 }
 
+[[nodiscard]]
+static AsmCodeSection asm_emit_fn_definition(ArchitectureKind arch_kind,
+                                             FnDefinition fn_def, bool verbose,
+                                             PgAllocator *allocator) {
+  switch (arch_kind) {
+  case ARCH_KIND_AMD64:
+    return amd64_emit_fn_definition(fn_def, verbose, allocator);
+  case ARCH_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
 static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
                      bool verbose, PgAllocator *allocator) {
 
@@ -524,8 +532,8 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
                                         fn_def.metadata, true);
 
     // TODO: Codegen.
-    AsmCodeSection section = asm_emitter->emit_fn_definition(
-        asm_emitter, fn_def, verbose, allocator);
+    AsmCodeSection section = asm_emit_fn_definition(asm_emitter->arch_kind,
+                                                    fn_def, verbose, allocator);
     *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section;
   }
 }
