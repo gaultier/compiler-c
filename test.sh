@@ -23,14 +23,10 @@ done
 for f in err_testdata/*.unicorn; do
   echo "$f"
   if [ "$WITH_VALGRIND" -eq 1 ]; then
-    valgrind --quiet ./main.bin "$f"
-    valgrind --quiet ./"$(basename $f)".bin && true
-    valgrind --quiet -v ./main.bin "$f"
-    valgrind --quiet ./"$(basename $f)".bin && true
+    valgrind --quiet ./main.bin "$f" || true
+    valgrind --quiet -v ./main.bin "$f" || true
   else
-   ./main.bin "$f"
-   ./"$(basename $f)".bin && true
-   ./main.bin -v "$f"
-   ./"$(basename $f)".bin && true
+   ./main.bin "$f" || true
+   ./main.bin -v "$f" || true
   fi
 done
