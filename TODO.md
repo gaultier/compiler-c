@@ -1,5 +1,5 @@
 - [x] ast: move to 'stack vm bytecode' representation
-- [ ] ir: phi nodes
+- [ ] ir: phi nodes/block arguments (when assignment is added)
 - [ ] generate dwarf debug information
 - [ ] ir: optimization: show diff output in each step, like git diff
 - [ ] control flow graph
