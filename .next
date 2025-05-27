@@ -7,4 +7,5 @@
   - definitely not a LIR :)
   - ideally before computing lifetimes to avoid having to recompute them?
 [x] codegen: find a way to shorten codegen
+[ ] unwind parser to the top on error to avoid partial token consumption
 [ ] codegen: migrate from function pointers (polymorphism) to enum for all architectures

@@ -73,6 +73,8 @@ typedef struct {
 
   // Gets incremented.
   u32 label_id;
+
+  bool err_mode;
 } AstParser;
 
 typedef struct {
@@ -139,14 +141,19 @@ PG_DYN(MetadataIndex) MetadataIndexDyn;
   }
 }
 
-static void ast_advance_to_next_line(AstParser *parser) {
+static void ast_advance_to_next_line_from_last_error(AstParser *parser) {
   // Already at EOF.
   if (parser->tokens_consumed >= parser->lexer.tokens.len) {
     return;
   }
 
+  PG_ASSERT(parser->errors->len);
+  Error last_err = PG_SLICE_LAST(*parser->errors);
   u32 line =
       PG_SLICE_AT(parser->lexer.tokens, parser->tokens_consumed).origin.line;
+  if (line > last_err.origin.line) {
+    return;
+  }
 
   for (; parser->tokens_consumed < parser->lexer.tokens.len;
        parser->tokens_consumed++) {
@@ -159,6 +166,11 @@ static void ast_advance_to_next_line(AstParser *parser) {
 
 static void ast_add_error(AstParser *parser, ErrorKind error_kind,
                           Origin origin, PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return;
+  }
+  parser->err_mode = true;
+
   *PG_DYN_PUSH(parser->errors, allocator) = (Error){
       .kind = error_kind,
       .origin = origin,
@@ -169,7 +181,7 @@ static void ast_add_error(AstParser *parser, ErrorKind error_kind,
   };
 
   // Skip to the next newline to avoid having cascading errors.
-  ast_advance_to_next_line(parser);
+  ast_advance_to_next_line_from_last_error(parser);
 }
 
 // Best effort to find the closest token when doing error reporting.
@@ -781,8 +793,14 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_push(parser, fn_start, allocator);
 
   for (u64 _i = 0; _i < parser->lexer.tokens.len;) {
+    // End.
     if (parser->tokens_consumed >= parser->lexer.tokens.len) {
       break;
+    }
+
+    if (parser->err_mode) {
+      ast_advance_to_next_line_from_last_error(parser);
+      parser->err_mode = false;
     }
 
     if (ast_match_token_kind(parser, LEX_TOKEN_KIND_EOF).kind) {
@@ -790,7 +808,6 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
     }
 
     if (!ast_parse_declaration(parser, allocator)) {
-      ast_advance_to_next_line(parser);
       continue;
     }
   }
