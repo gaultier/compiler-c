@@ -114,18 +114,16 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  SymbolMap symbols =
-      resolver_build_symbols(parser.nodes, &errors, lexer.src, allocator);
-  if (errors.len) {
-    goto err;
-  }
-
-  IrEmitter ir_emitter = {.symbols = symbols};
+  IrEmitter ir_emitter = {.errors = &errors, .src = lexer.src};
   FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
   if (cli_opts.verbose) {
     printf("\n------------ IR ------------\n");
     ir_print_fn_defs(fn_defs);
+  }
+
+  if (errors.len) {
+    goto err;
   }
 
 #if 0

@@ -111,7 +111,8 @@ PG_DYN(IrInstruction) IrInstructionDyn;
 
 typedef struct {
   u32 label_id;
-  SymbolMap symbols;
+  ErrorDyn *errors;
+  PgString src;
 } IrEmitter;
 
 // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
@@ -568,7 +569,17 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       IrLocalVar *var = ir_local_vars_find(local_vars, name, nodes);
       if (!var) {
-        PG_ASSERT(0 && "todo");
+        Error err = {
+            .kind = ERROR_KIND_VAR_UNDEFINED,
+            .origin = node.origin,
+            .src = emitter->src,
+            .src_span =
+                PG_SLICE_RANGE(emitter->src, node.origin.file_offset_start,
+                               node.origin.file_offset_start + node.u.s.len),
+        };
+        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+        continue;
       }
 
       ins.lhs = (IrOperand){

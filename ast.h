@@ -55,17 +55,6 @@ typedef struct {
 PG_DYN(AstNodeIndex) AstNodeIndexDyn;
 
 typedef struct {
-  PgString key;
-  AstNodeIndex value;
-} SymbolEntry;
-
-typedef struct {
-  SymbolEntry *entries;
-  u32 len;
-  u32 exp;
-} SymbolMap;
-
-typedef struct {
   Lexer lexer;
   u64 tokens_consumed;
   ErrorDyn *errors;
@@ -81,65 +70,6 @@ typedef struct {
   u32 value;
 } MetadataIndex;
 PG_DYN(MetadataIndex) MetadataIndexDyn;
-
-[[nodiscard]] static SymbolMap symbols_make(u32 cap, PgAllocator *allocator) {
-  PG_ASSERT(1 == __builtin_popcount(cap));
-
-  SymbolMap res = {0};
-  u32 ffs = (u32)__builtin_ffs((i32)cap);
-  PG_ASSERT(ffs > 0);
-  res.exp = ffs;
-  res.entries = pg_alloc(allocator, sizeof(*res.entries),
-                         _Alignof(*res.entries), 1UL << res.exp);
-
-  return res;
-}
-
-[[nodiscard]] static u32 msi_lookup(u64 hash, u32 exp, u32 idx) {
-  u32 mask = (u32)(1UL << exp) - 1UL;
-  u32 step = (u32)(hash >> (64 - exp)) | 1UL;
-
-  return (idx + step) & mask;
-}
-
-[[nodiscard]] static SymbolEntry *symbols_lookup(SymbolMap map, PgString name) {
-  PG_ASSERT(map.exp <= 32UL);
-
-  u64 hash = pg_hash_fnv(name);
-  for (u32 i = (u32)hash;;) {
-    i = msi_lookup(hash, map.exp, i);
-    PG_ASSERT(i < (1UL << map.exp));
-
-    if (0 == map.entries[i].key.len) {
-      return nullptr;
-    } else if (pg_string_eq(map.entries[i].key, name)) {
-      return &map.entries[i];
-    }
-  }
-}
-
-[[nodiscard]] static SymbolEntry *symbols_insert(SymbolMap *map, PgString name,
-                                                 AstNodeIndex node_idx) {
-  PG_ASSERT(map->exp <= 32UL);
-
-  u64 hash = pg_hash_fnv(name);
-  for (u32 i = (u32)hash;;) {
-    i = msi_lookup(hash, map->exp, i);
-    PG_ASSERT(i < (1UL << map->exp));
-
-    if (0 == map->entries[i].key.len) {
-      // Empty, insert here.
-      if ((u32)map->len + 1 == (u32)1UL << map->exp) {
-        return nullptr; // OOM.
-      }
-      map->len += 1;
-      map->entries[i] = (SymbolEntry){.key = name, .value = node_idx};
-      return &map->entries[i];
-    } else if (pg_string_eq(map->entries[i].key, name)) {
-      return &map->entries[i];
-    }
-  }
-}
 
 static void ast_advance_to_next_line_from_last_error(AstParser *parser) {
   // Already at EOF.
@@ -987,67 +917,4 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     }
     *PG_DYN_PUSH(nodes_after, allocator) = node;
   }
-}
-
-[[nodiscard]]
-static SymbolMap resolver_build_symbols(AstNodeDyn nodes, ErrorDyn *errors,
-                                        PgString src, PgAllocator *allocator) {
-  SymbolMap symbols = symbols_make((u32)nodes.cap, allocator);
-
-  for (u32 i = 0; i < nodes.len; i++) {
-    AstNode node = PG_SLICE_AT(nodes, i);
-    AstNodeIndex node_idx = {i};
-
-    if (AST_NODE_KIND_LABEL_DEFINITION == node.kind) {
-      SymbolEntry *entry =
-          symbols_insert(&symbols, node.u.label.value, node_idx);
-      PG_ASSERT(entry);
-      if (entry->value.value != node_idx.value) {
-        (void)errors;
-        PG_ASSERT(0 && "todo: label shadowing");
-      }
-    } else if (AST_NODE_KIND_VAR_DEFINITION == node.kind) {
-      SymbolEntry *entry = symbols_insert(&symbols, node.u.s, node_idx);
-      PG_ASSERT(entry);
-      if (entry->value.value != node_idx.value) {
-        Error err = {
-            .kind = ERROR_KIND_VAR_SHADOWING,
-            .origin = node.origin,
-            .src = src,
-            .src_span =
-                PG_SLICE_RANGE(src, node.origin.file_offset_start,
-                               node.origin.file_offset_start + node.u.s.len),
-        };
-        *PG_DYN_PUSH(errors, allocator) = err;
-      }
-    } else if (AST_NODE_KIND_IDENTIFIER == node.kind) {
-
-      SymbolEntry *entry = symbols_lookup(symbols, node.u.s);
-      if (!entry) {
-        Error err = {
-            .kind = ERROR_KIND_VAR_UNDEFINED,
-            .origin = node.origin,
-            .src = src,
-            .src_span =
-                PG_SLICE_RANGE(src, node.origin.file_offset_start,
-                               node.origin.file_offset_start + node.u.s.len),
-        };
-        *PG_DYN_PUSH(errors, allocator) = err;
-      }
-    }
-  }
-
-  for (u32 i = 0; i < nodes.len; i++) {
-    AstNode node = PG_SLICE_AT(nodes, i);
-
-    if (AST_NODE_KIND_LABEL == node.kind) {
-      SymbolEntry *entry = symbols_lookup(symbols, node.u.label.value);
-      if (!entry) {
-        (void)errors;
-        PG_ASSERT(0 && "todo: label undefined");
-      }
-    }
-  }
-
-  return symbols;
 }
