@@ -38,16 +38,75 @@ static void asm_print_program(AsmEmitter emitter) {
   }
 }
 
-[[nodiscard]]
-static Pgu8Slice asm_encode_program_text(AsmEmitter *emitter,
-                                         PgAllocator *allocator) {
-  switch (emitter->arch_kind) {
-  case ARCH_KIND_AMD64:
-    return amd64_encode_program_text(&emitter->program, allocator);
+static void asm_section_resolve_jumps(AsmProgram *program, Pgu8Dyn sb) {
+  for (u64 i = 0; i < program->jumps_to_backpatch.len; i++) {
+    LabelAddress jump_to_backpatch =
+        PG_SLICE_AT(program->jumps_to_backpatch, i);
+    PG_ASSERT(jump_to_backpatch.label.value.len);
+    PG_ASSERT(jump_to_backpatch.code_address > 0);
+    PG_ASSERT(jump_to_backpatch.code_address <= sb.len - 1);
+
+    LabelAddress label = {0};
+    for (u64 j = 0; j < program->label_addresses.len; j++) {
+      label = PG_SLICE_AT(program->label_addresses, j);
+      PG_ASSERT(label.label.value.len);
+      PG_ASSERT(label.code_address <= sb.len - 1);
+
+      if (pg_string_eq(label.label.value, jump_to_backpatch.label.value)) {
+        break;
+      }
+    }
+    PG_ASSERT(label.label.value.len);
+    PG_ASSERT(pg_string_eq(label.label.value, jump_to_backpatch.label.value));
+
+    u8 *jump_displacement_encoded =
+        PG_SLICE_AT_PTR(&sb, jump_to_backpatch.code_address);
+    i64 displacement = (i64)label.code_address -
+                       (i64)jump_to_backpatch.code_address - (i64)sizeof(i32);
+    PG_ASSERT(displacement <= INT32_MAX);
+
+    memcpy(jump_displacement_encoded, &displacement, sizeof(i32));
+  }
+}
+
+static void asm_encode_section(ArchitectureKind arch_kind, AsmProgram *program,
+                               Pgu8Dyn *sb, AsmCodeSection section,
+                               PgAllocator *allocator) {
+  PG_ASSERT(section.name.len);
+
+  *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
+      .label = {section.name},
+      .code_address = sb->len,
+  };
+
+  switch (arch_kind) {
+  case ARCH_KIND_AMD64: {
+    for (u64 i = 0; i < section.u.amd64_instructions.len; i++) {
+      Amd64Instruction ins = PG_SLICE_AT(section.u.amd64_instructions, i);
+      amd64_encode_instruction(program, sb, ins, allocator);
+    }
+  } break;
   case ARCH_KIND_NONE:
   default:
     PG_ASSERT(0);
   }
+}
+
+[[nodiscard]]
+static Pgu8Slice asm_encode_program_text(AsmEmitter *emitter,
+                                         PgAllocator *allocator) {
+  Pgu8Dyn sb = {0};
+  PG_DYN_ENSURE_CAP(&sb, 4 * PG_KiB, allocator);
+
+  for (u64 i = 0; i < emitter->program.text.len; i++) {
+    AsmCodeSection section = PG_SLICE_AT(emitter->program.text, i);
+    asm_encode_section(emitter->arch_kind, &emitter->program, &sb, section,
+                       allocator);
+  }
+
+  asm_section_resolve_jumps(&emitter->program, sb);
+
+  return PG_DYN_SLICE(Pgu8Slice, sb);
 }
 
 static void asm_gpr_set_add_idx(GprSet *set, u32 idx) {
