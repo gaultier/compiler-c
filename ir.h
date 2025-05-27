@@ -91,7 +91,6 @@ typedef struct {
   VirtualRegister virtual_register;
   Label label;
   MemoryLocation memory_location;
-  // TODO: Remove.
   PgString identifier;
 #if 0
   bool tombstone;
