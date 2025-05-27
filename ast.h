@@ -317,7 +317,7 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
 
   if (!ast_parse_expr(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE,
-                  ast_current_or_last_token(*parser).origin, allocator);
+                  token_colon_equal.origin, allocator);
     return false;
   }
 
@@ -366,6 +366,11 @@ static bool ast_parse_call(AstParser *parser, PgAllocator *allocator) {
   return ast_parse_primary(parser, allocator);
 }
 
+[[nodiscard]] static bool ast_node_is_addressable(AstNode node) {
+  // TODO: Expand.
+  return AST_NODE_KIND_IDENTIFIER == node.kind;
+}
+
 [[nodiscard]]
 static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
   LexToken token_first = ast_match_token_kind(parser, LEX_TOKEN_KIND_AMPERSAND);
@@ -376,6 +381,12 @@ static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
   if (!ast_parse_unary(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_UNARY_MISSING_RHS,
                   ast_current_or_last_token(*parser).origin, allocator);
+    return false;
+  }
+
+  if (ast_node_is_addressable(PG_SLICE_LAST(parser->nodes))) {
+    ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
+                  token_first.origin, allocator);
     return false;
   }
 
@@ -759,6 +770,10 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_push(parser, fn_start, allocator);
 
   for (u64 _i = 0; _i < parser->lexer.tokens.len;) {
+    if (parser->tokens_consumed >= parser->lexer.tokens.len) {
+      break;
+    }
+
     if (ast_match_token_kind(parser, LEX_TOKEN_KIND_EOF).kind) {
       break;
     }

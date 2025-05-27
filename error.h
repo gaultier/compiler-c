@@ -113,7 +113,7 @@ static void error_print(Error err) {
     printf("missing := in variable declaration after variable name");
     break;
   case ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE:
-    printf("missing value in variable declaration after :=");
+    printf("missing value in variable declaration");
     break;
   case ERROR_KIND_PARSE_FACTOR_MISSING_RHS:
     printf("missing right operand in -/+ operation");

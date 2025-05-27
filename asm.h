@@ -517,7 +517,9 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, false);
     asm_color_interference_graph(asm_emitter, &fn_def, verbose, allocator);
-    ir_print_fn_def(fn_def);
+    if (verbose) {
+      ir_print_fn_def(fn_def);
+    }
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, true);
 
