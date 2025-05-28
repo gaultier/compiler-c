@@ -70,6 +70,13 @@ static const u8 amd64_register_to_encoded_value[16 + 1] = {
     [AMD64_RBP] = 0b0101,
 };
 
+static const char *amd64_size_to_operand_size_string[8 + 1] = {
+    [ASM_OPERAND_SIZE_1] = "byte",
+    [ASM_OPERAND_SIZE_2] = "word",
+    [ASM_OPERAND_SIZE_4] = "dword",
+    [ASM_OPERAND_SIZE_8] = "qword",
+};
+
 static const Pgu8Slice amd64_register_to_encoded_value_slice = {
     .data = (u8 *)amd64_register_to_encoded_value,
     .len = PG_STATIC_ARRAY_LEN(amd64_register_to_encoded_value),
@@ -195,12 +202,11 @@ static void amd64_print_operand(Amd64Operand op) {
     printf("%" PRIu64, op.u.immediate);
     break;
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
-    char *size_cstr = "qword ptr";
-    printf("%s [", size_cstr);
-    amd64_print_register(op.u.effective_address.base, op.size);
+    printf("%s ptr [", amd64_size_to_operand_size_string[op.size]);
+    amd64_print_register(op.u.effective_address.base, ASM_OPERAND_SIZE_8);
     if (op.u.effective_address.index.value) {
       printf(" + ");
-      amd64_print_register(op.u.effective_address.index, op.size);
+      amd64_print_register(op.u.effective_address.index, ASM_OPERAND_SIZE_8);
       printf(" * %" PRIu8 " ", op.u.effective_address.scale);
     }
     printf("%s%" PRIi32 "]",
@@ -1078,7 +1084,7 @@ amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
                 .base = {AMD64_RBP},
                 .displacement = -mem_loc.u.base_pointer_offset,
             },
-        .size = ASM_OPERAND_SIZE_8,
+        .size = asm_type_size_to_operand_size(meta.type->size),
     };
   }
   case MEMORY_LOCATION_KIND_NONE:

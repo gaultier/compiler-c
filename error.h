@@ -60,7 +60,7 @@ static void err_print_src_span(PgString src, PgString src_span) {
     end += 1;
   }
   PG_ASSERT((u64)start < end);
-  PG_ASSERT(end < src.len);
+  PG_ASSERT(end <= src.len);
   PG_ASSERT((u64)start <= excerpt_start);
   PG_ASSERT(excerpt_end <= end);
 

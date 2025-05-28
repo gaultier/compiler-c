@@ -801,6 +801,8 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       Type *op_type = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value).type;
       PG_ASSERT(op_type);
 
+      // TODO: When type `T` is explicitly given: check if `T` == `op_type`.
+
       PgString type_name =
           pg_string_concat(PG_S("*"), op_type->name, allocator);
       Type *type = type_upsert(&emitter->types, type_name, allocator);
@@ -809,6 +811,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       type->kind = op_type->kind;
       type->origin = fn_def.origin;
       type->ptr_level = op_type->ptr_level + 1;
+      type->size = op_type->size;
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
