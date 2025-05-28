@@ -4,7 +4,7 @@ stdout := 1
 
 write_val := 478560413032
 write_val_len := 5
-if 1 {
+if 1==1 {
   stderr := 2
 }
 

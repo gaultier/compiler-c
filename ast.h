@@ -7,6 +7,7 @@ static const u64 max_syscall_args_count = 6;
 
 typedef enum : u8 {
   AST_NODE_KIND_NONE,
+  AST_NODE_KIND_BOOL,
   AST_NODE_KIND_NUMBER,
   AST_NODE_KIND_IDENTIFIER,
   AST_NODE_KIND_ADD,
@@ -144,6 +145,9 @@ static void ast_print_node(AstNode node) {
   putchar(' ');
 
   switch (node.kind) {
+  case AST_NODE_KIND_BOOL:
+    printf("Bool %" PRIu64, node.u.n64);
+    break;
   case AST_NODE_KIND_NUMBER:
     printf("U64 %" PRIu64, node.u.n64);
     break;
@@ -838,6 +842,7 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     case AST_NODE_KIND_LABEL:
     case AST_NODE_KIND_LABEL_DEFINITION:
     case AST_NODE_KIND_IDENTIFIER:
+    case AST_NODE_KIND_BOOL:
     case AST_NODE_KIND_NUMBER: {
       *PG_DYN_PUSH(&stack, allocator) = node;
     } break;
@@ -867,7 +872,11 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
 
       if (AST_NODE_KIND_NUMBER == lhs.kind &&
           AST_NODE_KIND_NUMBER == rhs.kind) {
+        // TODO: !=
+        PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
+
         AstNode folded = lhs;
+        folded.kind = AST_NODE_KIND_BOOL;
         folded.u.n64 = lhs.u.n64 == rhs.u.n64;
 
         PG_DYN_POP(nodes_after);

@@ -572,6 +572,28 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     AstNode node = PG_SLICE_AT(nodes, i);
 
     switch (node.kind) {
+    case AST_NODE_KIND_BOOL: {
+      Type *type = type_upsert(&emitter->types, PG_S("bool"), nullptr);
+      PG_ASSERT(type);
+
+      IrInstruction ins = {0};
+      ins.kind = IR_INSTRUCTION_KIND_MOV;
+      ins.origin = node.origin;
+      ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
+      ins.lhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_VREG,
+          .u.vreg_meta_idx = ins.meta_idx,
+      };
+      ins.rhs = (IrOperand){
+          .kind = IR_OPERAND_KIND_NUM,
+          .u.u64 = node.u.n64,
+      };
+      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+
+      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+
+    } break;
+
     case AST_NODE_KIND_NUMBER: {
       // TODO: Refine exact numerical type.
       Type *type = type_upsert(&emitter->types, PG_S("u64"), nullptr);
