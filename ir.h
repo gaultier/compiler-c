@@ -47,7 +47,6 @@ PG_DYN(VirtualRegister) VirtualRegisterDyn;
 
 typedef struct {
   IrOperandKind kind;
-  Type *type;
 
   union {
     Label label;
@@ -94,6 +93,7 @@ typedef struct {
   Label label;
   MemoryLocation memory_location;
   PgString identifier;
+  Type *type;
 #if 0
   bool tombstone;
 #endif
@@ -107,7 +107,6 @@ typedef struct {
   Origin origin;
   MetadataIndex meta_idx;
   IrOperand lhs, rhs;
-  Type *type;
 } IrInstruction;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
@@ -142,6 +141,7 @@ typedef struct {
   AstNodeIndex node_idx;
   MetadataIndex meta_idx;
   u32 scope_depth;
+  Type *type;
 } IrLocalVar;
 PG_DYN(IrLocalVar) IrLocalVarDyn;
 
@@ -151,10 +151,11 @@ PG_DYN(IrLocalVar) IrLocalVarDyn;
 }
 
 [[nodiscard]]
-static MetadataIndex metadata_make(MetadataDyn *metadata,
+static MetadataIndex metadata_make(MetadataDyn *metadata, Type *type,
                                    PgAllocator *allocator) {
   Metadata res = {0};
   res.virtual_register.value = (u32)metadata->len;
+  res.type = type;
 
   *PG_DYN_PUSH(metadata, allocator) = res;
 
@@ -221,6 +222,7 @@ static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
 }
 
 static void ir_print_operand(IrOperand operand, MetadataDyn metadata) {
+
   switch (operand.kind) {
   case IR_OPERAND_KIND_NUM:
     printf("%lu", operand.u.u64);
@@ -236,6 +238,7 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata) {
     VirtualRegister vreg =
         PG_SLICE_AT(metadata, meta_idx.value).virtual_register;
     PG_ASSERT(vreg.value);
+
     printf("v%u", vreg.value);
   } break;
 
@@ -328,7 +331,12 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      printf("Add v%u, ", vreg.value);
+      printf("Add ");
+
+      Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
+      type_print(type);
+
+      printf(" v%u, ", vreg.value);
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
       ir_print_operand(ins.rhs, metadata);
@@ -360,7 +368,6 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(vreg.value);
 
       printf("Mov ");
-      type_print(ins.type);
       printf(" ");
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
@@ -546,14 +553,14 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
     switch (node.kind) {
     case AST_NODE_KIND_NUMBER: {
-      Type *type = type_upsert(&emitter->types, PG_S("u64"), allocator);
+      // TODO: Refine exact numerical type.
+      Type *type = type_upsert(&emitter->types, PG_S("u64"), nullptr);
       PG_ASSERT(type);
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
-      ins.type = type;
-      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
+      ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = ins.meta_idx,
@@ -571,11 +578,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PgString name = node.u.s;
       PG_ASSERT(name.len);
 
-      IrInstruction ins = {0};
-      ins.kind = IR_INSTRUCTION_KIND_MOV;
-      ins.origin = node.origin;
-      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
-
       IrLocalVar *var = ir_local_vars_find(local_vars, name, nodes);
       if (!var) {
         Error err = {
@@ -587,9 +589,15 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                                node.origin.file_offset_start + node.u.s.len),
         };
         *PG_DYN_PUSH(emitter->errors, allocator) = err;
-        *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+        *PG_DYN_PUSH(&stack, allocator) = (MetadataIndex){0};
         continue;
       }
+      PG_ASSERT(var->type);
+
+      IrInstruction ins = {0};
+      ins.kind = IR_INSTRUCTION_KIND_MOV;
+      ins.origin = node.origin;
+      ins.meta_idx = metadata_make(&fn_def.metadata, var->type, allocator);
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -606,13 +614,22 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     } break;
 
     case AST_NODE_KIND_ADD: {
+      MetadataIndex rhs_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex lhs_meta_idx = PG_DYN_POP(&stack);
+
+      Type *rhs_type = PG_SLICE_AT(fn_def.metadata, rhs_meta_idx.value).type;
+      Type *lhs_type = PG_SLICE_AT(fn_def.metadata, lhs_meta_idx.value).type;
+      PG_ASSERT(rhs_type);
+      PG_ASSERT(lhs_type);
+
+      if (type_compatible(lhs_type, rhs_type)) {
+        PG_ASSERT(0 && "todo");
+      }
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_ADD;
       ins.origin = node.origin;
-      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
-
-      MetadataIndex rhs_meta_idx = PG_DYN_POP(&stack);
-      MetadataIndex lhs_meta_idx = PG_DYN_POP(&stack);
+      ins.meta_idx = metadata_make(&fn_def.metadata, lhs_type, allocator);
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -629,13 +646,25 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     } break;
 
     case AST_NODE_KIND_COMPARISON: {
+      MetadataIndex rhs_meta_idx = PG_DYN_POP(&stack);
+      MetadataIndex lhs_meta_idx = PG_DYN_POP(&stack);
+
+      Type *rhs_type = PG_SLICE_AT(fn_def.metadata, rhs_meta_idx.value).type;
+      Type *lhs_type = PG_SLICE_AT(fn_def.metadata, lhs_meta_idx.value).type;
+      PG_ASSERT(rhs_type);
+      PG_ASSERT(lhs_type);
+
+      if (type_compatible(lhs_type, rhs_type)) {
+        PG_ASSERT(0 && "todo");
+      }
+
+      Type *type = type_upsert(&emitter->types, PG_S("bool"), nullptr);
+      PG_ASSERT(type);
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
       ins.origin = node.origin;
-      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
-
-      MetadataIndex rhs_meta_idx = PG_DYN_POP(&stack);
-      MetadataIndex lhs_meta_idx = PG_DYN_POP(&stack);
+      ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -660,12 +689,6 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PgString name = node.u.s;
       PG_ASSERT(name.len);
 
-      IrInstruction ins = {0};
-      ins.kind = IR_INSTRUCTION_KIND_MOV;
-      ins.origin = node.origin;
-      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
-      PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
-
       IrLocalVar *var = ir_local_vars_find(local_vars, name, nodes);
       if (var) {
         Error err = {
@@ -681,13 +704,24 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
         continue;
       }
 
+      MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
+      Type *op_type = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value).type;
+      PG_ASSERT(op_type);
+
+      // TODO: Check if a type was explicitly given.
+      Type *type = op_type;
+
+      IrInstruction ins = {0};
+      ins.kind = IR_INSTRUCTION_KIND_MOV;
+      ins.origin = node.origin;
+      ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
+      PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
+
       *PG_DYN_PUSH(&local_vars, allocator) = (IrLocalVar){
           .node_idx = {i},
           .scope_depth = scope_depth,
           .meta_idx = ins.meta_idx,
       };
-
-      MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -704,12 +738,22 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
     case AST_NODE_KIND_ADDRESS_OF: {
       PG_ASSERT(fn_def.instructions.len >= 1);
 
+      MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
+      Type *op_type = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value).type;
+      PG_ASSERT(op_type);
+
+      Type *type = type_upsert(&emitter->types, op_type->name, allocator);
+      PG_ASSERT(type);
+      PG_ASSERT(type->ptr_level < UINT8_MAX);
+      type->kind = op_type->kind;
+      type->origin = fn_def.origin;
+      type->ptr_level = op_type->ptr_level + 1;
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
       ins.origin = node.origin;
-      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
+      ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
 
-      MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
       PG_SLICE_AT_PTR(&fn_def.metadata, op_meta_idx.value)
           ->virtual_register.addressable = true;
 
@@ -734,6 +778,13 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins_jmp_else.origin = node.origin;
 
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
+      Type *cond_type = PG_SLICE_AT(fn_def.metadata, cond_meta_idx.value).type;
+      PG_ASSERT(cond_type);
+
+      if (TYPE_KIND_BOOLEAN != cond_type->kind) {
+        PG_ASSERT(0 && "todo");
+      }
+
       AstNode end_label = PG_SLICE_AT(nodes, i - 1);
       AstNode else_label = PG_SLICE_AT(nodes, i - 2);
       AstNode then_label = PG_SLICE_AT(nodes, i - 3);
@@ -804,6 +855,12 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       if (node.flags & AST_NODE_FLAG_GLOBAL) {
         fn_def.flags = IR_FLAG_GLOBAL;
       }
+
+      Type *type = type_upsert(&emitter->types, fn_def.name, allocator);
+      PG_ASSERT(type);
+      type->kind = TYPE_KIND_FN_DEF;
+      type->origin = fn_def.origin;
+
     } break;
 
     case AST_NODE_KIND_SYSCALL: {
@@ -818,11 +875,14 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
             (VirtualRegisterConstraint)((i64)VREG_CONSTRAINT_SYSCALL_NUM + j);
       }
 
+      Type *type = type_upsert(&emitter->types, PG_S("u64"), nullptr);
+      PG_ASSERT(type);
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
       ins.origin = node.origin;
       ins.args_count = (u8)node.u.stack_args_count;
-      ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
+      ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->virtual_register.constraint =
           VREG_CONSTRAINT_SYSCALL_RET;
       // TODO: args_count.
@@ -843,8 +903,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .kind = IR_OPERAND_KIND_LABEL,
           .u.label = node.u.label,
       };
+#if 0
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->label = ins.lhs.u.label;
+#endif
 
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
     } break;
@@ -854,6 +916,13 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
       // FIXME: Add negation of condition!
+
+      Type *cond_type = PG_SLICE_AT(fn_def.metadata, cond_meta_idx.value).type;
+      PG_ASSERT(cond_type);
+
+      if (TYPE_KIND_BOOLEAN != cond_type->kind) {
+        PG_ASSERT(0 && "todo");
+      }
 
       IrOperand if_end_target =
           ir_make_synth_label(&emitter->label_id, allocator);

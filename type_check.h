@@ -6,6 +6,7 @@ typedef enum {
   TYPE_KIND_NONE,
   TYPE_KIND_BOOLEAN,
   TYPE_KIND_NUMBER,
+  TYPE_KIND_FN_DEF,
   // More...
 } TypeKind;
 
@@ -14,6 +15,9 @@ struct Type {
   TypeKind kind;
   u64 size;
   Origin origin;
+  u8 ptr_level;
+
+  // Hash trie fields.
   PgString name; // Key.
   Type *child[4];
 };
@@ -71,5 +75,14 @@ static void type_print(Type *type) {
     return;
   }
 
+  for (u8 i = 0; i < type->ptr_level; i++) {
+    printf("*");
+  }
+
   printf("%.*s", (i32)type->name.len, type->name.data);
+}
+
+[[nodiscard]] static bool type_compatible(Type *a, Type *b) {
+  // TODO: Allow implicit downcasting, etc?
+  return a == b;
 }
