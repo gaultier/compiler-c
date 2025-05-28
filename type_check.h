@@ -2,13 +2,27 @@
 
 #include "origin.h"
 
-typedef struct {
-  PgString name;
+typedef enum {
+  TYPE_KIND_NONE,
+  TYPE_KIND_BOOLEAN,
+  TYPE_KIND_NUMBER,
+  // More...
+} TypeKind;
+
+typedef struct Type Type;
+struct Type {
+  TypeKind kind;
   u64 size;
   Origin origin;
-} Type;
-PG_DYN(Type) TypeDyn;
+  PgString name; // Key.
+  Type *child[4];
+};
 
+typedef struct {
+  u32 value;
+} TypeIdx;
+
+#if 0
 static const Type types_builtin[] = {
     {0}, // Dummy
     {.name = PG_S("u64"), .size = sizeof(u64)},
@@ -31,16 +45,31 @@ types_make_type_checker(PgAllocator *allocator) {
 
   return type_checker;
 }
+#endif
 
-[[maybe_unused]] // TODO: use
-[[nodiscard]] static Type
-type_find_by_name(TypeDyn types, PgString name) {
-  for (u64 i = 0; i < types.len; i++) {
-    Type it = PG_SLICE_AT(types, i);
-    if (pg_string_eq(it.name, name)) {
-      return it;
+[[nodiscard]] static Type *type_upsert(Type **htrie, PgString name,
+                                       PgAllocator *allocator) {
+  for (u64 h = pg_hash_fnv(name); *htrie; h <<= 2) {
+    if (pg_string_eq(name, (*htrie)->name)) {
+      return *htrie;
     }
+    htrie = &(*htrie)->child[h >> 62];
+  }
+  if (!allocator) {
+    return nullptr;
   }
 
-  return (Type){0};
+  *htrie = pg_alloc(allocator, sizeof(Type), _Alignof(Type), 1);
+  (*htrie)->name = name;
+
+  return (*htrie);
+}
+
+static void type_print(Type *type) {
+  if (!type) {
+    printf("any");
+    return;
+  }
+
+  printf("%.*s", (i32)type->name.len, type->name.data);
 }

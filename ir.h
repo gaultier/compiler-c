@@ -1,5 +1,6 @@
 #pragma once
 #include "ast.h"
+#include "type_check.h"
 
 typedef enum : u8 {
   IR_INSTRUCTION_KIND_NONE,
@@ -16,7 +17,7 @@ typedef enum : u8 {
 
 #define IR_FLAG_GLOBAL (1 << 0)
 
-typedef enum {
+typedef enum : uint8_t {
   IR_OPERAND_KIND_NONE,
   IR_OPERAND_KIND_NUM,
   IR_OPERAND_KIND_LABEL,
@@ -46,6 +47,7 @@ PG_DYN(VirtualRegister) VirtualRegisterDyn;
 
 typedef struct {
   IrOperandKind kind;
+  Type *type;
 
   union {
     Label label;
@@ -105,6 +107,7 @@ typedef struct {
   Origin origin;
   MetadataIndex meta_idx;
   IrOperand lhs, rhs;
+  Type *type;
 } IrInstruction;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
@@ -112,6 +115,7 @@ typedef struct {
   u32 label_id;
   ErrorDyn *errors;
   PgString src;
+  Type *types;
 } IrEmitter;
 
 // Graph represented as a adjacency matrix (M(i,j) = 1 if there is an edge
@@ -356,6 +360,8 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(vreg.value);
 
       printf("Mov ");
+      type_print(ins.type);
+      printf(" ");
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
       ir_print_operand(ins.rhs, metadata);
@@ -540,9 +546,13 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
 
     switch (node.kind) {
     case AST_NODE_KIND_NUMBER: {
+      Type *type = type_upsert(&emitter->types, PG_S("u64"), allocator);
+      PG_ASSERT(type);
+
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
+      ins.type = type;
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
