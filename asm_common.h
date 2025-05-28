@@ -36,11 +36,11 @@ typedef struct {
 } Amd64EffectiveAddress;
 
 typedef enum {
-  ASM_OPERAND_SIZE_ZERO = 0,
-  ASM_OPERAND_SIZE_ONE = 1,
-  ASM_OPERAND_SIZE_TWO = 2,
-  ASM_OPERAND_SIZE_FOUR = 4,
-  ASM_OPERAND_SIZE_EIGHT = 8,
+  ASM_OPERAND_SIZE_0 = 0,
+  ASM_OPERAND_SIZE_1 = 1,
+  ASM_OPERAND_SIZE_2 = 2,
+  ASM_OPERAND_SIZE_4 = 4,
+  ASM_OPERAND_SIZE_8 = 8,
   // TODO: More (SIMD).
 } AsmOperandSize;
 
