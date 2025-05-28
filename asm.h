@@ -284,21 +284,6 @@ static void asm_print_register(ArchitectureKind arch_kind, Register reg,
   }
 }
 
-[[nodiscard]] static AsmOperandSize asm_type_size_to_operand_size(u64 size) {
-  switch (size) {
-  case 1:
-    return ASM_OPERAND_SIZE_1;
-  case 2:
-    return ASM_OPERAND_SIZE_2;
-  case 4:
-    return ASM_OPERAND_SIZE_4;
-  case 8:
-    return ASM_OPERAND_SIZE_8;
-  default:
-    PG_ASSERT(0);
-  }
-}
-
 static void asm_color_do_precoloring(AsmEmitter *emitter, FnDefinition *fn_def,
                                      PgString tombstones_bitfield,
                                      GprSet *gprs_precolored_set,

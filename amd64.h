@@ -1052,8 +1052,8 @@ static void amd64_encode_instruction(AsmProgram *program, Pgu8Dyn *sb,
 amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
                                                MetadataDyn metadata) {
   PG_ASSERT(meta_idx.value);
-  MemoryLocation mem_loc =
-      PG_SLICE_AT(metadata, meta_idx.value).memory_location;
+  Metadata meta = PG_SLICE_AT(metadata, meta_idx.value);
+  MemoryLocation mem_loc = meta.memory_location;
 
   switch (mem_loc.kind) {
   case MEMORY_LOCATION_KIND_REGISTER: {
@@ -1063,6 +1063,7 @@ amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_REGISTER,
         .u.reg = mem_loc.u.reg,
+        .size = asm_type_size_to_operand_size(meta.type->size),
     };
   }
   case MEMORY_LOCATION_KIND_STATUS_REGISTER:
@@ -1077,6 +1078,7 @@ amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
                 .base = {AMD64_RBP},
                 .displacement = -mem_loc.u.base_pointer_offset,
             },
+        .size = ASM_OPERAND_SIZE_8,
     };
   }
   case MEMORY_LOCATION_KIND_NONE:
