@@ -1,38 +1,38 @@
 #pragma once
 #include "asm_common.h"
 
-static const Register amd64_rax = {1};
-static const Register amd64_rbx = {2};
-static const Register amd64_rcx = {3};
-static const Register amd64_rdx = {4};
-static const Register amd64_rdi = {5};
-static const Register amd64_rsi = {6};
-static const Register amd64_r8 = {7};
-static const Register amd64_r9 = {8};
-static const Register amd64_r12 = {9};
-static const Register amd64_r13 = {10};
-static const Register amd64_r14 = {11};
-static const Register amd64_r15 = {12};
-static const Register amd64_r10 = {13};
-static const Register amd64_r11 = {14};
-static const Register amd64_rsp = {15};
-static const Register amd64_rbp = {16};
-static const Register amd64_rflags = {17};
+#define AMD64_RAX 1
+#define AMD64_RBX 2
+#define AMD64_RCX 3
+#define AMD64_RDX 4
+#define AMD64_RDI 5
+#define AMD64_RSI 6
+#define AMD64_R8 7
+#define AMD64_R9 8
+#define AMD64_R12 9
+#define AMD64_R13 10
+#define AMD64_R14 11
+#define AMD64_R15 12
+#define AMD64_R10 13
+#define AMD64_R11 14
+#define AMD64_RSP 15
+#define AMD64_RBP 16
+#define AMD64_RFLAGS 17
 
 static const Register amd64_register_allocator_gprs[] = {
-    amd64_rax,
-    amd64_rdi,
-    amd64_rsi,
-    amd64_rdx,
-    amd64_rcx,
-    amd64_r8,
-    amd64_r9,
-    /* Reserved for spilling: amd64_r10, amd64_r11, */
-    amd64_rbx,
-    amd64_r12,
-    amd64_r13,
-    amd64_r14,
-    amd64_r15,
+    {AMD64_RAX},
+    {AMD64_RDI},
+    {AMD64_RSI},
+    {AMD64_RDX},
+    {AMD64_RCX},
+    {AMD64_R8},
+    {AMD64_R9},
+    /* Reserved for spilling: AMD64_R10, AMD64_R11.*/
+    {AMD64_RBX},
+    {AMD64_R12},
+    {AMD64_R13},
+    {AMD64_R14},
+    {AMD64_R15},
 };
 
 static const RegisterSlice amd64_register_allocator_gprs_slice = {
@@ -40,38 +40,34 @@ static const RegisterSlice amd64_register_allocator_gprs_slice = {
     .len = PG_STATIC_ARRAY_LEN(amd64_register_allocator_gprs),
 };
 
-static const PgString amd64_register_to_string[] = {
-    [0] = PG_S("UNREACHABLE"), [1] = PG_S("rax"),  [2] = PG_S("rbx"),
-    [3] = PG_S("rcx"),         [4] = PG_S("rdx"),  [5] = PG_S("rdi"),
-    [6] = PG_S("rsi"),         [7] = PG_S("r8"),   [8] = PG_S("r9"),
-    [9] = PG_S("r10"),         [10] = PG_S("r11"), [11] = PG_S("r12"),
-    [12] = PG_S("r13"),        [13] = PG_S("r14"), [14] = PG_S("r15"),
-    [15] = PG_S("rsp"),        [16] = PG_S("rbp"), [17] = PG_S("rflags"),
-};
-
-static const PgStringSlice amd64_register_to_string_slice = {
-    .data = (PgString *)amd64_register_to_string,
-    .len = PG_STATIC_ARRAY_LEN(amd64_register_to_string),
+static const char *amd64_register_to_string[][8 + 1] = {
+    [AMD64_RAX] = {[1] = "al", [2] = "ax", [4] = "eax", [8] = "rax"},
+    [AMD64_RBX] = {[1] = "bl", [2] = "bx", [4] = "ebx", [8] = "rbx"},
+    [AMD64_RCX] = {[1] = "cl", [2] = "cx", [4] = "ecx", [8] = "rcx"},
+    [AMD64_RDX] = {[1] = "dl", [2] = "dx", [4] = "edx", [8] = "rdx"},
+    [AMD64_RDI] = {[1] = "dil", [2] = "di", [4] = "edi", [8] = "rdi"},
+    [AMD64_RSI] = {[1] = "sil", [2] = "si", [4] = "esi", [8] = "rsi"},
+    [AMD64_R8] = {[1] = "r8b", [2] = "r8w", [4] = "r8d", [8] = "r8"},
+    [AMD64_R9] = {[1] = "r9b", [2] = "r9w", [4] = "r9d", [8] = "r9"},
+    [AMD64_R10] = {[1] = "r10b", [2] = "r10w", [4] = "r10d", [8] = "r10"},
+    [AMD64_R11] = {[1] = "r11b", [2] = "r11w", [4] = "r11d", [8] = "r11"},
+    [AMD64_R12] = {[1] = "r12b", [2] = "r12w", [4] = "r12d", [8] = "r12"},
+    [AMD64_R13] = {[1] = "r13b", [2] = "r13w", [4] = "r13d", [8] = "r13"},
+    [AMD64_R14] = {[1] = "r14b", [2] = "r14w", [4] = "r14d", [8] = "r14"},
+    [AMD64_R15] = {[1] = "r15b", [2] = "r15w", [4] = "r15d", [8] = "r15"},
+    [AMD64_RSP] = {[1] = "spl", [2] = "sp", [4] = "esp", [8] = "rsp"},
+    [AMD64_RBP] = {[1] = "bpl", [2] = "bp", [4] = "ebp", [8] = "rbp"},
+    [AMD64_RFLAGS] =
+        {[1] = "rflags", [2] = "rflags", [4] = "rflags", [8] = "rflags"},
 };
 
 static const u8 amd64_register_to_encoded_value[16 + 1] = {
-    [0] = 0,       // zero value
-    [1] = 0b0000,  // rax
-    [2] = 0b0011,  // rbx
-    [3] = 0b0001,  // rcx
-    [4] = 0b0010,  // rdx
-    [5] = 0b0111,  // rdi
-    [6] = 0b0110,  // rsi
-    [7] = 0b1000,  // r8
-    [8] = 0b1001,  // r9
-    [9] = 0b1010,  // r10
-    [10] = 0b1011, // r11
-    [11] = 0b1100, // r12
-    [12] = 0b1101, // r13
-    [13] = 0b1110, // r14
-    [14] = 0b1111, // r15
-    [15] = 0b0100, // rsp
-    [16] = 0b0101, // rbp
+    [AMD64_RAX] = 0b0000, [AMD64_RBX] = 0b0011, [AMD64_RCX] = 0b0001,
+    [AMD64_RDX] = 0b0010, [AMD64_RDI] = 0b0111, [AMD64_RSI] = 0b0110,
+    [AMD64_R8] = 0b1000,  [AMD64_R9] = 0b1001,  [AMD64_R10] = 0b1010,
+    [AMD64_R11] = 0b1011, [AMD64_R12] = 0b1100, [AMD64_R13] = 0b1101,
+    [AMD64_R14] = 0b1110, [AMD64_R15] = 0b1111, [AMD64_RSP] = 0b0100,
+    [AMD64_RBP] = 0b0101,
 };
 
 static const Pgu8Slice amd64_register_to_encoded_value_slice = {
@@ -81,26 +77,27 @@ static const Pgu8Slice amd64_register_to_encoded_value_slice = {
 
 // TODO: SystemV ABI vs Windows calling convention!
 static const Register amd64_callee_saved[] = {
-    amd64_rbx, amd64_rsp, amd64_rbp, amd64_r12, amd64_r13, amd64_r14, amd64_r15,
+    {AMD64_RBX}, {AMD64_RSP}, {AMD64_RBP}, {AMD64_R12},
+    {AMD64_R13}, {AMD64_R14}, {AMD64_R15},
 };
 
 static const Register amd64_caller_saved[] = {
-    amd64_rax, amd64_rdi, amd64_rdx, amd64_rcx,
-    amd64_r8,  amd64_r9,  amd64_r10, amd64_r11,
+    {AMD64_RAX}, {AMD64_RDI}, {AMD64_RDX}, {AMD64_RCX},
+    {AMD64_R8},  {AMD64_R9},  {AMD64_R10}, {AMD64_R11},
 };
 
-static const Register amd64_spill_registers[] = {amd64_r10, amd64_r11};
+static const Register amd64_spill_registers[] = {{AMD64_R10}, {AMD64_R11}};
 
 static const Register amd64_calling_convention[] = {
-    amd64_rdi, amd64_rsi, amd64_rdx, amd64_rcx, amd64_r8, amd64_r9,
+    {AMD64_RDI}, {AMD64_RSI}, {AMD64_RDX}, {AMD64_RCX}, {AMD64_R8}, {AMD64_R9},
 };
 
 static const Register amd64_syscall_calling_convention[6] = {
-    amd64_rdi, amd64_rsi, amd64_rdx, amd64_r10, amd64_r8, amd64_r9,
+    {AMD64_RDI}, {AMD64_RSI}, {AMD64_RDX}, {AMD64_R10}, {AMD64_R8}, {AMD64_R9},
 };
 
 static const Architecture amd64_arch = {
-    .return_value = amd64_rax,
+    .return_value = {AMD64_RAX},
     .caller_saved =
         {
             .data = (Register *)amd64_caller_saved,
@@ -121,16 +118,15 @@ static const Architecture amd64_arch = {
             .data = (Register *)amd64_syscall_calling_convention,
             .len = PG_STATIC_ARRAY_LEN(amd64_syscall_calling_convention),
         },
-    .syscall_num = amd64_rax,
-    .syscall_ret = amd64_rax,
-    .stack_pointer = amd64_rsp,
-    .base_pointer = amd64_rbp,
+    .syscall_num = {AMD64_RAX},
+    .syscall_ret = {AMD64_RAX},
+    .stack_pointer = {AMD64_RSP},
+    .base_pointer = {AMD64_RBP},
     .gprs = amd64_register_allocator_gprs_slice,
 };
 
-static void amd64_print_register(Register reg) {
-  PgString s = PG_SLICE_AT(amd64_register_to_string_slice, reg.value);
-  printf("%.*s", (i32)s.len, s.data);
+static void amd64_print_register(Register reg, AsmOperandSize size) {
+  printf("%s", amd64_register_to_string[reg.value][size]);
 }
 
 // TODO: If any of the callee-saved registers were used by the register
@@ -145,7 +141,7 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
       .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
-              .u.reg = amd64_rbp,
+              .u.reg = {AMD64_RBP},
           },
   };
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_push;
@@ -155,12 +151,12 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
       .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
-              .u.reg = amd64_rbp,
+              .u.reg = {AMD64_RBP},
           },
       .rhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
-              .u.reg = amd64_rsp,
+              .u.reg = {AMD64_RSP},
           },
   };
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_mov;
@@ -178,7 +174,7 @@ static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
       .lhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
-              .u.reg = amd64_rbp,
+              .u.reg = {AMD64_RBP},
           },
   };
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_pop;
@@ -189,7 +185,7 @@ static void amd64_print_operand(Amd64Operand op) {
   case AMD64_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case AMD64_OPERAND_KIND_REGISTER:
-    amd64_print_register(op.u.reg);
+    amd64_print_register(op.u.reg, op.size);
     break;
   case AMD64_OPERAND_KIND_IMMEDIATE:
     printf("%" PRIu64, op.u.immediate);
@@ -197,10 +193,10 @@ static void amd64_print_operand(Amd64Operand op) {
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
     char *size_cstr = "qword ptr";
     printf("%s [", size_cstr);
-    amd64_print_register(op.u.effective_address.base);
+    amd64_print_register(op.u.effective_address.base, op.size);
     if (op.u.effective_address.index.value) {
       printf(" + ");
-      amd64_print_register(op.u.effective_address.index);
+      amd64_print_register(op.u.effective_address.index, op.size);
       printf(" * %" PRIu8 " ", op.u.effective_address.scale);
     }
     printf("%s%" PRIi32 "]",
@@ -423,8 +419,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
       AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
     PG_ASSERT(instruction.rhs.kind <= INT32_MAX);
 
-    PG_ASSERT(amd64_rbp.value ==
-                  instruction.lhs.u.effective_address.base.value &&
+    PG_ASSERT(AMD64_RBP == instruction.lhs.u.effective_address.base.value &&
               "todo");
     PG_ASSERT(0 == instruction.lhs.u.effective_address.index.value && "todo");
     PG_ASSERT(0 == instruction.lhs.u.effective_address.scale && "todo");
@@ -452,8 +447,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
   if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
-    PG_ASSERT(instruction.lhs.u.effective_address.base.value ==
-                  amd64_rbp.value &&
+    PG_ASSERT(instruction.lhs.u.effective_address.base.value == AMD64_RBP &&
               "todo");
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
@@ -484,8 +478,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
   if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
       AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind) {
-    PG_ASSERT(amd64_rbp.value ==
-                  instruction.rhs.u.effective_address.base.value &&
+    PG_ASSERT(AMD64_RBP == instruction.rhs.u.effective_address.base.value &&
               "todo");
     PG_ASSERT(0 == instruction.rhs.u.effective_address.index.value && "todo");
     PG_ASSERT(0 == instruction.rhs.u.effective_address.scale && "todo");
@@ -527,7 +520,7 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
   PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind);
   PG_ASSERT(0 == instruction.rhs.u.effective_address.index.value && "todo");
   PG_ASSERT(0 == instruction.rhs.u.effective_address.scale && "todo");
-  PG_ASSERT(amd64_rbp.value == instruction.rhs.u.effective_address.base.value &&
+  PG_ASSERT(AMD64_RBP == instruction.rhs.u.effective_address.base.value &&
             "todo");
 
   u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
@@ -617,8 +610,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
       AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
     PG_ASSERT(0 == instruction.lhs.u.effective_address.scale && "todo");
     PG_ASSERT(0 == instruction.lhs.u.effective_address.index.value && "todo");
-    PG_ASSERT(amd64_rbp.value ==
-                  instruction.lhs.u.effective_address.base.value &&
+    PG_ASSERT(AMD64_RBP == instruction.lhs.u.effective_address.base.value &&
               "todo");
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
@@ -650,7 +642,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb,
         instruction.rhs.u.effective_address;
     PG_ASSERT(0 == effective_address.scale && "todo");
     PG_ASSERT(0 == effective_address.index.value && "todo");
-    PG_ASSERT(amd64_rbp.value == effective_address.base.value && "todo");
+    PG_ASSERT(AMD64_RBP == effective_address.base.value && "todo");
 
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
     if (amd64_is_register_64_bits_only(reg)) {
@@ -763,7 +755,7 @@ static void amd64_encode_instruction_push(Pgu8Dyn *sb,
                                           Amd64Instruction instruction,
                                           PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_PUSH == instruction.kind);
-  PG_ASSERT(amd64_rbp.value == instruction.lhs.u.reg.value && "todo");
+  PG_ASSERT(AMD64_RBP == instruction.lhs.u.reg.value && "todo");
 
   u8 opcode = 0x50;
   *PG_DYN_PUSH(sb, allocator) =
@@ -775,7 +767,7 @@ static void amd64_encode_instruction_pop(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_POP == instruction.kind);
 
-  PG_ASSERT(amd64_rbp.value == instruction.lhs.u.reg.value && "todo");
+  PG_ASSERT(AMD64_RBP == instruction.lhs.u.reg.value && "todo");
 
   u8 opcode = 0x58;
   *PG_DYN_PUSH(sb, allocator) =
@@ -910,7 +902,7 @@ static void amd64_encode_instruction_cmp(Pgu8Dyn *sb,
     u64 immediate = instruction.rhs.u.immediate;
     Amd64EffectiveAddress effective_address =
         instruction.lhs.u.effective_address;
-    PG_ASSERT(effective_address.base.value == amd64_rbp.value && "todo");
+    PG_ASSERT(effective_address.base.value == AMD64_RBP && "todo");
     PG_ASSERT(0 == effective_address.index.value);
     PG_ASSERT(0 == effective_address.scale);
 
@@ -1078,7 +1070,7 @@ amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
         .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
         .u.effective_address =
             {
-                .base = amd64_rbp,
+                .base = {AMD64_RBP},
                 .displacement = -mem_loc.u.base_pointer_offset,
             },
     };
@@ -1310,10 +1302,10 @@ amd64_map_constraint_to_register(VirtualRegisterConstraint constraint) {
   case VREG_CONSTRAINT_NONE:
     return (Register){0};
   case VREG_CONSTRAINT_CONDITION_FLAGS:
-    return amd64_rflags;
+    return (Register){AMD64_RFLAGS};
   case VREG_CONSTRAINT_SYSCALL_NUM:
   case VREG_CONSTRAINT_SYSCALL_RET:
-    return amd64_rax;
+    return (Register){AMD64_RAX};
   case VREG_CONSTRAINT_SYSCALL0:
   case VREG_CONSTRAINT_SYSCALL1:
   case VREG_CONSTRAINT_SYSCALL2:
@@ -1345,7 +1337,7 @@ static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
         .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
-                .u.reg = amd64_rsp,
+                .u.reg = {AMD64_RSP},
             },
         .rhs =
             (Amd64Operand){
@@ -1372,7 +1364,7 @@ static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
         .lhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
-                .u.reg = amd64_rsp,
+                .u.reg = {AMD64_RSP},
             },
         .rhs =
             (Amd64Operand){

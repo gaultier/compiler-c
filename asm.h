@@ -272,12 +272,28 @@ asm_map_constraint_to_register(ArchitectureKind arch_kind,
   }
 }
 
-static void asm_print_register(ArchitectureKind arch_kind, Register reg) {
+static void asm_print_register(ArchitectureKind arch_kind, Register reg,
+                               AsmOperandSize size) {
   switch (arch_kind) {
   case ARCH_KIND_AMD64:
-    amd64_print_register(reg);
+    amd64_print_register(reg, size);
     break;
   case ARCH_KIND_NONE:
+  default:
+    PG_ASSERT(0);
+  }
+}
+
+[[nodiscard]] static AsmOperandSize asm_type_size_to_operand_size(u64 size) {
+  switch (size) {
+  case 1:
+    return ASM_OPERAND_SIZE_1;
+  case 2:
+    return ASM_OPERAND_SIZE_2;
+  case 4:
+    return ASM_OPERAND_SIZE_4;
+  case 8:
+    return ASM_OPERAND_SIZE_8;
   default:
     PG_ASSERT(0);
   }
@@ -328,7 +344,10 @@ static void asm_color_do_precoloring(AsmEmitter *emitter, FnDefinition *fn_def,
         printf("asm: precoloring assigned register: ");
         metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
         printf(" -> ");
-        asm_print_register(emitter->arch_kind, meta->memory_location.u.reg);
+        AsmOperandSize op_size =
+            asm_type_size_to_operand_size(meta->type->size);
+        asm_print_register(emitter->arch_kind, meta->memory_location.u.reg,
+                           op_size);
         printf("\n");
       }
       break;
@@ -505,9 +524,11 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
 
       if (verbose) {
         printf("asm: coloring assigned register: ");
-        metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
+        Metadata meta = PG_SLICE_AT(fn_def->metadata, node_idx.value);
+        metadata_print_meta(meta);
         printf(" -> ");
-        asm_print_register(emitter->arch_kind, reg);
+        AsmOperandSize op_size = asm_type_size_to_operand_size(meta.type->size);
+        asm_print_register(emitter->arch_kind, reg, op_size);
         printf("\n");
       }
     }
