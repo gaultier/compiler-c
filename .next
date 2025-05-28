@@ -1,2 +1,2 @@
-- [ ] type check errors
-- [ ] adapt codegen to use real sizes from types incl. right registers
+- [x] type check errors
+- [x] adapt codegen to use real sizes from types incl. right registers

@@ -1,5 +1,5 @@
 foo := 1
-assert(foo)
+assert(foo==1)
 
 bar := 2
 

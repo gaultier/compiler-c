@@ -665,7 +665,23 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(lhs_type);
 
       if (!type_compatible(lhs_type, rhs_type)) {
-        PG_ASSERT(0 && "todo");
+        Pgu8Dyn sb = pg_sb_make_with_cap(128, allocator);
+        PG_DYN_APPEND_SLICE(&sb, PG_S("types are not compatible: "), allocator);
+        PG_DYN_APPEND_SLICE(&sb, lhs_type->name, allocator);
+        PG_DYN_APPEND_SLICE(&sb, PG_S(" and "), allocator);
+        PG_DYN_APPEND_SLICE(&sb, rhs_type->name, allocator);
+
+        Error err = {
+            .kind = ERROR_KIND_TYPE_MISMATCH,
+            .origin = node.origin,
+            .src = emitter->src,
+            .src_span = PG_SLICE_RANGE(
+                emitter->src, node.origin.file_offset_start,
+                // FIXME: origin should have a src_span directly.
+                node.origin.file_offset_start + PG_S("assert(").len),
+            .explanation = PG_DYN_SLICE(PgString, sb),
+        };
+        *PG_DYN_PUSH(emitter->errors, allocator) = err;
       }
 
       IrInstruction ins = {0};
@@ -966,7 +982,22 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(cond_type);
 
       if (TYPE_KIND_BOOLEAN != cond_type->kind) {
-        PG_ASSERT(0 && "todo");
+        Pgu8Dyn sb = pg_sb_make_with_cap(128, allocator);
+        PG_DYN_APPEND_SLICE(&sb, PG_S("expected bool, got "), allocator);
+        PG_DYN_APPEND_SLICE(&sb, cond_type->name, allocator);
+
+        Error err = {
+            .kind = ERROR_KIND_TYPE_MISMATCH,
+            .origin = node.origin,
+            .src = emitter->src,
+            .src_span = PG_SLICE_RANGE(
+                emitter->src, node.origin.file_offset_start,
+                // FIXME: origin should have a src_span directly.
+                node.origin.file_offset_start + PG_S("assert(").len),
+            .explanation = PG_DYN_SLICE(PgString, sb),
+        };
+        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        continue;
       }
 
       IrOperand if_end_target =

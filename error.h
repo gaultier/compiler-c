@@ -30,6 +30,7 @@ typedef enum {
   ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION,
   ERROR_KIND_WRONG_ARGS_COUNT,
   ERROR_KIND_MALFORMED_AST,
+  ERROR_KIND_TYPE_MISMATCH,
 } ErrorKind;
 
 typedef struct {
@@ -37,6 +38,7 @@ typedef struct {
   Origin origin;
   PgString src_span;
   PgString src;
+  PgString explanation;
 } Error;
 PG_DYN(Error) ErrorDyn;
 
@@ -157,6 +159,11 @@ static void error_print(Error err) {
 
   case ERROR_KIND_MALFORMED_AST:
     printf("malformed ast");
+    break;
+
+  case ERROR_KIND_TYPE_MISMATCH:
+    printf("mismatched types: %.*s", (i32)err.explanation.len,
+           err.explanation.data);
     break;
 
   default:
