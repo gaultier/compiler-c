@@ -191,7 +191,7 @@ static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_pop;
 }
 
-static void amd64_print_operand(Amd64Operand op) {
+static void amd64_print_operand(Amd64Operand op, bool with_op_size) {
   switch (op.kind) {
   case AMD64_OPERAND_KIND_NONE:
     PG_ASSERT(0);
@@ -202,7 +202,10 @@ static void amd64_print_operand(Amd64Operand op) {
     printf("%" PRIu64, op.u.immediate);
     break;
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
-    printf("%s ptr [", amd64_size_to_operand_size_string[op.size]);
+    if (with_op_size) {
+      printf("%s ptr ", amd64_size_to_operand_size_string[op.size]);
+    }
+    printf("[");
     amd64_print_register(op.u.effective_address.base, ASM_OPERAND_SIZE_8);
     if (op.u.effective_address.index.value) {
       printf(" + ");
@@ -300,14 +303,14 @@ static void amd64_print_instructions(Amd64InstructionDyn instructions) {
     }
 
     if (AMD64_OPERAND_KIND_NONE != ins.lhs.kind) {
-      amd64_print_operand(ins.lhs);
+      amd64_print_operand(ins.lhs, AMD64_INSTRUCTION_KIND_LEA != ins.kind);
     }
 
     if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
       PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
 
       printf(", ");
-      amd64_print_operand(ins.rhs);
+      amd64_print_operand(ins.rhs, AMD64_INSTRUCTION_KIND_LEA != ins.kind);
     }
 
     if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
@@ -527,6 +530,7 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_LEA == instruction.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind);
+  PG_ASSERT(ASM_OPERAND_SIZE_8 == instruction.lhs.size);
   PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind);
   PG_ASSERT(0 == instruction.rhs.u.effective_address.index.value && "todo");
   PG_ASSERT(0 == instruction.rhs.u.effective_address.scale && "todo");

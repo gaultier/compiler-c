@@ -811,7 +811,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       type->kind = op_type->kind;
       type->origin = fn_def.origin;
       type->ptr_level = op_type->ptr_level + 1;
-      type->size = op_type->size;
+      type->size = sizeof(u64);
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
