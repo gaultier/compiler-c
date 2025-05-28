@@ -1,12 +1,2 @@
-[x] ast: update stack vm with ast_stack_push, ast_stack_pop
-[x] ast: move to 'stack vm bytecode' representation 
-[x] codegen from IR
-[x] consider a simplification pass (in asm? right after ast?) which also benefits all archs: 
-  - [x] constant fold: because most (all?) instructions on all architectures cannot only operate on immediates (e.g. `add x, 1, 2` is not valid and it can be simplified to `mov x, 3` for all x). Also less register pressure, less code size, less CPU time.
-  - insert loads/stores when both operands are effective addresses because all instructions on all architectures cannot only operate on effective addresses (e.g. `add x, [rbp-8], [rbp-16]` is not valid and it can be transformed to `mov scratch_reg, [rbp-8]; add scratch_reg, [rbp-16]; mov x, scratch_reg` for all x). A final trivial mov elision phase can remove unnecessary operations but still the codegen is simple.
-  - definitely not a LIR :)
-  - ideally before computing lifetimes to avoid having to recompute them?
-[x] codegen: find a way to shorten codegen
-[x] unwind parser to the top on error to avoid partial token consumption
-[x] codegen: migrate from function pointers (polymorphism) to enum for all architectures
-[x] array based locals, scope depth aware
+- [ ] type check errors
+- [ ] adapt codegen to use real sizes from types incl. right registers

@@ -2,7 +2,7 @@
 
 #include "origin.h"
 
-typedef enum {
+typedef enum : u8 {
   TYPE_KIND_NONE,
   TYPE_KIND_BOOLEAN,
   TYPE_KIND_NUMBER,
@@ -13,9 +13,9 @@ typedef enum {
 typedef struct Type Type;
 struct Type {
   TypeKind kind;
+  u8 ptr_level;
   u64 size;
   Origin origin;
-  u8 ptr_level;
 
   // Hash trie fields.
   PgString name; // Key.
