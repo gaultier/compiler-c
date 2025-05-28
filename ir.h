@@ -538,6 +538,8 @@ ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, AstNodeDyn nodes) {
 ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_FN_DEFINITION == PG_SLICE_AT(nodes, 0).kind);
 
+  type_insert_builtin(&emitter->types, allocator);
+
   FnDefinitionDyn fn_defs = {0};
   FnDefinition fn_def = {0};
 
@@ -721,6 +723,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .node_idx = {i},
           .scope_depth = scope_depth,
           .meta_idx = ins.meta_idx,
+          .type = type,
       };
 
       ins.lhs = (IrOperand){

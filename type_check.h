@@ -86,3 +86,15 @@ static void type_print(Type *type) {
   // TODO: Allow implicit downcasting, etc?
   return a == b;
 }
+
+static void type_insert_builtin(Type **types, PgAllocator *allocator) {
+  Type *type_bool = type_upsert(types, PG_S("bool"), allocator);
+  PG_ASSERT(type_bool);
+  type_bool->kind = TYPE_KIND_BOOLEAN;
+  type_bool->size = 1;
+
+  Type *type_u64 = type_upsert(types, PG_S("u64"), allocator);
+  PG_ASSERT(type_u64);
+  type_u64->kind = TYPE_KIND_NUMBER;
+  type_u64->size = sizeof(u64);
+}

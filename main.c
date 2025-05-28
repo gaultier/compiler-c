@@ -126,11 +126,6 @@ int main(int argc, char *argv[]) {
     goto err;
   }
 
-#if 0
-  TypeChecker type_checker = types_make_type_checker(allocator);
-  (void)type_checker; // TODO
-#endif
-
   PgString stem = pg_path_stem(file_path);
   PgString exe_path = pg_string_concat(stem, PG_S(".bin"), allocator);
   ArchitectureKind arch_target = ARCH_KIND_AMD64; // TODO: CLI opt.
