@@ -3,3 +3,6 @@ syscall_write_linux_amd64 := 1
 write_val := 478560413032
 write_val_len := 5
 ptr := &write_val
+
+x := 1==2
+ptr2 := &x

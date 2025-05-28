@@ -20,7 +20,7 @@
 - [ ] lang: structs
 - [ ] lang: arrays
 - [ ] lang: types
-- [ ] typechecker, pass type information to codegen for sizes
+- [x] typechecker, pass type information to codegen for sizes
 - [ ] lang: strings
 - [x] spill registers
 - [x] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)

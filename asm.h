@@ -208,14 +208,17 @@ static bool asm_must_spill(AsmEmitter emitter, MetadataDyn metadata,
 static void asm_spill_node(MetadataDyn metadata, FnDefinition *fn_def,
                            InterferenceNodeIndex node_idx) {
 
-  MemoryLocation *mem_loc =
-      &PG_SLICE_AT(metadata, node_idx.value).memory_location;
+  Metadata *meta = PG_SLICE_AT_PTR(&metadata, node_idx.value);
+  PG_ASSERT(meta->type);
+  PG_ASSERT(meta->type->size);
+
+  MemoryLocation *mem_loc = &meta->memory_location;
   PG_ASSERT(MEMORY_LOCATION_KIND_NONE == mem_loc->kind);
 
   mem_loc->kind = MEMORY_LOCATION_KIND_STACK;
   u32 rbp_offset = asm_reserve_stack_slot(
       &fn_def->stack_base_pointer_offset,
-      &fn_def->stack_base_pointer_offset_max, sizeof(u64) /*FIXME*/);
+      &fn_def->stack_base_pointer_offset_max, (u32)meta->type->size);
   mem_loc->u.base_pointer_offset = (i32)rbp_offset;
 }
 

@@ -26,31 +26,6 @@ typedef struct {
   u32 value;
 } TypeIdx;
 
-#if 0
-static const Type types_builtin[] = {
-    {0}, // Dummy
-    {.name = PG_S("u64"), .size = sizeof(u64)},
-    {.name = PG_S("bool"), .size = 1},
-};
-
-typedef struct {
-  TypeDyn types;
-} TypeChecker;
-
-[[nodiscard]] static TypeChecker
-types_make_type_checker(PgAllocator *allocator) {
-  TypeChecker type_checker = {0};
-
-  *PG_DYN_PUSH(&type_checker.types, allocator) = (Type){0}; // Dummy
-  *PG_DYN_PUSH(&type_checker.types, allocator) =
-      (Type){.name = PG_S("u64"), .size = sizeof(u64)};
-  *PG_DYN_PUSH(&type_checker.types, allocator) =
-      (Type){.name = PG_S("bool"), .size = 1};
-
-  return type_checker;
-}
-#endif
-
 [[nodiscard]] static Type *type_upsert(Type **htrie, PgString name,
                                        PgAllocator *allocator) {
   for (u64 h = pg_hash_fnv(name); *htrie; h <<= 2) {
