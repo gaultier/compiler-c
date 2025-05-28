@@ -75,9 +75,9 @@ static void type_print(Type *type) {
     return;
   }
 
-  for (u8 i = 0; i < type->ptr_level; i++) {
-    printf("*");
-  }
+  PG_ASSERT(type->kind);
+  PG_ASSERT(type->name.data);
+  PG_ASSERT(type->name.len);
 
   printf("%.*s", (i32)type->name.len, type->name.data);
 }

@@ -352,7 +352,12 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      printf("Cmp v%u, ", vreg.value);
+      printf("Cmp ");
+
+      Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
+      type_print(type);
+
+      printf(" v%u, ", vreg.value);
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
       ir_print_operand(ins.rhs, metadata);
@@ -368,7 +373,11 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(vreg.value);
 
       printf("Mov ");
-      printf(" ");
+
+      Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
+      type_print(type);
+
+      printf(" v%u, ", vreg.value);
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
       ir_print_operand(ins.rhs, metadata);
@@ -382,7 +391,12 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      printf("LoadAddr v%u, ", i);
+      printf("LoadAddr ");
+
+      Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
+      type_print(type);
+
+      printf(" v%u, ", vreg.value);
       ir_print_operand(ins.lhs, metadata);
       printf(", ");
       ir_print_operand(ins.rhs, metadata);
@@ -412,7 +426,11 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(ins.args_count > 0);
       PG_ASSERT(ins.args_count <= max_syscall_args_count);
 
-      printf("Syscall(%u)", ins.args_count);
+      printf("Syscall(%u) ", ins.args_count);
+
+      Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
+      type_print(type);
+
     } break;
 
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION: {
@@ -624,7 +642,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(rhs_type);
       PG_ASSERT(lhs_type);
 
-      if (type_compatible(lhs_type, rhs_type)) {
+      if (!type_compatible(lhs_type, rhs_type)) {
         PG_ASSERT(0 && "todo");
       }
 
@@ -656,7 +674,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(rhs_type);
       PG_ASSERT(lhs_type);
 
-      if (type_compatible(lhs_type, rhs_type)) {
+      if (!type_compatible(lhs_type, rhs_type)) {
         PG_ASSERT(0 && "todo");
       }
 
@@ -745,7 +763,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       Type *op_type = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value).type;
       PG_ASSERT(op_type);
 
-      Type *type = type_upsert(&emitter->types, op_type->name, allocator);
+      PgString type_name =
+          pg_string_concat(PG_S("*"), op_type->name, allocator);
+      Type *type = type_upsert(&emitter->types, type_name, allocator);
       PG_ASSERT(type);
       PG_ASSERT(type->ptr_level < UINT8_MAX);
       type->kind = op_type->kind;
