@@ -35,6 +35,15 @@ typedef struct {
   i32 displacement;
 } Amd64EffectiveAddress;
 
+typedef enum {
+  ASM_OPERAND_SIZE_ZERO = 0,
+  ASM_OPERAND_SIZE_ONE = 1,
+  ASM_OPERAND_SIZE_TWO = 2,
+  ASM_OPERAND_SIZE_FOUR = 4,
+  ASM_OPERAND_SIZE_EIGHT = 8,
+  // TODO: More (SIMD).
+} AsmOperandSize;
+
 typedef struct {
   Amd64OperandKind kind;
   union {
@@ -43,6 +52,7 @@ typedef struct {
     Amd64EffectiveAddress effective_address;
     Label label;
   } u;
+  AsmOperandSize size;
 } Amd64Operand;
 PG_SLICE(Amd64Operand) Amd64OperandSlice;
 PG_DYN(Amd64Operand) Amd64OperandDyn;
