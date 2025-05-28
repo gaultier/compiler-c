@@ -142,6 +142,7 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .u.reg = {AMD64_RBP},
+              .size = ASM_OPERAND_SIZE_8,
           },
   };
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_push;
@@ -152,11 +153,13 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .u.reg = {AMD64_RBP},
+              .size = ASM_OPERAND_SIZE_8,
           },
       .rhs =
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .u.reg = {AMD64_RSP},
+              .size = ASM_OPERAND_SIZE_8,
           },
   };
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_mov;
@@ -175,6 +178,7 @@ static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
           (Amd64Operand){
               .kind = AMD64_OPERAND_KIND_REGISTER,
               .u.reg = {AMD64_RBP},
+              .size = ASM_OPERAND_SIZE_8,
           },
   };
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_pop;
@@ -1087,6 +1091,7 @@ amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataDyn metadata) {
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_IMMEDIATE,
         .u.immediate = op.u.u64,
+        .size = ASM_OPERAND_SIZE_8,
     };
   }
 
@@ -1095,6 +1100,7 @@ amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataDyn metadata) {
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_LABEL,
         .u.label = op.u.label,
+        .size = ASM_OPERAND_SIZE_4,
     };
   }
 
@@ -1120,6 +1126,14 @@ static void amd64_sanity_check_section(AsmCodeSection section) {
 
     PG_ASSERT(!(AMD64_OPERAND_KIND_IMMEDIATE == ins.lhs.kind &&
                 AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind));
+
+    if (ins.lhs.kind) {
+      PG_ASSERT(ins.lhs.size);
+    }
+
+    if (ins.rhs.kind) {
+      PG_ASSERT(ins.rhs.size);
+    }
   }
 }
 
@@ -1254,6 +1268,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               (Amd64Operand){
                   .kind = AMD64_OPERAND_KIND_LABEL,
                   .u.label = ins.lhs.u.label,
+                  .size = ASM_OPERAND_SIZE_4,
               },
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_label_def;
@@ -1272,6 +1287,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               (Amd64Operand){
                   .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                   .u.immediate = 0,
+                  .size = ASM_OPERAND_SIZE_1,
               },
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_cmp;
@@ -1283,6 +1299,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               (Amd64Operand){
                   .kind = AMD64_OPERAND_KIND_LABEL,
                   .u.label = ins.rhs.u.label,
+                  .size = ASM_OPERAND_SIZE_4,
               },
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_je;
@@ -1338,11 +1355,13 @@ static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
                 .u.reg = {AMD64_RSP},
+                .size = ASM_OPERAND_SIZE_8,
             },
         .rhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                 .u.immediate = 0, // Backpatched.
+                .size = ASM_OPERAND_SIZE_8,
             },
     };
     *PG_DYN_PUSH(&section.u.amd64_instructions, allocator) = stack_sub;
@@ -1365,11 +1384,13 @@ static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_REGISTER,
                 .u.reg = {AMD64_RSP},
+                .size = ASM_OPERAND_SIZE_8,
             },
         .rhs =
             (Amd64Operand){
                 .kind = AMD64_OPERAND_KIND_IMMEDIATE,
                 .u.immediate = rsp_max_offset_aligned_16,
+                .size = ASM_OPERAND_SIZE_8,
             },
     };
 
