@@ -636,7 +636,15 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                                node.origin.file_offset_start + node.u.s.len),
         };
         *PG_DYN_PUSH(emitter->errors, allocator) = err;
-        *PG_DYN_PUSH(&stack, allocator) = (MetadataIndex){0};
+
+        // Pseudo-define the undefined variable to improve error messages
+        // downstream and preserve invariants.
+        Type *type = type_upsert(&emitter->types, PG_S("void"), nullptr);
+        PG_ASSERT(type);
+        MetadataIndex meta_idx =
+            metadata_make(&fn_def.metadata, type, allocator);
+        PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
+        *PG_DYN_PUSH(&stack, allocator) = meta_idx;
         continue;
       }
       PG_ASSERT(var->type);

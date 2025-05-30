@@ -4,6 +4,7 @@
 
 typedef enum : u8 {
   TYPE_KIND_NONE,
+  TYPE_KIND_VOID,
   TYPE_KIND_BOOLEAN,
   TYPE_KIND_NUMBER,
   TYPE_KIND_FN_DEF,
@@ -72,4 +73,9 @@ static void type_insert_builtin(Type **types, PgAllocator *allocator) {
   PG_ASSERT(type_u64);
   type_u64->kind = TYPE_KIND_NUMBER;
   type_u64->size = sizeof(u64);
+
+  Type *type_void = type_upsert(types, PG_S("void"), allocator);
+  PG_ASSERT(type_void);
+  type_void->kind = TYPE_KIND_VOID;
+  type_void->size = 0;
 }
