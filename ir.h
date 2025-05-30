@@ -40,6 +40,7 @@ typedef enum {
 typedef struct {
   // TODO: Remove.
   u32 value;
+
   VirtualRegisterConstraint constraint;
   bool addressable;
 } VirtualRegister;
@@ -89,10 +90,14 @@ PG_DYN(MemoryLocation) MemoryLocationDyn;
 
 typedef struct {
   InstructionIndex lifetime_start, lifetime_end;
+
+  // Result of the IR operation.
   VirtualRegister virtual_register;
+
   MemoryLocation memory_location;
 
   // Only for troubleshooting.
+  // TODO: Remove?
   PgString identifier;
 
   Type *type;
@@ -829,6 +834,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       Type *op_type = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value).type;
       PG_ASSERT(op_type);
 
+      // FIXME: Should be `op` not `node` here!!!
       if (!ir_is_node_addressable(*op_type, node)) {
         Error err = {
             .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
