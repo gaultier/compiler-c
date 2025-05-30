@@ -197,7 +197,7 @@ static bool asm_must_spill(AsmEmitter emitter, MetadataDyn metadata,
                            InterferenceNodeIndex node_idx,
                            u64 neighbors_count) {
   bool virt_reg_addressable =
-      PG_SLICE_AT(metadata, node_idx.value).virtual_register.addressable;
+      PG_SLICE_AT(metadata, node_idx.value).virtual_register.addressed;
 
   bool needs_spill =
       neighbors_count >= emitter.arch.gprs.len || virt_reg_addressable;
@@ -522,7 +522,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
   // Sanity checks:
   // - if two nodes interferred (had an edge) in the original graph,
   //   then their assigned registers MUST be different.
-  // - if a virtual register is addressable, then it MUST be on the stack
+  // - if a virtual register is addressed, then it MUST be on the stack
   for (u64 row = 0; row < graph_clone.nodes_count; row++) {
     PgAdjacencyMatrixNeighborIterator it =
         pg_adjacency_matrix_make_neighbor_iterator(graph_clone, row);
@@ -550,11 +550,11 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
       } while (neighbor.has_value);
     }
 
-    // Addressable check.
+    // addressed check.
     {
-      bool addressable =
-          PG_SLICE_AT(fn_def->metadata, row).virtual_register.addressable;
-      if (addressable) {
+      bool addressed =
+          PG_SLICE_AT(fn_def->metadata, row).virtual_register.addressed;
+      if (addressed) {
         PG_ASSERT(MEMORY_LOCATION_KIND_STACK == node_mem_loc.kind);
       }
     }

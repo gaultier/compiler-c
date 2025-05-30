@@ -42,6 +42,7 @@ typedef struct {
   u32 value;
 
   VirtualRegisterConstraint constraint;
+  bool addressed;
   bool addressable;
 } VirtualRegister;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
@@ -275,10 +276,10 @@ static void metadata_print_meta(Metadata meta) {
          meta.lifetime_end.value);
 
   if (meta.virtual_register.value) {
-    printf(" vreg=v%u{constraint=%s, addressable=%s}",
+    printf(" vreg=v%u{constraint=%s, addressed=%s}",
            meta.virtual_register.value,
            register_constraint_to_cstr(meta.virtual_register.constraint),
-           meta.virtual_register.addressable ? "true" : "false");
+           meta.virtual_register.addressed ? "true" : "false");
   }
 
   if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
@@ -556,20 +557,6 @@ ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, AstNodeDyn nodes) {
   return nullptr;
 }
 
-[[nodiscard]] static bool ir_is_node_addressable(Type type, AstNode node) {
-  if (AST_NODE_KIND_IDENTIFIER == node.kind) {
-    return true;
-  }
-
-  if (type.ptr_level) {
-    return true;
-  }
-
-  // TODO: more.
-
-  return false;
-}
-
 [[nodiscard]] static FnDefinitionDyn
 ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_FN_DEFINITION == PG_SLICE_AT(nodes, 0).kind);
@@ -658,6 +645,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, var->type, allocator);
+      PG_DYN_LAST(fn_def.metadata).virtual_register.addressable = true;
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -831,11 +819,11 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(fn_def.instructions.len >= 1);
 
       MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
-      Type *op_type = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value).type;
+      Metadata op_meta = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value);
+      Type *op_type = op_meta.type;
       PG_ASSERT(op_type);
 
-      // FIXME: Should be `op` not `node` here!!!
-      if (!ir_is_node_addressable(*op_type, node)) {
+      if (!op_meta.virtual_register.addressable) {
         Error err = {
             .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
             .origin = node.origin,
@@ -864,9 +852,10 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
+      PG_DYN_LAST(fn_def.metadata).virtual_register.addressable = true;
 
       PG_SLICE_AT_PTR(&fn_def.metadata, op_meta_idx.value)
-          ->virtual_register.addressable = true;
+          ->virtual_register.addressed = true;
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
