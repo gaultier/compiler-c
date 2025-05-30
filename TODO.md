@@ -1,36 +1,36 @@
-- [x] ast: move to 'stack vm bytecode' representation
-- [ ] ir: phi nodes/block arguments (when assignment is added)
-- [ ] generate dwarf debug information
-- [ ] ir: optimization: show diff output in each step, like git diff
-- [ ] control flow graph
-- [ ] data flow analysis (track r/w var uses including pointer aliasing) -> may require types first!
-- [ ] simple alias analysis (type-based, conservative)
-- [ ] codegen: aarch64
-- [ ] codegen: riscv
-- [ ] codegen: model register clobbers
-- [ ] codegen: macho format
-- [x] codegen: move graph coloring to LIR/ASM phase with the target data as input
 - [ ] cli: choose target(s)
-- [x] lang: boolean operator ==
-- [ ] lang: deref
-- [ ] lang: else branch
-- [ ] lang: comments
-- [ ] lang: loops
-- [ ] lang: functions
-- [ ] lang: structs
-- [ ] lang: arrays
-- [ ] lang: types
-- [x] typechecker, pass type information to codegen for sizes
-- [ ] lang: strings
-- [x] spill registers
-- [x] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
-- [x] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
-- [x] lang: builtin assert
+- [ ] codegen: aarch64
 - [ ] codegen: link with libc & call linker
+- [ ] codegen: macho format
 - [ ] codegen: make graph coloring more debuggable and track register pressure metric
-- [x] errors: report all errors
-- [ ] test: consider bytecode vm to test correctness
-- [x] test: split files with expected errors from valid files
-- [ ] test: consider checking output of compiled binary
+- [ ] codegen: model register clobbers
+- [ ] codegen: riscv
 - [ ] compiler: UI to show data about each phase in a visual way
 - [ ] constant fold/optimization: use equivalence classes with union-dataset structures
+- [ ] control flow graph
+- [ ] data flow analysis (track r/w var uses including pointer aliasing)
+- [ ] generate dwarf debug information
+- [ ] ir: optimization: use union-set data structure to ease troubleshooting
+- [ ] ir: phi nodes/block arguments (when assignment is added)
+- [ ] lang: arrays
+- [ ] lang: comments
+- [ ] lang: deref
+- [ ] lang: else branch
+- [ ] lang: functions
+- [ ] lang: loops
+- [ ] lang: strings
+- [ ] lang: structs
+- [ ] lang: types
+- [ ] simple alias analysis (type-based, conservative)
+- [ ] test: consider bytecode vm to test correctness
+- [ ] test: consider checking output of compiled binary with objdump & ensuring it is the same as the readable assembly from `./main.bin -v` 
+- [x] ast: move to 'stack vm bytecode' representation
+- [x] codegen: move graph coloring to LIR/ASM phase with the target data as input
+- [x] errors: report all errors
+- [x] lang: boolean operator ==
+- [x] lang: builtin assert
+- [x] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
+- [x] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
+- [x] spill registers
+- [x] test: split files with expected errors from valid files
+- [x] typechecker, pass type information to codegen for sizes

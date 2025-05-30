@@ -1,2 +1,2 @@
-- [x] type check errors
-- [x] adapt codegen to use real sizes from types incl. right registers
+- [ ] real test runner
+- [ ] adapt amd64 encoding to use real sizes from types incl. right registers
