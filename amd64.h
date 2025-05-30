@@ -302,15 +302,18 @@ static void amd64_print_instructions(Amd64InstructionDyn instructions) {
       break;
     }
 
+    bool has_effective_address =
+        (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.lhs.kind ||
+         AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind);
     if (AMD64_OPERAND_KIND_NONE != ins.lhs.kind) {
-      amd64_print_operand(ins.lhs, AMD64_INSTRUCTION_KIND_LEA != ins.kind);
+      amd64_print_operand(ins.lhs, has_effective_address);
     }
 
     if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
       PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
 
       printf(", ");
-      amd64_print_operand(ins.rhs, AMD64_INSTRUCTION_KIND_LEA != ins.kind);
+      amd64_print_operand(ins.rhs, has_effective_address);
     }
 
     if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
