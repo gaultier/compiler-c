@@ -338,11 +338,6 @@ static bool ast_parse_call(AstParser *parser, PgAllocator *allocator) {
   return ast_parse_primary(parser, allocator);
 }
 
-[[nodiscard]] static bool ast_node_is_addressable(AstNode node) {
-  // TODO: Expand.
-  return AST_NODE_KIND_IDENTIFIER == node.kind;
-}
-
 [[nodiscard]]
 static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
   if (parser->err_mode) {
@@ -357,12 +352,6 @@ static bool ast_parse_unary(AstParser *parser, PgAllocator *allocator) {
   if (!ast_parse_unary(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_UNARY_MISSING_RHS,
                   ast_current_or_last_token(*parser).origin, allocator);
-    return false;
-  }
-
-  if (!ast_node_is_addressable(PG_SLICE_LAST(parser->nodes))) {
-    ast_add_error(parser, ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
-                  token_first.origin, allocator);
     return false;
   }
 

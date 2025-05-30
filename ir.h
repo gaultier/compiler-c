@@ -90,9 +90,11 @@ PG_DYN(MemoryLocation) MemoryLocationDyn;
 typedef struct {
   InstructionIndex lifetime_start, lifetime_end;
   VirtualRegister virtual_register;
-  Label label;
   MemoryLocation memory_location;
+
+  // Only for troubleshooting.
   PgString identifier;
+
   Type *type;
 #if 0
   bool tombstone;
@@ -272,9 +274,6 @@ static void metadata_print_meta(Metadata meta) {
            meta.virtual_register.value,
            register_constraint_to_cstr(meta.virtual_register.constraint),
            meta.virtual_register.addressable ? "true" : "false");
-  }
-  if (meta.label.value.len) {
-    printf(" label=%.*s", (i32)meta.label.value.len, meta.label.value.data);
   }
 
   if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
@@ -552,6 +551,20 @@ ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, AstNodeDyn nodes) {
   return nullptr;
 }
 
+[[nodiscard]] static bool ir_is_node_addressable(Type type, AstNode node) {
+  if (AST_NODE_KIND_IDENTIFIER == node.kind) {
+    return true;
+  }
+
+  if (type.ptr_level) {
+    return true;
+  }
+
+  // TODO: more.
+
+  return false;
+}
+
 [[nodiscard]] static FnDefinitionDyn
 ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_FN_DEFINITION == PG_SLICE_AT(nodes, 0).kind);
@@ -816,7 +829,20 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       Type *op_type = PG_SLICE_AT(fn_def.metadata, op_meta_idx.value).type;
       PG_ASSERT(op_type);
 
-      // TODO: When type `T` is explicitly given: check if `T` == `op_type`.
+      if (!ir_is_node_addressable(*op_type, node)) {
+        Error err = {
+            .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
+            .origin = node.origin,
+            .src = emitter->src,
+            .src_span =
+                PG_SLICE_RANGE(emitter->src, node.origin.file_offset_start,
+                               // FIXME: origin should have a src_span directly.
+                               node.origin.file_offset_start + 1),
+        };
+        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+      }
+
+      // TODO: When type `T` is explicitly given: check if `*T` == `op_type`.
 
       PgString type_name =
           pg_string_concat(PG_S("*"), op_type->name, allocator);
