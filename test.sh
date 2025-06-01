@@ -1,34 +1,50 @@
 #!/bin/sh
 set -e
+set -f # disable globbing.
 
-WITH_VALGRIND="${WITH_VALGRIND:-0}"
+LD="${LD:-lld}"
+CFLAGS="${CFLAGS} -fpie -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=${LD}"
+LDFLAGS="${LDFLAGS} -Wl,--gc-sections -flto"
 
-./build.sh debug
+CC="${CC:-clang}"
+WARNINGS="$(tr -s '\n' ' ' < compile_flags.txt)"
 
-for f in testdata/*.unicorn; do
-  echo "$f"
-  bin="$(dirname "$f")/$(basename -s ".unicorn" "$f").bin"
+error() {
+	printf "ERROR: %s\n" "$1"
+	exit 1
+}
 
-  if [ "$WITH_VALGRIND" -eq 1 ]; then
-    valgrind --quiet ./main.bin "$f"
-    valgrind --quiet "$bin"
-    valgrind --quiet -v ./main.bin "$f"
-    valgrind --quiet "$bin"
-  else
-   ./main.bin "$f"
-   ./"$bin"
-   ./main.bin -v "$f"
-   ./"$bin"
-  fi
-done
+build() {
+case $1 in 
+  debug)
+    CFLAGS="${CFLAGS} -O0"
+    ;;
+  debug_sanitizer)
+    CFLAGS="${CFLAGS} -O0 -fsanitize=address,undefined -fsanitize-trap=all"
+    ;;
+  release)
+    CFLAGS="${CFLAGS} -O3"
+    ;;
+  release_sanitizer)
+    CFLAGS="${CFLAGS} -O1 -fsanitize=address,undefined -fsanitize-trap=all"
+    ;;
+	*)
+		error "Build mode \"$1\" unsupported!"
+		;;
+esac
 
-for f in err_testdata/*.unicorn; do
-  echo "$f"
-  if [ "$WITH_VALGRIND" -eq 1 ]; then
-    valgrind --quiet ./main.bin "$f" || true
-    valgrind --quiet -v ./main.bin "$f" || true
-  else
-   ./main.bin "$f" || true
-   ./main.bin -v "$f" || true
-  fi
-done
+# shellcheck disable=SC2086
+$CC $WARNINGS -g3 test.c -o test.bin $CFLAGS $LDFLAGS
+}
+
+if [ $# -eq 0 ]; then
+	build debug
+elif [ $# -eq 1 ]; then
+  build "$1"
+else
+	error "Too many arguments!"
+fi
+
+echo "Built: $(date)"
+
+./test.bin
