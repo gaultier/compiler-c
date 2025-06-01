@@ -2,7 +2,15 @@
 #include <dirent.h>
 #include <sys/types.h>
 
-static void test_run(PgString dir_name, PgString file_name) {
+typedef struct {
+  PgProcessStatus process_status;
+  PgError err;
+} TestResult;
+
+[[nodiscard]]
+static TestResult test_run(PgString dir_name, PgString file_name) {
+  TestResult res = {0};
+
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
@@ -24,18 +32,44 @@ static void test_run(PgString dir_name, PgString file_name) {
     PgProcess process = res_spawn.res;
 
     PgProcessExitResult res_wait = pg_process_wait(process, allocator);
-    PG_ASSERT(0 == res_wait.err);
+    if ((res.err = res_wait.err)) {
+      return res;
+    }
 
-    PgProcessStatus status = res_wait.res;
-    PG_ASSERT(0 == status.exit_status);
-    PG_ASSERT(0 == status.signal);
-    PG_ASSERT(status.exited);
-    PG_ASSERT(!status.signaled);
-    PG_ASSERT(!status.core_dumped);
-    PG_ASSERT(!status.stopped);
+    res.process_status = res_wait.res;
+    if (0 != res.process_status.exit_status) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (0 != res.process_status.signal) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (!res.process_status.exited) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (res.process_status.signaled) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (res.process_status.core_dumped) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (res.process_status.stopped) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
 
-    PG_ASSERT(pg_string_is_empty(status.stdout_captured));
-    PG_ASSERT(pg_string_is_empty(status.stderr_captured));
+    if (!pg_string_is_empty(res.process_status.stdout_captured)) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (!pg_string_is_empty(res.process_status.stderr_captured)) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
   }
   // Run.
   {
@@ -52,19 +86,47 @@ static void test_run(PgString dir_name, PgString file_name) {
     PgProcess process = res_spawn.res;
 
     PgProcessExitResult res_wait = pg_process_wait(process, allocator);
-    PG_ASSERT(0 == res_wait.err);
+    if ((res.err = res_wait.err)) {
+      return res;
+    }
 
-    PgProcessStatus status = res_wait.res;
-    PG_ASSERT(0 == status.exit_status);
-    PG_ASSERT(0 == status.signal);
-    PG_ASSERT(status.exited);
-    PG_ASSERT(!status.signaled);
-    PG_ASSERT(!status.core_dumped);
-    PG_ASSERT(!status.stopped);
+    res.process_status = res_wait.res;
+    if (0 != res.process_status.exit_status) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (0 != res.process_status.signal) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (!res.process_status.exited) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (res.process_status.signaled) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (res.process_status.core_dumped) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (res.process_status.stopped) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
 
-    // PG_ASSERT(pg_string_is_empty(status.stdout_captured));
-    // PG_ASSERT(pg_string_is_empty(status.stderr_captured));
+    if (!pg_string_is_empty(res.process_status.stdout_captured)) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+    if (!pg_string_is_empty(res.process_status.stderr_captured)) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
   }
+
+  return res;
 }
 
 int main() {
@@ -79,6 +141,8 @@ int main() {
   }
 
   struct dirent *dir_it = nullptr;
+  bool failed = false;
+
   while ((dir_it = readdir(dir))) {
     PgString file_name = pg_cstr_to_string(dir_it->d_name);
     // Not a regular file.
@@ -89,7 +153,22 @@ int main() {
       continue;
     }
 
-    test_run(dir_name, file_name);
-    printf("OK %.*s\n", (i32)file_name.len, file_name.data);
+    TestResult test_res = test_run(dir_name, file_name);
+    if (!test_res.err) {
+      printf("OK %.*s\n", (i32)file_name.len, file_name.data);
+      continue;
+    }
+
+    failed = true;
+    fprintf(stderr, "FAIL %.*s\n", (i32)file_name.len, file_name.data);
+    __builtin_dump_struct(&test_res, printf);
+    fprintf(stderr, "stdout=%.*s\n",
+            (i32)test_res.process_status.stdout_captured.len,
+            test_res.process_status.stdout_captured.data);
+    fprintf(stderr, "stderr=%.*s\n",
+            (i32)test_res.process_status.stderr_captured.len,
+            test_res.process_status.stderr_captured.data);
   }
+
+  return failed;
 }
