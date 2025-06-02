@@ -7,6 +7,7 @@
   + [ ] Spawn compiled program in valgrind
   + [ ] Later/Maybe: Run tests in parallel
   + Later: check that `./main.bin -s foo.unicorn` == `objdump -M intel foo.bin`
+  + Later: check that the output of the compiled program equals the output of the program created by: `./main.bin -s foo.unicorn && cc foo.s -o foo.bin`
   + Later: check output of compiled program equals expected output in comments => need comments, print
   + Later/Maybe: run compiled program bytecode in VM to check output against output of compiled program to machine code
     Or: compile & run program with official compiler to compare output (need deps).
