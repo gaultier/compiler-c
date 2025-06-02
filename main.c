@@ -165,9 +165,9 @@ err:
         err_compare_errors_by_origin_offset);
   for (u64 i = 0; i < errors.len; i++) {
     Error err = PG_SLICE_AT(errors, i);
-    origin_print(err.origin);
-    printf(" Error: ");
-    error_print(err);
+    origin_print(stderr, err.origin);
+    fprintf(stderr, " Error: ");
+    error_print(stderr, err);
   }
   return 1;
 }

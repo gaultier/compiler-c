@@ -42,7 +42,7 @@ typedef struct {
 } Error;
 PG_DYN(Error) ErrorDyn;
 
-static void err_print_src_span(PgString src, PgString src_span) {
+static void err_print_src_span(FILE *out, PgString src, PgString src_span) {
   PG_ASSERT(src.data <= src_span.data);
 
   u64 excerpt_start = (u64)(src_span.data - src.data);
@@ -72,107 +72,107 @@ static void err_print_src_span(PgString src, PgString src_span) {
   PgString excerpt_after =
       pg_string_trim_space_right(PG_SLICE_RANGE(src, excerpt_end, end));
 
-  printf("%.*s", (i32)excerpt_before.len, excerpt_before.data);
-  printf("\x1B[4m%.*s\x1B[0m", (i32)excerpt.len, excerpt.data);
-  printf("%.*s", (i32)excerpt_after.len, excerpt_after.data);
+  fprintf(out, "%.*s", (i32)excerpt_before.len, excerpt_before.data);
+  fprintf(out, "\x1B[4m%.*s\x1B[0m", (i32)excerpt.len, excerpt.data);
+  fprintf(out, "%.*s", (i32)excerpt_after.len, excerpt_after.data);
 }
 
-static void error_print(Error err) {
+static void error_print(FILE *out, Error err) {
   switch (err.kind) {
   case ERROR_KIND_NONE:
     PG_ASSERT(0);
   case ERROR_KIND_UNKNOWN_TOKEN:
-    printf("unknown token");
+    fprintf(out, "unknown token");
     break;
   case ERROR_KIND_INVALID_UTF8:
-    printf("invalid utf8");
+    fprintf(out, "invalid utf8");
     break;
   case ERROR_KIND_INVALID_LITERAL_NUMBER:
-    printf("invalid number literal");
+    fprintf(out, "invalid number literal");
     break;
   case ERROR_KIND_INVALID_KEYWORD:
-    printf("invalid keyword");
+    fprintf(out, "invalid keyword");
     break;
   case ERROR_KIND_PARSE_MISSING_PAREN_LEFT:
-    printf("missing left parenthesis");
+    fprintf(out, "missing left parenthesis");
     break;
   case ERROR_KIND_PARSE_MISSING_PAREN_RIGHT:
-    printf("missing right parenthesis");
+    fprintf(out, "missing right parenthesis");
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA:
-    printf("missing comma in syscall arguments");
+    fprintf(out, "missing comma in syscall arguments");
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND:
-    printf("missing syscall argument");
+    fprintf(out, "missing syscall argument");
     break;
   case ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS:
-    printf("missing second operand in binary operation");
+    fprintf(out, "missing second operand in binary operation");
     break;
   case ERROR_KIND_PARSE_STATEMENT:
-    printf("failed to parse statement");
+    fprintf(out, "failed to parse statement");
     break;
   case ERROR_KIND_PARSE_VAR_DECL_MISSING_COLON_EQUAL:
-    printf("missing := in variable declaration after variable name");
+    fprintf(out, "missing := in variable declaration after variable name");
     break;
   case ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE:
-    printf("missing value in variable declaration");
+    fprintf(out, "missing value in variable declaration");
     break;
   case ERROR_KIND_PARSE_FACTOR_MISSING_RHS:
-    printf("missing right operand in -/+ operation");
+    fprintf(out, "missing right operand in -/+ operation");
     break;
   case ERROR_KIND_PARSE_EQUALITY_MISSING_RHS:
-    printf("missing right operand in !=/= comparison");
+    fprintf(out, "missing right operand in !=/= comparison");
     break;
   case ERROR_KIND_PARSE_UNARY_MISSING_RHS:
-    printf("missing right operand in !/-/& operation");
+    fprintf(out, "missing right operand in !/-/& operation");
     break;
   case ERROR_KIND_VAR_UNDEFINED:
-    printf("undefined variable");
+    fprintf(out, "undefined variable");
     break;
   case ERROR_KIND_VAR_SHADOWING:
-    printf("shadowed variable");
+    fprintf(out, "shadowed variable");
     break;
   case ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE:
-    printf("trying to take address of something that is not addressable");
+    fprintf(out, "trying to take address of something that is not addressable");
     break;
   case ERROR_KIND_PARSE_IF_MISSING_CONDITION:
-    printf("missing if condition");
+    fprintf(out, "missing if condition");
     break;
   case ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK:
-    printf("missing if-then block");
+    fprintf(out, "missing if-then block");
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_LEFT:
-    printf("missing '{' at the start of block");
+    fprintf(out, "missing '{' at the start of block");
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT:
-    printf("missing '}' at the end of block");
+    fprintf(out, "missing '}' at the end of block");
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT:
-    printf("missing statement in block");
+    fprintf(out, "missing statement in block");
     break;
   case ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION:
-    printf("missing assert expression");
+    fprintf(out, "missing assert expression");
     break;
   case ERROR_KIND_WRONG_ARGS_COUNT:
-    printf("wrong argument count");
+    fprintf(out, "wrong argument count");
     break;
 
   case ERROR_KIND_MALFORMED_AST:
-    printf("malformed ast");
+    fprintf(out, "malformed ast");
     break;
 
   case ERROR_KIND_TYPE_MISMATCH:
-    printf("mismatched types: %.*s", (i32)err.explanation.len,
-           err.explanation.data);
+    fprintf(out, "mismatched types: %.*s", (i32)err.explanation.len,
+            err.explanation.data);
     break;
 
   default:
     PG_ASSERT(0);
   }
 
-  printf(": ");
-  err_print_src_span(err.src, err.src_span);
-  printf("\n");
+  fprintf(out, ": ");
+  err_print_src_span(out, err.src, err.src_span);
+  fprintf(out, "\n");
 }
 
 [[nodiscard]]

@@ -141,7 +141,7 @@ static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
 }
 
 static void ast_print_node(AstNode node) {
-  origin_print(node.origin);
+  origin_print(stdout, node.origin);
   putchar(' ');
 
   switch (node.kind) {

@@ -233,7 +233,7 @@ static void amd64_print_instructions(Amd64InstructionDyn instructions) {
 
     Amd64Instruction ins = PG_SLICE_AT(instructions, i);
 
-    origin_print(ins.origin);
+    origin_print(stdout, ins.origin);
     printf(": ");
 
     // TODO: Validate operands?

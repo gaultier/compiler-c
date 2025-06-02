@@ -322,7 +322,7 @@ static void ir_print_instructions(IrInstructionDyn instructions,
   for (u32 i = 0; i < instructions.len; i++) {
     printf("[%u] ", i);
     IrInstruction ins = PG_SLICE_AT(instructions, i);
-    origin_print(ins.origin);
+    origin_print(stdout, ins.origin);
     printf(": ");
 
     switch (ins.kind) {
