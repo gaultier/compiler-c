@@ -8,12 +8,14 @@
 - [ ] compiler: UI to show data about each phase in a visual way
 - [ ] constant fold/optimization: use equivalence classes with union-dataset structures
 - [ ] control flow graph
+- [ ] cstd: Windows implementation of sub-process spawning and waiting
+- [ ] cstd: cross-platform API for files listing in directory
+- [ ] cstd: cross-platform CLI options parse API (short/long form, not cursed API, Unix-style options even on Windows, data-oriented)
 - [ ] data flow analysis (track r/w var uses including pointer aliasing)
 - [ ] generate dwarf debug information
 - [ ] ir: optimization: use union-set data structure to ease troubleshooting
 - [ ] ir: phi nodes/block arguments (when assignment is added)
 - [ ] lang: arrays
-- [x] lang: comments
 - [ ] lang: deref
 - [ ] lang: else branch
 - [ ] lang: functions
@@ -29,11 +31,9 @@
 - [x] errors: report all errors
 - [x] lang: boolean operator ==
 - [x] lang: builtin assert
+- [x] lang: comments
 - [x] migrate all superlinear algorithms to hash tables or such (exceptions: graph allocator - but could also implement a linear allocator if needed)
 - [x] pre-coloring of the interference graph based on register constraints (e.g. return value => rax)
 - [x] spill registers
 - [x] test: split files with expected errors from valid files
 - [x] typechecker, pass type information to codegen for sizes
-- [ ] cstd: cross-platform API for files listing in directory
-- [ ] cstd: Windows implementation of sub-process spawning and waiting
-- [ ] cstd: cross-platform CLI options parse API (short/long form, not cursed API, Unix-style options even on Windows, data-oriented)
