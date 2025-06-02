@@ -34,3 +34,5 @@
 - [x] spill registers
 - [x] test: split files with expected errors from valid files
 - [x] typechecker, pass type information to codegen for sizes
+- [ ] cstd: cross-platform API for files listing in directory
+- [ ] cstd: Windows implementation of sub-process spawning and waiting
