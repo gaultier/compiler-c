@@ -422,7 +422,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
     } break;
 
     case '/': {
-      if (!lex_match_rune_1_or_2(lexer, '=', '=', LEX_TOKEN_KIND_SLASH,
+      if (!lex_match_rune_1_or_2(lexer, '/', '/', LEX_TOKEN_KIND_SLASH,
                                  LEX_TOKEN_KIND_SLASH_SLASH, allocator)) {
         lex_add_error(lexer, ERROR_KIND_UNKNOWN_TOKEN, allocator);
       }
@@ -524,6 +524,17 @@ static void lex_tokens_print(LexTokenDyn tokens) {
       break;
     default:
       PG_ASSERT(0);
+    }
+  }
+}
+
+static void lex_trim_comments(LexTokenDyn *tokens) {
+  for (u64 i = 0; i < tokens->len;) {
+    LexToken token = PG_SLICE_AT(*tokens, i);
+    if (LEX_TOKEN_KIND_SLASH_SLASH == token.kind) {
+      PG_DYN_REMOVE_AT(tokens, i);
+    } else {
+      i++;
     }
   }
 }

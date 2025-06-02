@@ -788,6 +788,8 @@ static void ast_emit_program_epilog(AstParser *parser, PgAllocator *allocator) {
 }
 
 static void ast_emit(AstParser *parser, PgAllocator *allocator) {
+  lex_trim_comments(&parser->lexer.tokens);
+
   AstNode fn_start = {0};
   fn_start.kind = AST_NODE_KIND_FN_DEFINITION;
   fn_start.u.s = PG_S("_start");
