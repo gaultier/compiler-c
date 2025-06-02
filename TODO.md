@@ -13,7 +13,7 @@
 - [ ] ir: optimization: use union-set data structure to ease troubleshooting
 - [ ] ir: phi nodes/block arguments (when assignment is added)
 - [ ] lang: arrays
-- [ ] lang: comments
+- [x] lang: comments
 - [ ] lang: deref
 - [ ] lang: else branch
 - [ ] lang: functions
