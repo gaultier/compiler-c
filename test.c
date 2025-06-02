@@ -5,6 +5,7 @@
 typedef struct {
   PgProcessStatus process_status;
   PgError err;
+  PgString file_path;
 } TestResult;
 
 [[nodiscard]]
@@ -16,7 +17,7 @@ static TestResult test_run(PgString dir_name, PgString file_name,
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgString file_path = pg_path_join(dir_name, file_name, allocator);
+  res.file_path = pg_path_join(dir_name, file_name, allocator);
 
   PgProcessSpawnOptions options = {
       .stdout_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
@@ -24,7 +25,7 @@ static TestResult test_run(PgString dir_name, PgString file_name,
   };
   // Compile.
   {
-    PgString args[] = {/*PG_S("-v"),*/ file_path};
+    PgString args[] = {/*PG_S("-v"),*/ res.file_path};
     PgStringSlice args_slice = {.data = args, .len = PG_STATIC_ARRAY_LEN(args)};
     PgProcessResult res_spawn =
         pg_process_spawn(PG_S("./main.bin"), args_slice, options, allocator);
@@ -63,22 +64,18 @@ static TestResult test_run(PgString dir_name, PgString file_name,
       return res;
     }
 
-    // err_expected | stdout_empty | res
+    if (!pg_string_is_empty(res.process_status.stdout_captured)) {
+      res.err = PG_ERR_INVALID_VALUE;
+      return res;
+    }
+
+    // err_expected | stderr_empty | ok
     // 0                 0         | 0
     // 0                 1         | 1
     // 1                 0         | 1
     // 1                 1         | 0
     // => xor
 
-    bool stdout_ok =
-        err_expected ^ pg_string_is_empty(res.process_status.stdout_captured);
-    if (!stdout_ok) {
-      res.err = PG_ERR_INVALID_VALUE;
-      return res;
-    }
-
-    volatile PgString foo = res.process_status.stderr_captured;
-    (void)foo;
     bool stderr_ok =
         err_expected ^ pg_string_is_empty(res.process_status.stderr_captured);
     if (!stderr_ok) {
@@ -97,7 +94,7 @@ static TestResult test_run(PgString dir_name, PgString file_name,
     PgString args[] = {0};
     PgStringSlice args_slice = {.data = args, .len = PG_STATIC_ARRAY_LEN(args)};
 
-    PgString stem = pg_path_stem(file_path);
+    PgString stem = pg_path_stem(res.file_path);
     PgString exe_name = pg_string_concat(stem, PG_S(".bin"), allocator);
     PgString exe_path = pg_path_join(PG_S("."), exe_name, allocator);
 
@@ -221,12 +218,14 @@ int main() {
       bool err_expected = true;
       TestResult test_res = test_run(dir_name, file_name, err_expected);
       if (!test_res.err) {
-        printf("OK %.*s\n", (i32)file_name.len, file_name.data);
+        printf("OK %.*s\n", (i32)test_res.file_path.len,
+               test_res.file_path.data);
         continue;
       }
 
       failed = true;
-      fprintf(stderr, "FAIL %.*s\n", (i32)file_name.len, file_name.data);
+      fprintf(stderr, "FAIL %.*s\n", (i32)test_res.file_path.len,
+              test_res.file_path.data);
       __builtin_dump_struct(&test_res, printf);
       fprintf(stderr, "stdout=%.*s\n",
               (i32)test_res.process_status.stdout_captured.len,

@@ -45,6 +45,4 @@ else
 	error "Too many arguments!"
 fi
 
-echo "Built: $(date)"
-
 ./test.bin
