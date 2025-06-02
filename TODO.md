@@ -36,3 +36,4 @@
 - [x] typechecker, pass type information to codegen for sizes
 - [ ] cstd: cross-platform API for files listing in directory
 - [ ] cstd: Windows implementation of sub-process spawning and waiting
+- [ ] cstd: cross-platform CLI options parse API (short/long form, not cursed API, Unix-style options even on Windows, data-oriented)
