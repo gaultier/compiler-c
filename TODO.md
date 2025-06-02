@@ -26,6 +26,7 @@
 - [ ] simple alias analysis (type-based, conservative)
 - [ ] test: consider bytecode vm to test correctness
 - [ ] test: consider checking output of compiled binary with objdump & ensuring it is the same as the readable assembly from `./main.bin -v` 
+- [ ] lsp
 - [x] ast: move to 'stack vm bytecode' representation
 - [x] codegen: move graph coloring to LIR/ASM phase with the target data as input
 - [x] errors: report all errors
