@@ -1,8 +1,8 @@
-- [ ] real test runner
-  + Spawn compiler in subprocess
-  + Capture stdout in memory. Only print on test assertion error.
+- [x] real test runner
+  + [x] Spawn compiler in subprocess
+  + [x] Capture stdout in memory. Only print on test assertion error.
   + Run compiler in verbose & non-verbose modes
-  + Spawn compiled program in subprocess
+  + [x] Spawn compiled program in subprocess
   + Later: check that `./main.bin -s foo.unicorn` == `objdump -M intel foo.bin`
   + Later: check output of compiled program equals expected output in comments => need comments, print
 - [ ] adapt amd64 encoding to use real sizes from types incl. right registers
