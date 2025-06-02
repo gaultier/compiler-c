@@ -136,6 +136,7 @@ static TestResult test_run(PgString dir_name, PgString file_name,
     }
 
     // Could be ok depending on the test case.
+    // Need code comments to know what output to expect.
 #if 0
     if (!pg_string_is_empty(res.process_status.stdout_captured)) {
       res.err = PG_ERR_INVALID_VALUE;
