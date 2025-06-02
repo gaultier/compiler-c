@@ -3,6 +3,11 @@
   + [x] Capture stdout in memory. Only print on test assertion error.
   + Run compiler in verbose & non-verbose modes
   + [x] Spawn compiled program in subprocess
+  + [ ] Spawn compiler in valgrind
+  + [ ] Spawn compiled program in valgrind
+  + [ ] Later/Maybe: Run tests in parallel
   + Later: check that `./main.bin -s foo.unicorn` == `objdump -M intel foo.bin`
   + Later: check output of compiled program equals expected output in comments => need comments, print
+  + Later/Maybe: run compiled program bytecode in VM to check output against output of compiled program to machine code
+    Or: compile & run program with official compiler to compare output (need deps).
 - [ ] adapt amd64 encoding to use real sizes from types incl. right registers
