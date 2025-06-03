@@ -459,6 +459,11 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   if (amd64_is_reg_or_mem8(instruction.lhs) && amd64_is_reg8(instruction.rhs)) {
     u8 opcode = 0x88;
     *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    amd64_encode_modrm(sb, AMD64_MODRM_MOD_11,
+                       amd64_encode_register_value(instruction.rhs.u.reg),
+                       amd64_encode_register_value(instruction.lhs.u.reg),
+                       allocator);
   }
 
 #if 0
