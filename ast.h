@@ -812,9 +812,16 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
       break;
     }
 
-    if (!ast_parse_declaration(parser, allocator)) {
+    if (ast_parse_declaration(parser, allocator)) {
       continue;
     }
+
+    if (!parser->err_mode) {
+      ast_add_error(parser, ERROR_KIND_PARSE_STATEMENT,
+                    ast_current_or_last_token(*parser).origin, allocator);
+    }
+    ast_advance_to_next_line_from_last_error(parser);
+    parser->err_mode = false;
   }
 
   ast_emit_program_epilog(parser, allocator);

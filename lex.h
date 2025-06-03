@@ -22,6 +22,7 @@ typedef enum : u8 {
   LEX_TOKEN_KIND_KEYWORD_ELSE,
   LEX_TOKEN_KIND_KEYWORD_ASSERT,
   LEX_TOKEN_KIND_KEYWORD_SYSCALL,
+  LEX_TOKEN_KIND_KEYWORD_PRINTLN,
   LEX_TOKEN_KIND_EOF,
 } LexTokenKind;
 
@@ -258,6 +259,10 @@ static bool lex_keyword(Lexer *lexer, PgAllocator *allocator) {
     lex_add_token(lexer, LEX_TOKEN_KIND_KEYWORD_SYSCALL, origin, allocator);
     return true;
   }
+  if (pg_string_eq(lit, PG_S("println"))) {
+    lex_add_token(lexer, LEX_TOKEN_KIND_KEYWORD_PRINTLN, origin, allocator);
+    return true;
+  }
   if (pg_string_eq(lit, PG_S("if"))) {
     lex_add_token(lexer, LEX_TOKEN_KIND_KEYWORD_IF, origin, allocator);
     return true;
@@ -488,6 +493,9 @@ static void lex_tokens_print(LexTokenDyn tokens) {
       break;
     case LEX_TOKEN_KIND_KEYWORD_SYSCALL:
       printf("syscall\n");
+      break;
+    case LEX_TOKEN_KIND_KEYWORD_PRINTLN:
+      printf("println\n");
       break;
     case LEX_TOKEN_KIND_KEYWORD_IF:
       printf("Keyword if\n");
