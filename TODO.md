@@ -23,11 +23,12 @@
 - [ ] lang: strings
 - [ ] lang: structs
 - [ ] lang: types
+- [ ] lex: set src_span on lex tokens origin
+- [ ] lsp
+- [ ] regalloc: linear allocator. Compare performance with graph allocator.
 - [ ] simple alias analysis (type-based, conservative)
 - [ ] test: consider bytecode vm to test correctness
 - [ ] test: consider checking output of compiled binary with objdump & ensuring it is the same as the readable assembly from `./main.bin -v` 
-- [ ] lsp
-- [ ] regalloc: linear allocator. Compare performance with graph allocator.
 - [x] ast: move to 'stack vm bytecode' representation
 - [x] codegen: move graph coloring to LIR/ASM phase with the target data as input
 - [x] errors: report all errors
