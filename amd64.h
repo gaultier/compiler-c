@@ -1,6 +1,13 @@
 #pragma once
 #include "asm_common.h"
 
+typedef enum {
+  AMD64_MODRM_MOD_00 = 0b00,
+  AMD64_MODRM_MOD_01 = 0b01,
+  AMD64_MODRM_MOD_10 = 0b10,
+  AMD64_MODRM_MOD_11 = 0b11,
+} Amd64ModRmMod;
+
 #define AMD64_RAX 1
 #define AMD64_RBX 2
 #define AMD64_RCX 3
@@ -369,39 +376,109 @@ static void amd64_encode_instruction_ud2(Pgu8Dyn *sb, PgAllocator *allocator) {
   *PG_DYN_PUSH(sb, allocator) = opcode2;
 }
 
+static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
+                             bool upper_register_modrm_rm_field, bool field_w,
+                             PgAllocator *allocator) {
+  u8 rex = AMD64_REX_DEFAULT;
+
+  if (upper_registers_modrm_reg_field) {
+    rex |= AMD64_REX_MASK_R;
+  }
+  if (upper_register_modrm_rm_field) {
+    rex |= AMD64_REX_MASK_B;
+  }
+  if (field_w) {
+    rex |= AMD64_REX_MASK_W;
+  }
+
+  if (AMD64_REX_DEFAULT != rex) {
+    *PG_DYN_PUSH(sb, allocator) = rex;
+  }
+}
+
+[[nodiscard]] static bool amd64_is_reg8(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
+         ASM_OPERAND_SIZE_1 == op.size;
+}
+
+[[nodiscard]] static bool amd64_is_reg_or_mem8(Amd64Operand op) {
+  return amd64_is_reg8(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
+                               op.u.immediate <= UINT8_MAX);
+}
+
+[[nodiscard]] static bool amd64_is_reg16(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
+         ASM_OPERAND_SIZE_2 == op.size;
+}
+
+[[nodiscard]] static bool amd64_is_reg_or_mem16(Amd64Operand op) {
+  return amd64_is_reg16(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
+                                op.u.immediate <= UINT16_MAX);
+}
+
+[[nodiscard]] static bool amd64_is_reg32(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
+         ASM_OPERAND_SIZE_4 == op.size;
+}
+
+[[nodiscard]] static bool amd64_is_reg_or_mem32(Amd64Operand op) {
+  return amd64_is_reg32(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
+                                op.u.immediate <= UINT32_MAX);
+}
+
+[[nodiscard]] static bool amd64_is_reg64(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
+         ASM_OPERAND_SIZE_8 == op.size;
+}
+
+[[nodiscard]] static bool amd64_is_reg_or_mem64(Amd64Operand op) {
+  return amd64_is_reg64(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
+                                op.u.immediate <= UINT64_MAX);
+}
+
+static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64ModRmMod mod, u8 reg, u8 rm,
+                               PgAllocator *allocator) {
+  PG_ASSERT(reg <= 0b111);
+  PG_ASSERT(rm <= 0b111);
+  u8 modrm = (u8)(mod << 6) | (u8)(reg << 3) | rm;
+  *PG_DYN_PUSH(sb, allocator) = modrm;
+}
+
+static void amd64_encode_modrm_slash_r(Pgu8Dyn *sb, Amd64Operand op,
+                                       PgAllocator *allocator) {}
+
 static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_MOV == instruction.kind);
-  // Illegal per amd64 rules.
-  PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind &&
-              AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind));
 
+  // MOV r/m8, r8
+  // Opcode: 0x88
+  // Operand1: ModRM:r/m (w)
+  // Operand2: ModRM:reg (r)
+  if (amd64_is_reg_or_mem8(instruction.lhs) && amd64_is_reg8(instruction.rhs)) {
+    u8 opcode = 0x88;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+  }
+
+#if 0
   // MOV reg64, imm64 | B8 +rq iq | Move an 64-bit immediate value into a 64-bit
   // register.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
       AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
-    u8 rex = AMD64_REX_DEFAULT;
-    if (instruction.rhs.u.immediate > UINT32_MAX) {
-      rex |= AMD64_REX_MASK_W;
-    }
-    if (amd64_is_register_64_bits_only(instruction.lhs.u.reg)) {
-      rex |= AMD64_REX_MASK_B;
-    }
-
-    if (AMD64_REX_DEFAULT != rex) {
-      *PG_DYN_PUSH(sb, allocator) = rex;
-    }
+    Register reg = instruction.lhs.u.reg;
+    u64 immediate = instruction.rhs.u.immediate;
+    amd64_encode_rex(sb, amd64_is_register_64_bits_only(reg), false,
+                     immediate > UINT32_MAX, allocator);
 
     u8 opcode = 0xb8;
     *PG_DYN_PUSH(sb, allocator) =
-        opcode + (amd64_encode_register_value(instruction.lhs.u.reg) & 0b111);
+        opcode + (amd64_encode_register_value(reg) & 0b111);
 
     if (instruction.rhs.u.immediate <= UINT32_MAX) {
-      pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.u.immediate,
-                                allocator);
+      pg_byte_buffer_append_u32(sb, (u32)immediate, allocator);
     } else {
-      pg_byte_buffer_append_u64(sb, instruction.rhs.u.immediate, allocator);
+      pg_byte_buffer_append_u64(sb, immediate, allocator);
     }
 
     return;
@@ -411,6 +488,9 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   // 64-bit destination register or memory operand.
   if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
       AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
+    Register lhs_reg = instruction.lhs.u.reg;
+    Register rhs_reg = instruction.rhs.u.reg;
+
     u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
     if (amd64_is_register_64_bits_only(instruction.lhs.u.reg)) {
       rex |= AMD64_REX_MASK_B;
@@ -419,6 +499,8 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
       rex |= AMD64_REX_MASK_R;
     }
     *PG_DYN_PUSH(sb, allocator) = rex;
+    amd64_encode_rex(sb, amd64_is_register_64_bits_only(lhs_reg), false,
+                     immediate > UINT32_MAX, allocator);
 
     u8 opcode = 0x89;
     *PG_DYN_PUSH(sb, allocator) = opcode;
@@ -524,6 +606,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
 
     return;
   }
+#endif
 
   PG_ASSERT(0 && "todo");
 }

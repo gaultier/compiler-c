@@ -3,14 +3,13 @@
 
 .globl _start
 _start:
-mov rax, 0
-cmp rax, 0
-jnz .next
-ud2
-.next:
+mov al, bl
+mov al, 255
+mov ax, 255
+mov eax, 255
+mov rax, 255
 
 __builtin_println_u64:
-	
 
 __builtin_exit:
 mov rax, 60
