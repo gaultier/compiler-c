@@ -1019,6 +1019,34 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
     } break;
 
+    case AST_NODE_KIND_BUILTIN_PRINTLN: {
+      PG_ASSERT(fn_def.instructions.len >= 1);
+
+      MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
+      // FIXME: Add negation of condition!
+
+      Type *cond_type = PG_SLICE_AT(fn_def.metadata, cond_meta_idx.value).type;
+      PG_ASSERT(cond_type);
+
+      if (TYPE_KIND_BOOLEAN != cond_type->kind) {
+        Pgu8Dyn sb = pg_sb_make_with_cap(128, allocator);
+        PG_DYN_APPEND_SLICE(&sb, PG_S("expected bool, got "), allocator);
+        PG_DYN_APPEND_SLICE(&sb, cond_type->name, allocator);
+
+        Error err = {
+            .kind = ERROR_KIND_TYPE_MISMATCH,
+            .origin = node.origin,
+            .src = emitter->src,
+            .src_span = PG_SLICE_RANGE(
+                emitter->src, node.origin.file_offset_start,
+                // FIXME: origin should have a src_span directly.
+                node.origin.file_offset_start + PG_S("assert(").len),
+            .explanation = PG_DYN_SLICE(PgString, sb),
+        };
+        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+      }
+      PG_ASSERT(0 && "todo");
+    } break;
     case AST_NODE_KIND_BUILTIN_ASSERT: {
       PG_ASSERT(fn_def.instructions.len >= 1);
 

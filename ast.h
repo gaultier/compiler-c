@@ -18,6 +18,7 @@ typedef enum : u8 {
   AST_NODE_KIND_JUMP,
   AST_NODE_KIND_COMPARISON,
   AST_NODE_KIND_BUILTIN_ASSERT,
+  AST_NODE_KIND_BUILTIN_PRINTLN,
   AST_NODE_KIND_SYSCALL,
   AST_NODE_KIND_FN_DEFINITION,
   AST_NODE_KIND_LABEL_DEFINITION,
@@ -159,6 +160,9 @@ static void ast_print_node(AstNode node) {
     break;
   case AST_NODE_KIND_BUILTIN_ASSERT:
     printf("Assert");
+    break;
+  case AST_NODE_KIND_BUILTIN_PRINTLN:
+    printf("Println");
     break;
   case AST_NODE_KIND_ADD:
     printf("Add");
@@ -686,6 +690,49 @@ static bool ast_parse_statement_if(AstParser *parser, PgAllocator *allocator) {
 }
 
 [[nodiscard]]
+static bool ast_parse_statement_println(AstParser *parser,
+                                        PgAllocator *allocator) {
+  if (parser->err_mode) {
+    return false;
+  }
+
+  LexToken token_first =
+      ast_match_token_kind(parser, LEX_TOKEN_KIND_KEYWORD_PRINTLN);
+  if (!token_first.kind) {
+    return false;
+  }
+
+  LexToken token_paren_left =
+      ast_match_token_kind(parser, LEX_TOKEN_KIND_PAREN_LEFT);
+  if (!token_paren_left.kind) {
+    ast_add_error(parser, ERROR_KIND_PARSE_MISSING_PAREN_LEFT,
+                  ast_current_or_last_token(*parser).origin, allocator);
+    return false;
+  }
+
+  if (!ast_parse_expr(parser, allocator)) {
+    ast_add_error(parser, ERROR_KIND_PARSE_PRINTLN_MISSING_EXPRESSION,
+                  ast_current_or_last_token(*parser).origin, allocator);
+    return false;
+  }
+
+  LexToken token_paren_right =
+      ast_match_token_kind(parser, LEX_TOKEN_KIND_PAREN_RIGHT);
+  if (!token_paren_right.kind) {
+    ast_add_error(parser, ERROR_KIND_PARSE_MISSING_PAREN_RIGHT,
+                  ast_current_or_last_token(*parser).origin, allocator);
+    return false;
+  }
+
+  AstNode node = {0};
+  node.kind = AST_NODE_KIND_BUILTIN_PRINTLN;
+  node.origin = token_first.origin;
+  ast_push(parser, node, allocator);
+
+  return true;
+}
+
+[[nodiscard]]
 static bool ast_parse_statement_assert(AstParser *parser,
                                        PgAllocator *allocator) {
   if (parser->err_mode) {
@@ -739,6 +786,10 @@ static bool ast_parse_statement(AstParser *parser, PgAllocator *allocator) {
   }
 
   if (ast_parse_statement_assert(parser, allocator)) {
+    return true;
+  }
+
+  if (ast_parse_statement_println(parser, allocator)) {
     return true;
   }
 
@@ -892,6 +943,7 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     } break;
 
     case AST_NODE_KIND_JUMP:
+    case AST_NODE_KIND_BUILTIN_PRINTLN:
     case AST_NODE_KIND_BUILTIN_ASSERT:
     case AST_NODE_KIND_VAR_DEFINITION: {
       PG_DYN_POP(&stack);

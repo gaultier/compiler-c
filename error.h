@@ -28,6 +28,7 @@ typedef enum {
   ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT,
   ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT,
   ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION,
+  ERROR_KIND_PARSE_PRINTLN_MISSING_EXPRESSION,
   ERROR_KIND_WRONG_ARGS_COUNT,
   ERROR_KIND_MALFORMED_AST,
   ERROR_KIND_TYPE_MISMATCH,
@@ -152,6 +153,9 @@ static void error_print(FILE *out, Error err) {
     break;
   case ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION:
     fprintf(out, "missing assert expression");
+    break;
+  case ERROR_KIND_PARSE_PRINTLN_MISSING_EXPRESSION:
+    fprintf(out, "missing println expression");
     break;
   case ERROR_KIND_WRONG_ARGS_COUNT:
     fprintf(out, "wrong argument count");
