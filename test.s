@@ -9,12 +9,11 @@ jnz .next
 ud2
 .next:
 
-.exit:
+__builtin_println_u64:
+	
+
+__builtin_exit:
 mov rax, 60
 mov rdi, 0
 syscall
 
-.die:
-mov rax, 60
-mov rdi, 1
-syscall
