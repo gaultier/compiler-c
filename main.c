@@ -60,6 +60,26 @@ int main(int argc, char *argv[]) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
+  {
+    Amd64Instruction ins = {
+        .kind = AMD64_INSTRUCTION_KIND_MOV,
+        .lhs =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                .size = ASM_OPERAND_SIZE_1,
+                .u.reg.value = AMD64_RAX,
+            },
+        .rhs =
+            (Amd64Operand){
+                .kind = AMD64_OPERAND_KIND_REGISTER,
+                .size = ASM_OPERAND_SIZE_1,
+                .u.reg.value = AMD64_R14,
+            },
+    };
+    Pgu8Dyn sb = {0};
+    amd64_encode_instruction_mov(&sb, ins, allocator);
+  }
+
   PgString file_path = pg_cstr_to_string(cli_opts.file_path);
   PgStringResult file_read_res =
       pg_file_read_full_from_path(file_path, allocator);

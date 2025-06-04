@@ -3,7 +3,7 @@
 
 .globl _start
 _start:
-mov al, bl
+mov r13b, r14b
 mov al, 255
 mov ax, 255
 mov eax, 255

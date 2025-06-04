@@ -2,9 +2,13 @@
 #include "asm_common.h"
 
 typedef enum {
+  // Register dereference or disp32 - Register.
   AMD64_MODRM_MOD_00 = 0b00,
+  // Register dereference + disp8 - Register.
   AMD64_MODRM_MOD_01 = 0b01,
+  // Register dereference + disp32 - Register.
   AMD64_MODRM_MOD_10 = 0b10,
+  // Register - Register.
   AMD64_MODRM_MOD_11 = 0b11,
 } Amd64ModRmMod;
 
@@ -406,6 +410,7 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
                                op.u.immediate <= UINT8_MAX);
 }
 
+#if 0
 [[nodiscard]] static bool amd64_is_reg16(Amd64Operand op) {
   return AMD64_OPERAND_KIND_REGISTER == op.kind &&
          ASM_OPERAND_SIZE_2 == op.size;
@@ -435,17 +440,16 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
   return amd64_is_reg64(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
                                 op.u.immediate <= UINT64_MAX);
 }
+#endif
 
 static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64ModRmMod mod, u8 reg, u8 rm,
                                PgAllocator *allocator) {
   PG_ASSERT(reg <= 0b111);
   PG_ASSERT(rm <= 0b111);
+
   u8 modrm = (u8)(mod << 6) | (u8)(reg << 3) | rm;
   *PG_DYN_PUSH(sb, allocator) = modrm;
 }
-
-static void amd64_encode_modrm_slash_r(Pgu8Dyn *sb, Amd64Operand op,
-                                       PgAllocator *allocator) {}
 
 static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
                                          Amd64Instruction instruction,
@@ -457,13 +461,17 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
   // Operand1: ModRM:r/m (w)
   // Operand2: ModRM:reg (r)
   if (amd64_is_reg_or_mem8(instruction.lhs) && amd64_is_reg8(instruction.rhs)) {
+    Register lhs = instruction.lhs.u.reg;
+    Register rhs = instruction.rhs.u.reg;
+    amd64_encode_rex(sb, amd64_is_register_64_bits_only(rhs),
+                     amd64_is_register_64_bits_only(lhs), false, allocator);
+
     u8 opcode = 0x88;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
-    amd64_encode_modrm(sb, AMD64_MODRM_MOD_11,
-                       amd64_encode_register_value(instruction.rhs.u.reg),
-                       amd64_encode_register_value(instruction.lhs.u.reg),
-                       allocator);
+    amd64_encode_modrm(sb, AMD64_MODRM_MOD_11, amd64_encode_register_value(rhs),
+                       amd64_encode_register_value(lhs), allocator);
+    return;
   }
 
 #if 0
