@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
     printf("\n------------ ASM %.*s ------------\n",
            (i32)asm_emitter.program.file_path.len,
            asm_emitter.program.file_path.data);
-    asm_print_program(asm_emitter);
+    asm_print_program(stdout, asm_emitter);
   }
 
   PgError err_write = elf_write_exe(&asm_emitter, allocator);

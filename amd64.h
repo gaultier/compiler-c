@@ -163,8 +163,8 @@ static const Architecture amd64_arch = {
   return amd64_is_mem(op) && op.u.effective_address.displacement;
 }
 
-static void amd64_print_register(Register reg, AsmOperandSize size) {
-  printf("%s", amd64_register_to_string[reg.value][size]);
+static void amd64_print_register(FILE *out, Register reg, AsmOperandSize size) {
+  fprintf(out, "%s", amd64_register_to_string[reg.value][size]);
 }
 
 // TODO: If any of the callee-saved registers were used by the register
@@ -222,36 +222,37 @@ static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_pop;
 }
 
-static void amd64_print_operand(Amd64Operand op, bool with_op_size) {
+static void amd64_print_operand(FILE *out, Amd64Operand op, bool with_op_size) {
   switch (op.kind) {
   case AMD64_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case AMD64_OPERAND_KIND_REGISTER:
-    amd64_print_register(op.u.reg, op.size);
+    amd64_print_register(out, op.u.reg, op.size);
     break;
   case AMD64_OPERAND_KIND_IMMEDIATE:
-    printf("%" PRIu64, op.u.immediate);
+    fprintf(out, "%" PRIu64, op.u.immediate);
     break;
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
     if (with_op_size) {
-      printf("%s ptr ", amd64_size_to_operand_size_string[op.size]);
+      fprintf(out, "%s ptr ", amd64_size_to_operand_size_string[op.size]);
     }
-    printf("[");
-    amd64_print_register(op.u.effective_address.base, ASM_OPERAND_SIZE_8);
+    fprintf(out, "[");
+    amd64_print_register(out, op.u.effective_address.base, ASM_OPERAND_SIZE_8);
     if (op.u.effective_address.index.value) {
-      printf(" + ");
-      amd64_print_register(op.u.effective_address.index, ASM_OPERAND_SIZE_8);
-      printf(" * %" PRIu8 " ", op.u.effective_address.scale);
+      fprintf(out, " + ");
+      amd64_print_register(out, op.u.effective_address.index,
+                           ASM_OPERAND_SIZE_8);
+      fprintf(out, " * %" PRIu8 " ", op.u.effective_address.scale);
     }
-    printf("%s%" PRIi32 "]",
-           op.u.effective_address.displacement >= 0 ? "+" : "",
-           op.u.effective_address.displacement);
+    fprintf(out, "%s%" PRIi32 "]",
+            op.u.effective_address.displacement >= 0 ? "+" : "",
+            op.u.effective_address.displacement);
   } break;
   case AMD64_OPERAND_KIND_LABEL:
     PG_ASSERT(op.u.label.value.data);
     PG_ASSERT(op.u.label.value.len);
 
-    printf("%.*s", (i32)op.u.label.value.len, op.u.label.value.data);
+    fprintf(out, "%.*s", (i32)op.u.label.value.len, op.u.label.value.data);
     break;
   default:
     PG_ASSERT(0);
@@ -330,14 +331,14 @@ static void amd64_print_instruction(FILE *out, Amd64Instruction ins) {
 
   bool has_effective_address = (amd64_is_mem(ins.lhs) || amd64_is_mem(ins.rhs));
   if (AMD64_OPERAND_KIND_NONE != ins.lhs.kind) {
-    amd64_print_operand(ins.lhs, has_effective_address);
+    amd64_print_operand(out, ins.lhs, has_effective_address);
   }
 
   if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
     PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
 
     fprintf(out, ", ");
-    amd64_print_operand(ins.rhs, has_effective_address);
+    amd64_print_operand(out, ins.rhs, has_effective_address);
   }
 
   if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
@@ -345,28 +346,29 @@ static void amd64_print_instruction(FILE *out, Amd64Instruction ins) {
   }
 }
 
-static void amd64_print_instructions(Amd64InstructionDyn instructions) {
+static void amd64_print_instructions(FILE *out,
+                                     Amd64InstructionDyn instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
-    printf("[%" PRIu64 "] ", i);
+    fprintf(out, "[%" PRIu64 "] ", i);
 
     Amd64Instruction ins = PG_SLICE_AT(instructions, i);
 
     amd64_print_instruction(stdout, ins);
-    printf("\n");
+    fprintf(out, "\n");
   }
 }
 
-static void amd64_print_section(AsmCodeSection section) {
+static void amd64_print_section(FILE *out, AsmCodeSection section) {
   if (AST_NODE_FLAG_GLOBAL & section.flags) {
-    printf("global ");
-    printf("%.*s", (i32)section.name.len, section.name.data);
-    printf(":\n");
+    fprintf(out, "global ");
+    fprintf(out, "%.*s", (i32)section.name.len, section.name.data);
+    fprintf(out, ":\n");
   }
 
-  printf("%.*s", (i32)section.name.len, section.name.data);
-  printf(":\n");
+  fprintf(out, "%.*s", (i32)section.name.len, section.name.data);
+  fprintf(out, ":\n");
 
-  amd64_print_instructions(section.u.amd64_instructions);
+  amd64_print_instructions(out, section.u.amd64_instructions);
 }
 
 [[nodiscard]]
