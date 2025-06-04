@@ -62,7 +62,7 @@ typedef struct {
 } InstructionIndex;
 
 typedef struct {
-  u32 value;
+  u8 value;
 } Register;
 PG_SLICE(Register) RegisterSlice;
 PG_DYN(Register) RegisterDyn;

@@ -1,9 +1,16 @@
 // clang -masm=intel -c test.s
 // llvm-objdump -M intel -d ./test.o 
 
+.data
+msg: 
+ .ascii "Hello world!"
+len = . -msg
+
+.text
+
 .globl _start
 _start:
-mov r13b, r14b
+mov [msg], al
 mov al, 255
 mov ax, 255
 mov eax, 255

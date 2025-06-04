@@ -354,6 +354,11 @@ static u8 amd64_encode_register_value(Register reg) {
 }
 
 [[nodiscard]]
+static u8 amd64_encode_register_value_3bits(Register reg) {
+  return PG_SLICE_AT(amd64_register_to_encoded_value_slice, reg.value) & 0b111;
+}
+
+[[nodiscard]]
 static bool amd64_is_register_64_bits_only(Register reg) {
   return amd64_encode_register_value(reg) > 0b111;
 }
@@ -400,19 +405,34 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
   }
 }
 
-[[nodiscard]] static bool amd64_is_reg8(Amd64Operand op) {
-  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
-         ASM_OPERAND_SIZE_1 == op.size;
+[[nodiscard]] static bool amd64_is_reg(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_REGISTER == op.kind;
 }
 
+[[nodiscard]] static bool amd64_is_mem(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == op.kind;
+}
+
+[[nodiscard]] static bool amd64_is_imm(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_IMMEDIATE == op.kind;
+}
+
+[[nodiscard]] static bool amd64_is_reg8(Amd64Operand op) {
+  return amd64_is_reg(op) && ASM_OPERAND_SIZE_1 == op.size;
+}
+
+[[nodiscard]] static bool amd64_has_displacement(Amd64Operand op) {
+  return amd64_is_mem(op) && op.u.effective_address.displacement;
+}
+
+#if 0
 [[nodiscard]] static bool amd64_is_reg_or_mem8(Amd64Operand op) {
   return amd64_is_reg8(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
                                op.u.immediate <= UINT8_MAX);
 }
 
-#if 0
 [[nodiscard]] static bool amd64_is_reg16(Amd64Operand op) {
-  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
+  return amd64_is_reg(op)&&
          ASM_OPERAND_SIZE_2 == op.size;
 }
 
@@ -422,7 +442,7 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
 }
 
 [[nodiscard]] static bool amd64_is_reg32(Amd64Operand op) {
-  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
+  return amd64_is_reg(op)&&
          ASM_OPERAND_SIZE_4 == op.size;
 }
 
@@ -432,7 +452,7 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
 }
 
 [[nodiscard]] static bool amd64_is_reg64(Amd64Operand op) {
-  return AMD64_OPERAND_KIND_REGISTER == op.kind &&
+  return amd64_is_reg(op)&&
          ASM_OPERAND_SIZE_8 == op.size;
 }
 
@@ -442,35 +462,93 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
 }
 #endif
 
-static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64ModRmMod mod, u8 reg, u8 rm,
-                               PgAllocator *allocator) {
-  PG_ASSERT(reg <= 0b111);
-  PG_ASSERT(rm <= 0b111);
-
-  u8 modrm = (u8)(mod << 6) | (u8)(reg << 3) | rm;
-  *PG_DYN_PUSH(sb, allocator) = modrm;
+[[nodiscard]]
+static bool amd64_is_r_slash_m8(Amd64Operand op) {
+  return amd64_is_reg8(op) || AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == op.kind;
 }
 
-static void amd64_encode_instruction_mov(Pgu8Dyn *sb,
-                                         Amd64Instruction instruction,
+static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
+                               PgAllocator *allocator) {
+
+  PG_ASSERT(amd64_is_reg(rhs));
+
+  Amd64ModRmMod mod = 0;
+  u8 reg = amd64_encode_register_value_3bits(rhs.u.reg);
+  u8 rm = 0;
+  if (amd64_is_reg(lhs)) {
+    mod = AMD64_MODRM_MOD_11;
+    rm = amd64_encode_register_value_3bits(lhs.u.reg);
+  } else if (amd64_is_imm(lhs)) { // disp32
+    mod = AMD64_MODRM_MOD_00;
+    rm = 0b101;
+  } else if (amd64_is_mem(lhs) &&
+             lhs.u.effective_address.displacement <= UINT8_MAX) {
+    mod = AMD64_MODRM_MOD_01;
+    rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+  } else if (amd64_is_mem(lhs) && 0 == lhs.u.effective_address.displacement) {
+    mod = AMD64_MODRM_MOD_00;
+    rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+  } else if (amd64_is_mem(lhs)) {
+    mod = AMD64_MODRM_MOD_10;
+    rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+  } else {
+    PG_ASSERT(0);
+  }
+
+  // Encode.
+  {
+    PG_ASSERT(reg <= 0b111);
+    PG_ASSERT(rm <= 0b111);
+
+    u8 modrm = (u8)(mod << 6) | (u8)(reg << 3) | rm;
+    *PG_DYN_PUSH(sb, allocator) = modrm;
+  }
+}
+
+static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
                                          PgAllocator *allocator) {
-  PG_ASSERT(AMD64_INSTRUCTION_KIND_MOV == instruction.kind);
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_MOV == ins.kind);
 
   // MOV r/m8, r8
-  // Opcode: 0x88
-  // Operand1: ModRM:r/m (w)
-  // Operand2: ModRM:reg (r)
-  if (amd64_is_reg_or_mem8(instruction.lhs) && amd64_is_reg8(instruction.rhs)) {
-    Register lhs = instruction.lhs.u.reg;
-    Register rhs = instruction.rhs.u.reg;
-    amd64_encode_rex(sb, amd64_is_register_64_bits_only(rhs),
-                     amd64_is_register_64_bits_only(lhs), false, allocator);
+  // MOV r/m16, r16
+  // MOV r/m32, r32
+  // MOV r/m64, r64
+  if ((amd64_is_reg(ins.lhs) || amd64_is_mem(ins.lhs)) &&
+      amd64_is_reg(ins.rhs)) {
+    PG_ASSERT(ins.lhs.size == ins.rhs.size);
+    PG_ASSERT(0 != ins.lhs.size);
 
-    u8 opcode = 0x88;
-    *PG_DYN_PUSH(sb, allocator) = opcode;
+    Register rhs = ins.rhs.u.reg;
 
-    amd64_encode_modrm(sb, AMD64_MODRM_MOD_11, amd64_encode_register_value(rhs),
-                       amd64_encode_register_value(lhs), allocator);
+    // Rex.
+    {
+      bool modrm_reg_field = amd64_is_register_64_bits_only(rhs);
+      bool modrm_rm_field = amd64_is_reg(ins.lhs)
+                                ? amd64_is_register_64_bits_only(ins.lhs.u.reg)
+                                : false;
+      bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, allocator);
+    }
+
+    // Opcode.
+    {
+      u8 opcode = 0x89;
+      if (amd64_is_r_slash_m8(ins.lhs)) {
+        opcode = 0x88;
+      }
+      *PG_DYN_PUSH(sb, allocator) = opcode;
+    }
+
+    // ModRM.
+    {
+      amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+    }
+    // SIB.
+    {
+      if (amd64_is_mem(ins.lhs) && amd64_has_displacement(ins.lhs)) {
+        PG_ASSERT(0 && "todo");
+      }
+    }
     return;
   }
 
