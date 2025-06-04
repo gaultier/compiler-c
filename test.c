@@ -314,37 +314,32 @@ static void test_assembler_amd64_mov() {
       Register reg_b = {j};
 
       for (u8 k = 0; k < PG_STATIC_ARRAY_LEN(sizes); k++) {
-        AsmOperandSize size_a =
+        AsmOperandSize size =
             PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), k);
 
-        for (u8 l = 0; l < PG_STATIC_ARRAY_LEN(sizes); l++) {
-          AsmOperandSize size_b =
-              PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), l);
+        Amd64Instruction ins = {
+            .kind = AMD64_INSTRUCTION_KIND_MOV,
+            .lhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_a,
+                    .size = size,
+                },
+            .rhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_b,
+                    .size = size,
+                },
 
-          Amd64Instruction ins = {
-              .kind = AMD64_INSTRUCTION_KIND_MOV,
-              .lhs =
-                  (Amd64Operand){
-                      .kind = AMD64_OPERAND_KIND_REGISTER,
-                      .u.reg = reg_a,
-                      .size = size_a,
-                  },
-              .rhs =
-                  (Amd64Operand){
-                      .kind = AMD64_OPERAND_KIND_REGISTER,
-                      .u.reg = reg_b,
-                      .size = size_b,
-                  },
+        };
 
-          };
+        Pgu8Dyn sb = {0};
+        amd64_encode_instruction_mov(&sb, ins, allocator);
+        Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
 
-          Pgu8Dyn sb = {0};
-          amd64_encode_instruction_mov(&sb, ins, allocator);
-          Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
-
-          Pgu8Slice expected = test_helper_cc_assemble(ins, allocator);
-          PG_ASSERT(pg_string_eq(actual, expected));
-        }
+        Pgu8Slice expected = test_helper_cc_assemble(ins, allocator);
+        PG_ASSERT(pg_string_eq(actual, expected));
       }
     }
   }
