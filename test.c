@@ -275,6 +275,7 @@ static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
   fclose(process_stdin);
 
   amd64_print_instruction(stderr, ins, false);
+  fprintf(stderr, "\n");
 
   PgProcessExitResult res_wait = pg_process_wait(process, allocator);
   PG_ASSERT(!res_wait.err);
