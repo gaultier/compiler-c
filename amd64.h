@@ -259,9 +259,12 @@ static void amd64_print_operand(FILE *out, Amd64Operand op, bool with_op_size) {
   }
 }
 
-static void amd64_print_instruction(FILE *out, Amd64Instruction ins) {
-  origin_print(out, ins.origin);
-  fprintf(out, ": ");
+static void amd64_print_instruction(FILE *out, Amd64Instruction ins,
+                                    bool with_origin) {
+  if (with_origin) {
+    origin_print(out, ins.origin);
+    fprintf(out, ": ");
+  }
 
   // TODO: Validate operands?
   switch (ins.kind) {
@@ -353,7 +356,7 @@ static void amd64_print_instructions(FILE *out,
 
     Amd64Instruction ins = PG_SLICE_AT(instructions, i);
 
-    amd64_print_instruction(stdout, ins);
+    amd64_print_instruction(stdout, ins, true);
     fprintf(out, "\n");
   }
 }

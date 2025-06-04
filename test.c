@@ -271,21 +271,24 @@ static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
   FILE *process_stdin = fdopen(process.stdin_pipe.fd, "w");
   PG_ASSERT(process_stdin);
 
-  amd64_print_instruction(process_stdin, ins);
+  amd64_print_instruction(process_stdin, ins, false);
   fclose(process_stdin);
 
-  amd64_print_instruction(stderr, ins);
+  amd64_print_instruction(stderr, ins, false);
 
   PgProcessExitResult res_wait = pg_process_wait(process, allocator);
   PG_ASSERT(!res_wait.err);
 
   PG_ASSERT(0 == res_wait.res.exit_status);
   PG_ASSERT(0 == res_wait.res.signal);
-  PG_ASSERT(!res_wait.res.exited);
+  PG_ASSERT(res_wait.res.exited);
   PG_ASSERT(!res_wait.res.signaled);
   PG_ASSERT(!res_wait.res.core_dumped);
   PG_ASSERT(!res_wait.res.stopped);
-  PG_ASSERT(pg_string_is_empty(res_wait.res.stderr_captured));
+  if (!pg_string_is_empty(res_wait.res.stderr_captured)) {
+    PG_ASSERT(pg_string_contains(res_wait.res.stderr_captured,
+                                 PG_S("cannot find entry symbol")));
+  }
   PG_ASSERT(!pg_string_is_empty(res_wait.res.stdout_captured));
 
   return res_wait.res.stdout_captured;
