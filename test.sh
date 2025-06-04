@@ -3,7 +3,7 @@ set -e
 set -f # disable globbing.
 
 LD="${LD:-lld}"
-CFLAGS="${CFLAGS} -fpie -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=${LD}"
+CFLAGS="${CFLAGS} -fpie -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=${LD} -Wno-unused-function"
 LDFLAGS="${LDFLAGS} -Wl,--gc-sections -flto"
 
 CC="${CC:-clang}"

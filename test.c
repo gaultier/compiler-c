@@ -2,6 +2,8 @@
 #include <dirent.h>
 #include <sys/types.h>
 
+#include "amd64.h"
+
 typedef struct {
   PgProcessStatus process_status;
   PgError err;
@@ -242,9 +244,110 @@ static void test_compile_and_run_samples() {
   PG_ASSERT(!failed);
 }
 
-static void test_assembler_mov() {}
+[[nodiscard]]
+static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
+                                         PgAllocator *allocator) {
+
+  PgString args[] = {
+      PG_S("-mllvm"),    PG_S("--x86-asm-syntax=intel"),
+      PG_S("-x"),        PG_S("assembler"),
+      PG_S("-nostdlib"), PG_S("-Wl,--oformat=binary"),
+      PG_S("-o"),        PG_S("/dev/stdout"),
+      PG_S("-"),
+  };
+  PgStringSlice args_slice = {.data = args, .len = PG_STATIC_ARRAY_LEN(args)};
+
+  PgProcessSpawnOptions options = {
+      .stdin_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
+      .stdout_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
+      .stderr_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
+  };
+  PgProcessResult res_spawn =
+      pg_process_spawn(PG_S("clang"), args_slice, options, allocator);
+  PG_ASSERT(0 == res_spawn.err);
+
+  PgProcess process = res_spawn.res;
+
+  FILE *process_stdin = fdopen(process.stdin_pipe.fd, "w");
+  PG_ASSERT(process_stdin);
+
+  amd64_print_instruction(process_stdin, ins);
+  fclose(process_stdin);
+
+  amd64_print_instruction(stderr, ins);
+
+  PgProcessExitResult res_wait = pg_process_wait(process, allocator);
+  PG_ASSERT(!res_wait.err);
+
+  PG_ASSERT(0 == res_wait.res.exit_status);
+  PG_ASSERT(0 == res_wait.res.signal);
+  PG_ASSERT(!res_wait.res.exited);
+  PG_ASSERT(!res_wait.res.signaled);
+  PG_ASSERT(!res_wait.res.core_dumped);
+  PG_ASSERT(!res_wait.res.stopped);
+  PG_ASSERT(pg_string_is_empty(res_wait.res.stderr_captured));
+  PG_ASSERT(!pg_string_is_empty(res_wait.res.stdout_captured));
+
+  return res_wait.res.stdout_captured;
+}
+
+static void test_assembler_amd64_mov() {
+  PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  AsmOperandSize sizes[4] = {
+      ASM_OPERAND_SIZE_1,
+      ASM_OPERAND_SIZE_2,
+      ASM_OPERAND_SIZE_4,
+      ASM_OPERAND_SIZE_8,
+  };
+
+  // Reg-reg.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    for (u8 j = 1; j < 14; j++) {
+      Register reg_b = {j};
+
+      for (u8 k = 0; k < PG_STATIC_ARRAY_LEN(sizes); k++) {
+        AsmOperandSize size_a =
+            PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), k);
+
+        for (u8 l = 0; l < PG_STATIC_ARRAY_LEN(sizes); l++) {
+          AsmOperandSize size_b =
+              PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), l);
+
+          Amd64Instruction ins = {
+              .kind = AMD64_INSTRUCTION_KIND_MOV,
+              .lhs =
+                  (Amd64Operand){
+                      .kind = AMD64_OPERAND_KIND_REGISTER,
+                      .u.reg = reg_a,
+                      .size = size_a,
+                  },
+              .rhs =
+                  (Amd64Operand){
+                      .kind = AMD64_OPERAND_KIND_REGISTER,
+                      .u.reg = reg_b,
+                      .size = size_b,
+                  },
+
+          };
+
+          Pgu8Dyn sb = {0};
+          amd64_encode_instruction_mov(&sb, ins, allocator);
+          Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
+
+          Pgu8Slice expected = test_helper_cc_assemble(ins, allocator);
+          PG_ASSERT(pg_string_eq(actual, expected));
+        }
+      }
+    }
+  }
+}
 
 int main() {
+  test_assembler_amd64_mov();
   test_compile_and_run_samples();
-  test_assembler_mov();
 }

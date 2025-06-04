@@ -143,6 +143,26 @@ static const Architecture amd64_arch = {
     .gprs = amd64_register_allocator_gprs_slice,
 };
 
+[[nodiscard]] static bool amd64_is_reg(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_REGISTER == op.kind;
+}
+
+[[nodiscard]] static bool amd64_is_mem(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == op.kind;
+}
+
+[[nodiscard]] static bool amd64_is_imm(Amd64Operand op) {
+  return AMD64_OPERAND_KIND_IMMEDIATE == op.kind;
+}
+
+[[nodiscard]] static bool amd64_is_reg8(Amd64Operand op) {
+  return amd64_is_reg(op) && ASM_OPERAND_SIZE_1 == op.size;
+}
+
+[[nodiscard]] static bool amd64_has_displacement(Amd64Operand op) {
+  return amd64_is_mem(op) && op.u.effective_address.displacement;
+}
+
 static void amd64_print_register(Register reg, AsmOperandSize size) {
   printf("%s", amd64_register_to_string[reg.value][size]);
 }
@@ -238,99 +258,100 @@ static void amd64_print_operand(Amd64Operand op, bool with_op_size) {
   }
 }
 
+static void amd64_print_instruction(FILE *out, Amd64Instruction ins) {
+  origin_print(out, ins.origin);
+  fprintf(out, ": ");
+
+  // TODO: Validate operands?
+  switch (ins.kind) {
+  case AMD64_INSTRUCTION_KIND_NONE:
+    PG_ASSERT(0);
+  case AMD64_INSTRUCTION_KIND_UD2:
+    fprintf(out, "ud2 ");
+    break;
+  case AMD64_INSTRUCTION_KIND_MOV:
+    fprintf(out, "mov ");
+    break;
+  case AMD64_INSTRUCTION_KIND_ADD:
+    fprintf(out, "add ");
+    break;
+  case AMD64_INSTRUCTION_KIND_SUB:
+    fprintf(out, "sub ");
+    break;
+  case AMD64_INSTRUCTION_KIND_LEA:
+    fprintf(out, "lea ");
+    break;
+  case AMD64_INSTRUCTION_KIND_RET:
+    fprintf(out, "ret ");
+    break;
+  case AMD64_INSTRUCTION_KIND_SYSCALL:
+    fprintf(out, "syscall ");
+    break;
+  case AMD64_INSTRUCTION_KIND_PUSH:
+    fprintf(out, "push ");
+    break;
+  case AMD64_INSTRUCTION_KIND_POP:
+    fprintf(out, "pop ");
+    break;
+  case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
+    // The operand carries the actual label.
+    break;
+  case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
+    PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
+    PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
+
+    fprintf(out, "je ");
+    break;
+  case AMD64_INSTRUCTION_KIND_JMP_IF_NOT_EQ:
+    PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
+    PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
+
+    fprintf(out, "jne ");
+    break;
+  case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
+    PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
+    PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
+
+    fprintf(out, "jz ");
+    break;
+  case AMD64_INSTRUCTION_KIND_JMP:
+    fprintf(out, "jmp ");
+    break;
+  case AMD64_INSTRUCTION_KIND_CMP:
+    fprintf(out, "cmp ");
+    break;
+  case AMD64_INSTRUCTION_KIND_SET_IF_EQ:
+    fprintf(out, "sete ");
+    break;
+  default:
+    PG_ASSERT(0);
+    break;
+  }
+
+  bool has_effective_address = (amd64_is_mem(ins.lhs) || amd64_is_mem(ins.rhs));
+  if (AMD64_OPERAND_KIND_NONE != ins.lhs.kind) {
+    amd64_print_operand(ins.lhs, has_effective_address);
+  }
+
+  if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
+    PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
+
+    fprintf(out, ", ");
+    amd64_print_operand(ins.rhs, has_effective_address);
+  }
+
+  if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
+    fprintf(out, ":");
+  }
+}
+
 static void amd64_print_instructions(Amd64InstructionDyn instructions) {
   for (u64 i = 0; i < instructions.len; i++) {
     printf("[%" PRIu64 "] ", i);
 
     Amd64Instruction ins = PG_SLICE_AT(instructions, i);
 
-    origin_print(stdout, ins.origin);
-    printf(": ");
-
-    // TODO: Validate operands?
-    switch (ins.kind) {
-    case AMD64_INSTRUCTION_KIND_NONE:
-      PG_ASSERT(0);
-    case AMD64_INSTRUCTION_KIND_UD2:
-      printf("ud2 ");
-      break;
-    case AMD64_INSTRUCTION_KIND_MOV:
-      printf("mov ");
-      break;
-    case AMD64_INSTRUCTION_KIND_ADD:
-      printf("add ");
-      break;
-    case AMD64_INSTRUCTION_KIND_SUB:
-      printf("sub ");
-      break;
-    case AMD64_INSTRUCTION_KIND_LEA:
-      printf("lea ");
-      break;
-    case AMD64_INSTRUCTION_KIND_RET:
-      printf("ret ");
-      break;
-    case AMD64_INSTRUCTION_KIND_SYSCALL:
-      printf("syscall ");
-      break;
-    case AMD64_INSTRUCTION_KIND_PUSH:
-      printf("push ");
-      break;
-    case AMD64_INSTRUCTION_KIND_POP:
-      printf("pop ");
-      break;
-    case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
-      // The operand carries the actual label.
-      break;
-    case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
-      PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
-
-      printf("je ");
-      break;
-    case AMD64_INSTRUCTION_KIND_JMP_IF_NOT_EQ:
-      PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
-
-      printf("jne ");
-      break;
-    case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
-      PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
-
-      printf("jz ");
-      break;
-    case AMD64_INSTRUCTION_KIND_JMP:
-      printf("jmp ");
-      break;
-    case AMD64_INSTRUCTION_KIND_CMP:
-      printf("cmp ");
-      break;
-    case AMD64_INSTRUCTION_KIND_SET_IF_EQ:
-      printf("sete ");
-      break;
-    default:
-      PG_ASSERT(0);
-      break;
-    }
-
-    bool has_effective_address =
-        (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.lhs.kind ||
-         AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind);
-    if (AMD64_OPERAND_KIND_NONE != ins.lhs.kind) {
-      amd64_print_operand(ins.lhs, has_effective_address);
-    }
-
-    if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
-      PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
-
-      printf(", ");
-      amd64_print_operand(ins.rhs, has_effective_address);
-    }
-
-    if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
-      printf(":");
-    }
-
+    amd64_print_instruction(stdout, ins);
     printf("\n");
   }
 }
@@ -403,26 +424,6 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
   if (AMD64_REX_DEFAULT != rex) {
     *PG_DYN_PUSH(sb, allocator) = rex;
   }
-}
-
-[[nodiscard]] static bool amd64_is_reg(Amd64Operand op) {
-  return AMD64_OPERAND_KIND_REGISTER == op.kind;
-}
-
-[[nodiscard]] static bool amd64_is_mem(Amd64Operand op) {
-  return AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == op.kind;
-}
-
-[[nodiscard]] static bool amd64_is_imm(Amd64Operand op) {
-  return AMD64_OPERAND_KIND_IMMEDIATE == op.kind;
-}
-
-[[nodiscard]] static bool amd64_is_reg8(Amd64Operand op) {
-  return amd64_is_reg(op) && ASM_OPERAND_SIZE_1 == op.size;
-}
-
-[[nodiscard]] static bool amd64_has_displacement(Amd64Operand op) {
-  return amd64_is_mem(op) && op.u.effective_address.displacement;
 }
 
 #if 0
