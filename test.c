@@ -153,7 +153,7 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
 }
 
 // TODO: Extract OS-independent API into cstd.
-int main() {
+static void test_compile_and_run_samples() {
 
   bool failed = false;
   {
@@ -239,5 +239,12 @@ int main() {
     }
   }
 
-  return failed;
+  PG_ASSERT(!failed);
+}
+
+static void test_assembler_mov() {}
+
+int main() {
+  test_compile_and_run_samples();
+  test_assembler_mov();
 }
