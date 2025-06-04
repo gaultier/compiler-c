@@ -6,12 +6,12 @@ typedef struct {
   PgProcessStatus process_status;
   PgError err;
   PgString file_path;
-} TestResult;
+} CompileAndRunResult;
 
 [[nodiscard]]
-static TestResult test_run(PgString dir_name, PgString file_name,
-                           bool err_expected) {
-  TestResult res = {0};
+static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
+                                    bool err_expected) {
+  CompileAndRunResult res = {0};
 
   PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
@@ -178,7 +178,8 @@ int main() {
       }
 
       bool err_expected = false;
-      TestResult test_res = test_run(dir_name, file_name, err_expected);
+      CompileAndRunResult test_res =
+          test_run(dir_name, file_name, err_expected);
       if (!test_res.err) {
         printf("OK %.*s\n", (i32)file_name.len, file_name.data);
         continue;
@@ -217,7 +218,8 @@ int main() {
       }
 
       bool err_expected = true;
-      TestResult test_res = test_run(dir_name, file_name, err_expected);
+      CompileAndRunResult test_res =
+          test_run(dir_name, file_name, err_expected);
       if (!test_res.err) {
         printf("OK %.*s\n", (i32)test_res.file_path.len,
                test_res.file_path.data);
