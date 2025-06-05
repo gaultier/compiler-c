@@ -296,7 +296,7 @@ static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
 }
 
 static void test_assembler_amd64_mov() {
-  PgArena arena = pg_arena_make_from_virtual_mem(1 * PG_MiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
