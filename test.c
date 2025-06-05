@@ -295,10 +295,55 @@ static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
   return res_wait.res.stdout_captured;
 }
 
+typedef struct {
+  Register reg_a, reg_b;
+  AsmOperandSize size;
+  PgAllocator *allocator;
+} TestAssemblerTask;
+
+static int test_helper_task_assembler_run(void *data) {
+  TestAssemblerTask *task = data;
+  PG_ASSERT(task);
+  PG_ASSERT(task->allocator);
+
+  printf("task size=%u reg_a=%u reg_b=%u\n", task->size, task->reg_a.value,
+         task->reg_b.value);
+
+  Amd64Instruction ins = {
+      .kind = AMD64_INSTRUCTION_KIND_MOV,
+      .lhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .u.reg = task->reg_a,
+              .size = task->size,
+          },
+      .rhs =
+          (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .u.reg = task->reg_b,
+              .size = task->size,
+          },
+
+  };
+
+  Pgu8Dyn sb = {0};
+  amd64_encode_instruction_mov(&sb, ins, task->allocator);
+  Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
+
+  Pgu8Slice expected = test_helper_cc_assemble(ins, task->allocator);
+  PG_ASSERT(pg_string_eq(actual, expected));
+
+  return 0;
+}
+
 static void test_assembler_amd64_mov() {
-  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_MiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  PgThreadPoolResult pool_res = pg_thread_pool_make(4 /* FIXME */, allocator);
+  PG_ASSERT(!pool_res.err);
+  PgThreadPool pool = pool_res.res;
 
   AsmOperandSize sizes[4] = {
       ASM_OPERAND_SIZE_1,
@@ -318,32 +363,19 @@ static void test_assembler_amd64_mov() {
         AsmOperandSize size =
             PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), k);
 
-        Amd64Instruction ins = {
-            .kind = AMD64_INSTRUCTION_KIND_MOV,
-            .lhs =
-                (Amd64Operand){
-                    .kind = AMD64_OPERAND_KIND_REGISTER,
-                    .u.reg = reg_a,
-                    .size = size,
-                },
-            .rhs =
-                (Amd64Operand){
-                    .kind = AMD64_OPERAND_KIND_REGISTER,
-                    .u.reg = reg_b,
-                    .size = size,
-                },
+        TestAssemblerTask *task = PG_NEW(TestAssemblerTask, allocator);
+        task->reg_a = reg_a;
+        task->reg_b = reg_b;
+        task->size = size;
+        task->allocator = pg_heap_allocator();
 
-        };
-
-        Pgu8Dyn sb = {0};
-        amd64_encode_instruction_mov(&sb, ins, allocator);
-        Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
-
-        Pgu8Slice expected = test_helper_cc_assemble(ins, allocator);
-        PG_ASSERT(pg_string_eq(actual, expected));
+        pg_thread_pool_enqueue_task(&pool, test_helper_task_assembler_run, task,
+                                    allocator);
       }
     }
   }
+
+  pg_thread_pool_wait(&pool);
 }
 
 int main() {

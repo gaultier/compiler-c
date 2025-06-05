@@ -22,6 +22,9 @@ case $1 in
   debug_sanitizer)
     CFLAGS="${CFLAGS} -O0 -fsanitize=address,undefined -fsanitize-trap=all"
     ;;
+  debug_thread_sanitizer)
+    CFLAGS="${CFLAGS} -O0 -fsanitize=thread,undefined -fsanitize-trap=all"
+    ;;
   release)
     CFLAGS="${CFLAGS} -O3"
     ;;
