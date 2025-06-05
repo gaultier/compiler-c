@@ -411,6 +411,13 @@ static void amd64_encode_instruction_ud2(Pgu8Dyn *sb, PgAllocator *allocator) {
   *PG_DYN_PUSH(sb, allocator) = opcode2;
 }
 
+static void amd64_encode_16bits_prefix(Pgu8Dyn *sb, Amd64Operand op,
+                                       PgAllocator *allocator) {
+  if (ASM_OPERAND_SIZE_2 == op.size) {
+    *PG_DYN_PUSH(sb, allocator) = 0x66;
+  }
+}
+
 static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
                              bool upper_register_modrm_rm_field, bool field_w,
                              PgAllocator *allocator) {
@@ -525,6 +532,11 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     PG_ASSERT(0 != ins.lhs.size);
 
     Register rhs = ins.rhs.u.reg;
+
+    // 16 bits prefix.
+    {
+      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+    }
 
     // Rex.
     {
