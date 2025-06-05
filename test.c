@@ -267,6 +267,7 @@ static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
   PG_ASSERT(0 == res_spawn.err);
 
   PgProcess process = res_spawn.res;
+  PG_ASSERT(process.stdin_pipe.fd);
 
   FILE *process_stdin = fdopen(process.stdin_pipe.fd, "w");
   PG_ASSERT(process_stdin);
