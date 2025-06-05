@@ -330,10 +330,12 @@ static int test_helper_task_assembler_run(void *data) {
   amd64_encode_instruction_mov(&sb, ins, task->allocator);
   Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
 
+  printf("running cc\n");
   Pgu8Slice expected = test_helper_cc_assemble(ins, task->allocator);
+  printf("ran cc\n");
   PG_ASSERT(pg_string_eq(actual, expected));
 
-  return 0;
+  return thrd_success;
 }
 
 static void test_assembler_amd64_mov() {
@@ -343,7 +345,7 @@ static void test_assembler_amd64_mov() {
 
   PgThreadPoolResult pool_res = pg_thread_pool_make(4 /* FIXME */, allocator);
   PG_ASSERT(!pool_res.err);
-  PgThreadPool pool = pool_res.res;
+  PgThreadPool *pool = pool_res.pool;
 
   AsmOperandSize sizes[4] = {
       ASM_OPERAND_SIZE_1,
@@ -369,13 +371,13 @@ static void test_assembler_amd64_mov() {
         task->size = size;
         task->allocator = pg_heap_allocator();
 
-        pg_thread_pool_enqueue_task(&pool, test_helper_task_assembler_run, task,
+        pg_thread_pool_enqueue_task(pool, test_helper_task_assembler_run, task,
                                     allocator);
       }
     }
   }
 
-  pg_thread_pool_wait(&pool);
+  pg_thread_pool_wait(pool);
 }
 
 int main() {
