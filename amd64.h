@@ -389,6 +389,11 @@ static bool amd64_is_register_64_bits_only(Register reg) {
   return amd64_encode_register_value(reg) > 0b111;
 }
 
+[[nodiscard]]
+static bool amd64_is_operand_register_64_bits_only(Amd64Operand op) {
+  return amd64_is_reg(op) && amd64_is_register_64_bits_only(op.u.reg);
+}
+
 static const u8 AMD64_REX_DEFAULT = 0b0100'0000;
 // Enable use of 64 operand size.
 static const u8 AMD64_REX_MASK_W = 0b0000'1000;
@@ -418,9 +423,35 @@ static void amd64_encode_16bits_prefix(Pgu8Dyn *sb, Amd64Operand op,
   }
 }
 
+[[nodiscard]] static bool amd64_is_rex_needed(Amd64Operand lhs,
+                                              Amd64Operand rhs) {
+  PG_ASSERT(lhs.size == rhs.size);
+
+  bool is_lhs_reg_spl_bpl_sil_dil =
+      ASM_OPERAND_SIZE_1 == lhs.size && amd64_is_reg(lhs) &&
+      (AMD64_RSP == lhs.u.reg.value || AMD64_RBP == lhs.u.reg.value ||
+       AMD64_RSI == lhs.u.reg.value || AMD64_RDI == lhs.u.reg.value);
+
+  bool is_rhs_reg_spl_bpl_sil_dil =
+      ASM_OPERAND_SIZE_1 == rhs.size && amd64_is_reg(rhs) &&
+      (AMD64_RSP == rhs.u.reg.value || AMD64_RBP == rhs.u.reg.value ||
+       AMD64_RSI == rhs.u.reg.value || AMD64_RDI == rhs.u.reg.value);
+
+  return ASM_OPERAND_SIZE_8 == lhs.size ||
+         amd64_is_operand_register_64_bits_only(lhs) ||
+         amd64_is_operand_register_64_bits_only(rhs) ||
+         is_lhs_reg_spl_bpl_sil_dil || is_rhs_reg_spl_bpl_sil_dil;
+}
+
 static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
                              bool upper_register_modrm_rm_field, bool field_w,
+                             Amd64Operand lhs, Amd64Operand rhs,
                              PgAllocator *allocator) {
+  PG_ASSERT(lhs.size == rhs.size);
+  if (!amd64_is_rex_needed(lhs, rhs)) {
+    return;
+  }
+
   u8 rex = AMD64_REX_DEFAULT;
 
   if (upper_registers_modrm_reg_field) {
@@ -433,9 +464,7 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
     rex |= AMD64_REX_MASK_W;
   }
 
-  if (AMD64_REX_DEFAULT != rex) {
-    *PG_DYN_PUSH(sb, allocator) = rex;
-  }
+  *PG_DYN_PUSH(sb, allocator) = rex;
 }
 
 #if 0
@@ -541,11 +570,10 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     // Rex.
     {
       bool modrm_reg_field = amd64_is_register_64_bits_only(rhs);
-      bool modrm_rm_field = amd64_is_reg(ins.lhs)
-                                ? amd64_is_register_64_bits_only(ins.lhs.u.reg)
-                                : false;
+      bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
       bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
-      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, allocator);
+      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                       ins.rhs, allocator);
     }
 
     // Opcode.
