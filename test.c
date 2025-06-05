@@ -344,7 +344,7 @@ static void test_assembler_amd64_mov() {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgThreadPoolResult pool_res = pg_thread_pool_make(4 /* FIXME */, allocator);
+  PgThreadPoolResult pool_res = pg_thread_pool_make(1 /* FIXME */, allocator);
   PG_ASSERT(!pool_res.err);
   PgThreadPool *pool = pool_res.pool;
 
