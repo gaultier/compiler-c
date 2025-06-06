@@ -245,8 +245,8 @@ static void test_compile_and_run_samples() {
 }
 
 [[nodiscard]]
-static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
-                                         PgAllocator *allocator) {
+static PgProcess test_helper_cc_assemble_spawn(Amd64Instruction ins,
+                                               PgAllocator *allocator) {
 
   PgString args[] = {
       PG_S("-mllvm"),    PG_S("--x86-asm-syntax=intel"),
@@ -278,75 +278,54 @@ static Pgu8Slice test_helper_cc_assemble(Amd64Instruction ins,
   amd64_print_instruction(stderr, ins, false);
   fprintf(stderr, "\n");
 
-  PgProcessExitResult res_wait = pg_process_wait(process, allocator);
-  PG_ASSERT(!res_wait.err);
-
-  PG_ASSERT(0 == res_wait.res.exit_status);
-  PG_ASSERT(0 == res_wait.res.signal);
-  PG_ASSERT(res_wait.res.exited);
-  PG_ASSERT(!res_wait.res.signaled);
-  PG_ASSERT(!res_wait.res.core_dumped);
-  PG_ASSERT(!res_wait.res.stopped);
-  if (!pg_string_is_empty(res_wait.res.stderr_captured)) {
-    PG_ASSERT(pg_string_contains(res_wait.res.stderr_captured,
-                                 PG_S("cannot find entry symbol")));
-  }
-  PG_ASSERT(!pg_string_is_empty(res_wait.res.stdout_captured));
-
-  return res_wait.res.stdout_captured;
+  return process;
 }
 
 typedef struct {
-  Register reg_a, reg_b;
-  AsmOperandSize size;
+  Pgu8Slice actual;
+  PgString actual_human_readable;
+  PgAioEventLoop *loop;
+  PgProcess process;
   PgAllocator *allocator;
-} TestAssemblerTask;
+} TestAssemblerData;
 
-static int test_helper_task_assembler_run(void *data) {
-  TestAssemblerTask *task = data;
-  PG_ASSERT(task);
-  PG_ASSERT(task->allocator);
+[[nodiscard]]
+static PgError test_helper_cc_assemble_check_output(PgFileDescriptor file,
+                                                    PgAioEventFilter filter,
+                                                    void *vdata) {
 
-  printf("task size=%u reg_a=%u reg_b=%u\n", task->size, task->reg_a.value,
-         task->reg_b.value);
-
-  Amd64Instruction ins = {
-      .kind = AMD64_INSTRUCTION_KIND_MOV,
-      .lhs =
-          (Amd64Operand){
-              .kind = AMD64_OPERAND_KIND_REGISTER,
-              .u.reg = task->reg_a,
-              .size = task->size,
-          },
-      .rhs =
-          (Amd64Operand){
-              .kind = AMD64_OPERAND_KIND_REGISTER,
-              .u.reg = task->reg_b,
-              .size = task->size,
-          },
-
-  };
-
-  Pgu8Dyn sb = {0};
-  amd64_encode_instruction_mov(&sb, ins, task->allocator);
-  Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
-
-  printf("running cc\n");
-  Pgu8Slice expected = test_helper_cc_assemble(ins, task->allocator);
   printf("ran cc\n");
-  PG_ASSERT(pg_string_eq(actual, expected));
+  PG_ASSERT(vdata);
+  TestAssemblerData *data = vdata;
+  PG_ASSERT(data->loop);
+  PG_ASSERT(PG_AIO_EVENT_FILTER_READ == filter);
+  PG_ASSERT(file.fd);
 
-  return thrd_success;
+  u8 read_buf[1024] = {0};
+  Pgu8Slice read_slice = {.data = read_buf,
+                          .len = PG_STATIC_ARRAY_LEN(read_buf)};
+  PgU64Result read_res = pg_file_read(file, read_slice);
+  PG_ASSERT(!read_res.err);
+  PG_ASSERT(read_res.res);
+
+  read_slice.len = read_res.res;
+
+  PG_ASSERT(pg_string_eq(data->actual, read_slice));
+
+  (void)pg_aio_event_loop_unregister(data->loop, file);
+  (void)pg_process_wait(data->process, data->allocator);
+
+  return (PgError){0};
 }
 
 static void test_assembler_amd64_mov() {
-  PgArena arena = pg_arena_make_from_virtual_mem(4 * PG_MiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  PgThreadPoolResult pool_res = pg_thread_pool_make(1 /* FIXME */, allocator);
-  PG_ASSERT(!pool_res.err);
-  PgThreadPool *pool = pool_res.pool;
+  PgAioEventLoopResult loop_res = pg_aio_event_loop_make();
+  PG_ASSERT(!loop_res.err);
+  PgAioEventLoop loop = loop_res.res;
 
   AsmOperandSize sizes[4] = {
       ASM_OPERAND_SIZE_1,
@@ -366,19 +345,49 @@ static void test_assembler_amd64_mov() {
         AsmOperandSize size =
             PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), k);
 
-        TestAssemblerTask *task = PG_NEW(TestAssemblerTask, allocator);
-        task->reg_a = reg_a;
-        task->reg_b = reg_b;
-        task->size = size;
-        task->allocator = pg_heap_allocator();
+        Amd64Instruction ins = {
+            .kind = AMD64_INSTRUCTION_KIND_MOV,
+            .lhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_a,
+                    .size = size,
+                },
+            .rhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_b,
+                    .size = size,
+                },
 
-        pg_thread_pool_enqueue_task(pool, test_helper_task_assembler_run, task,
-                                    allocator);
+        };
+
+        Pgu8Dyn sb = {0};
+        amd64_encode_instruction_mov(&sb, ins, allocator);
+        Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
+
+        printf("running cc\n");
+        PgProcess proc = test_helper_cc_assemble_spawn(ins, allocator);
+
+        TestAssemblerData *data = PG_NEW(TestAssemblerData, allocator);
+        data->actual = actual;
+        data->actual_human_readable = PG_S("todo");
+        data->loop = &loop;
+        data->process = proc;
+        data->allocator = allocator;
+
+        PgError err = pg_aio_event_loop_register(
+            &loop, PG_AIO_EVENT_FILTER_READ, proc.stdout_pipe,
+            test_helper_cc_assemble_check_output, data, allocator);
+        PG_ASSERT(!err);
       }
     }
+    PgError err = pg_aio_event_loop_wait(&loop, 1000);
+    PG_ASSERT(!err);
   }
 
-  pg_thread_pool_wait(pool);
+  PgError err = pg_aio_event_loop_wait(&loop, 1000);
+  PG_ASSERT(!err);
 }
 
 int main() {
