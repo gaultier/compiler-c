@@ -1,3 +1,4 @@
+- [ ] proper event loop cleanup of tasks and fds
 - [x] real test runner
   + [x] Spawn compiler in subprocess
   + [x] Capture stdout in memory. Only print on test assertion error.
