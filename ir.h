@@ -259,11 +259,14 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata,
   }
 }
 
-static void metadata_print_var(Metadata meta) {
+static void metadata_print_var(Metadata meta, PgWriter *w,
+                               PgAllocator *allocator) {
   if (meta.identifier.len) {
-    printf("%.*s", (i32)meta.identifier.len, meta.identifier.data);
+    (void)pg_writer_write_string_full(w, meta.identifier, allocator);
   } else {
-    printf("v%u", meta.virtual_register.value);
+    (void)pg_writer_write_string_full(w, PG_S("v"), allocator);
+    (void)pg_writer_write_u64_as_string(w, meta.virtual_register.value,
+                                        allocator);
   }
 }
 
@@ -313,7 +316,6 @@ static void metadata_print_meta(Metadata meta, PgWriter *w,
       break;
     case MEMORY_LOCATION_KIND_STACK: {
       (void)pg_writer_write_string_full(w, PG_S("[sp"), allocator);
-      printf("[sp");
       i32 offset = meta.memory_location.u.base_pointer_offset;
       (void)pg_writer_write_string_full(w, PG_S("-"), allocator);
       (void)pg_writer_write_u64_as_string(w, (u64)offset, allocator);

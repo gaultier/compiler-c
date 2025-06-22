@@ -66,9 +66,14 @@ static InterferenceGraph reg_build_interference_graph(MetadataDyn metadata,
 }
 
 static void reg_print_interference_graph(InterferenceGraph graph,
-                                         MetadataDyn metadata) {
+                                         MetadataDyn metadata,
+                                         PgWriter *writer_internals,
+                                         PgAllocator *allocator) {
 
-  printf("nodes_count=%lu\n\n", graph.nodes_count);
+  (void)pg_writer_write_string_full(writer_internals, PG_S("nodes_count="),
+                                    allocator);
+  (void)pg_writer_write_u64_as_string(writer_internals, graph.nodes_count,
+                                      allocator);
 
   for (u64 row = 0; row < graph.nodes_count; row++) {
     for (u64 col = 0; col < row; col++) {
@@ -79,10 +84,12 @@ static void reg_print_interference_graph(InterferenceGraph graph,
 
       Metadata a_meta = PG_SLICE_AT(metadata, row);
       Metadata b_meta = PG_SLICE_AT(metadata, col);
-      metadata_print_var(a_meta);
-      printf(" -> ");
-      metadata_print_var(b_meta);
-      printf("\n");
+      metadata_print_var(a_meta, writer_internals, allocator);
+      (void)pg_writer_write_string_full(writer_internals, PG_S(" -> "),
+                                        allocator);
+      metadata_print_var(b_meta, writer_internals, allocator);
+      (void)pg_writer_write_string_full(writer_internals, PG_S("\n"),
+                                        allocator);
     }
   }
 }

@@ -594,7 +594,8 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
     if (verbose) {
       fprintf(stdout, "\n------------ Interference graph %.*s ------------\n",
               (i32)fn_def.name.len, fn_def.name.data);
-      reg_print_interference_graph(fn_def.interference_graph, fn_def.metadata);
+      reg_print_interference_graph(fn_def.interference_graph, fn_def.metadata,
+                                   writer_internals, allocator);
     }
 
     asm_sanity_check_interference_graph(fn_def.interference_graph,
