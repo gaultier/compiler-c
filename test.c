@@ -249,10 +249,15 @@ static PgProcess test_helper_cc_assemble_spawn(Amd64Instruction ins,
                                                PgAllocator *allocator) {
 
   PgString args[] = {
-      PG_S("-mllvm"),    PG_S("--x86-asm-syntax=intel"),
-      PG_S("-x"),        PG_S("assembler"),
-      PG_S("-nostdlib"), PG_S("-Wl,--oformat=binary"),
-      PG_S("-o"),        PG_S("/dev/stdout"),
+      PG_S("-mllvm"),
+      PG_S("--x86-asm-syntax=intel"),
+      PG_S("-x"),
+      PG_S("assembler"),
+      PG_S("-O0"),
+      PG_S("-nostdlib"),
+      PG_S("-Wl,--oformat=binary"),
+      PG_S("-o"),
+      PG_S("/dev/stdout"),
       PG_S("-"),
   };
   PgStringSlice args_slice = {.data = args, .len = PG_STATIC_ARRAY_LEN(args)};
