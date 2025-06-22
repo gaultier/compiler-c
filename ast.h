@@ -141,64 +141,72 @@ static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
   *PG_DYN_PUSH(&parser->nodes, allocator) = node;
 }
 
-static void ast_print_node(AstNode node) {
-  origin_print(stdout, node.origin);
-  putchar(' ');
+static void ast_print_node(AstNode node, PgWriter *w, PgAllocator *allocator) {
+  origin_write(w, node.origin, allocator);
+  (void)pg_writer_write_string_full(w, PG_S(" "), allocator);
 
   switch (node.kind) {
   case AST_NODE_KIND_BOOL:
-    printf("Bool %" PRIu64, node.u.n64);
+    (void)pg_writer_write_string_full(w, PG_S("Bool "), allocator);
+    (void)pg_writer_write_u64_as_string(w, node.u.n64, allocator);
     break;
   case AST_NODE_KIND_NUMBER:
-    printf("U64 %" PRIu64, node.u.n64);
+    (void)pg_writer_write_string_full(w, PG_S("U64 "), allocator);
+    (void)pg_writer_write_u64_as_string(w, node.u.n64, allocator);
     break;
   case AST_NODE_KIND_IDENTIFIER:
-    printf("Identifier %.*s", (i32)node.u.s.len, node.u.s.data);
+    (void)pg_writer_write_string_full(w, PG_S("Identifier "), allocator);
+    (void)pg_writer_write_string_full(w, node.u.s, allocator);
     break;
   case AST_NODE_KIND_ADDRESS_OF:
-    printf("AddressOf");
+    (void)pg_writer_write_string_full(w, PG_S("AddressOf"), allocator);
     break;
   case AST_NODE_KIND_BUILTIN_ASSERT:
-    printf("Assert");
+    (void)pg_writer_write_string_full(w, PG_S("Assert"), allocator);
     break;
   case AST_NODE_KIND_BUILTIN_PRINTLN:
-    printf("Println");
+    (void)pg_writer_write_string_full(w, PG_S("Println"), allocator);
     break;
   case AST_NODE_KIND_ADD:
-    printf("Add");
+    (void)pg_writer_write_string_full(w, PG_S("Add"), allocator);
     break;
   case AST_NODE_KIND_COMPARISON:
-    printf("Comparison");
+    (void)pg_writer_write_string_full(w, PG_S("Comparison"), allocator);
     break;
   case AST_NODE_KIND_SYSCALL: {
     PG_ASSERT(node.u.stack_args_count > 0);
     PG_ASSERT(node.u.stack_args_count <= max_syscall_args_count);
-    printf("Syscall(%u)", node.u.stack_args_count);
+    (void)pg_writer_write_string_full(w, PG_S("Syscall["), allocator);
+    (void)pg_writer_write_u64_as_string(w, node.u.stack_args_count, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
   } break;
   case AST_NODE_KIND_BLOCK: {
-    printf("Block");
+    (void)pg_writer_write_string_full(w, PG_S("Block"), allocator);
   } break;
   case AST_NODE_KIND_VAR_DEFINITION:
-    printf("VarDef %.*s", (i32)node.u.s.len, node.u.s.data);
+    (void)pg_writer_write_string_full(w, PG_S("VarDef "), allocator);
+    (void)pg_writer_write_string_full(w, node.u.s, allocator);
     break;
   case AST_NODE_KIND_BRANCH:
-    printf("Branch");
+    (void)pg_writer_write_string_full(w, PG_S("Branch"), allocator);
     break;
   case AST_NODE_KIND_JUMP:
-    printf("Jump");
+    (void)pg_writer_write_string_full(w, PG_S("Jump"), allocator);
     break;
   case AST_NODE_KIND_FN_DEFINITION:
-    printf("FnDefinition %.*s", (i32)node.u.s.len, node.u.s.data);
+    (void)pg_writer_write_string_full(w, PG_S("FnDef "), allocator);
+    (void)pg_writer_write_string_full(w, node.u.s, allocator);
     break;
   case AST_NODE_KIND_LABEL_DEFINITION:
-    printf("LabelDefinition %.*s", (i32)node.u.label.value.len,
-           node.u.label.value.data);
+    (void)pg_writer_write_string_full(w, PG_S("LabelDef "), allocator);
+    (void)pg_writer_write_string_full(w, node.u.label.value, allocator);
     break;
   case AST_NODE_KIND_LABEL:
-    printf("Label %.*s", (i32)node.u.label.value.len, node.u.label.value.data);
+    (void)pg_writer_write_string_full(w, PG_S("Label "), allocator);
+    (void)pg_writer_write_string_full(w, node.u.label.value, allocator);
     break;
   case AST_NODE_KIND_BUILTIN_TRAP:
-    printf("Trap");
+    (void)pg_writer_write_string_full(w, PG_S("Trap"), allocator);
     break;
   case AST_NODE_KIND_NONE:
   default:
@@ -206,12 +214,16 @@ static void ast_print_node(AstNode node) {
   }
 }
 
-static void ast_print_nodes(AstNodeDyn nodes) {
+static void ast_print_nodes(AstNodeDyn nodes, PgWriter *w,
+                            PgAllocator *allocator) {
   for (u32 i = 0; i < nodes.len; i++) {
-    printf("[%u] ", i);
+    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_u64_as_string(w, i, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+
     AstNode node = PG_SLICE_AT(nodes, i);
-    ast_print_node(node);
-    printf("\n");
+    ast_print_node(node, w, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
 }
 

@@ -58,7 +58,8 @@ int main(int argc, char *argv[]) {
   PgLogger logger = pg_log_make_logger_stdout_logfmt(log_level);
 
   PgWriter writer_internals =
-      pg_writer_make_from_file_descriptor(pg_os_stdout());
+      cli_opts.verbose ? pg_writer_make_from_file_descriptor(pg_os_stdout())
+                       : pg_writer_make_noop();
 
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
@@ -81,11 +82,10 @@ int main(int argc, char *argv[]) {
   Lexer lexer = lex_make_lexer(file_path, file_read_res.res, &errors);
   lex(&lexer, allocator);
 
-  if (cli_opts.verbose) {
-    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "lex tokens",
-           pg_log_c_u64("count", lexer.tokens.len));
-    lex_tokens_print(lexer.tokens, &writer_internals, allocator);
-  }
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "lex tokens",
+         pg_log_c_u64("count", lexer.tokens.len));
+
+  lex_tokens_print(lexer.tokens, &writer_internals, allocator);
 
   AstParser parser = {
       .lexer = lexer,
@@ -102,11 +102,9 @@ int main(int argc, char *argv[]) {
     u32 iterations_max = 10;
 
     for (u32 i = 0; i < iterations_max; i++) {
-      if (cli_opts.verbose) {
-        pg_log(&logger, PG_LOG_LEVEL_DEBUG, "constant fold before",
-               pg_log_c_u64("iteration", i));
-        ast_print_nodes(nodes_input);
-      }
+      pg_log(&logger, PG_LOG_LEVEL_DEBUG, "constant fold before",
+             pg_log_c_u64("iteration", i));
+      ast_print_nodes(nodes_input, &writer_internals, allocator);
 
       nodes_output.len = 0;
 
@@ -117,11 +115,10 @@ int main(int argc, char *argv[]) {
       PG_ASSERT(nodes_output.len < nodes_input.len);
 
       nodes_input = nodes_output;
-      if (cli_opts.verbose) {
-        pg_log(&logger, PG_LOG_LEVEL_DEBUG, "constant fold after",
-               pg_log_c_u64("iteration", i));
-        ast_print_nodes(nodes_input);
-      }
+
+      pg_log(&logger, PG_LOG_LEVEL_DEBUG, "constant fold after",
+             pg_log_c_u64("iteration", i));
+      ast_print_nodes(nodes_input, &writer_internals, allocator);
     }
   }
 
