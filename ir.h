@@ -272,12 +272,6 @@ static void metadata_print_var(Metadata meta, PgWriter *w,
 
 static void metadata_print_meta(Metadata meta, PgWriter *w,
                                 PgAllocator *allocator) {
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[9m"); // Strikethrough.
-  }
-#endif
-
   (void)pg_writer_write_string_full(w, PG_S("identifier=`"), allocator);
   (void)pg_writer_write_string_full(w, meta.identifier, allocator);
   (void)pg_writer_write_string_full(w, PG_S("` "), allocator);
@@ -320,22 +314,11 @@ static void metadata_print_meta(Metadata meta, PgWriter *w,
       (void)pg_writer_write_string_full(w, PG_S("-"), allocator);
       (void)pg_writer_write_u64_as_string(w, (u64)offset, allocator);
     } break;
-#if 0
-    case MEMORY_LOCATION_KIND_MEMORY:
-      printf("%#lx", loc.memory_address);
-      break;
-#endif
     case MEMORY_LOCATION_KIND_NONE:
     default:
       PG_ASSERT(0);
     }
   }
-
-#if 0
-  if (meta.tombstone) {
-    printf("\x1B[0m"); // Strikethrough.
-  }
-#endif
 }
 
 static void ir_print_instructions(IrInstructionDyn instructions,

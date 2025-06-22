@@ -168,11 +168,17 @@ err:
   // appearance in the file.
   qsort(errors.data, errors.len, sizeof(Error),
         err_compare_errors_by_origin_offset);
+
+  PgWriter writer_errors = pg_writer_make_from_file_descriptor(pg_os_stderr());
+
   for (u64 i = 0; i < errors.len; i++) {
     Error err = PG_SLICE_AT(errors, i);
-    origin_print(stderr, err.origin);
-    fprintf(stderr, " Error: ");
-    error_print(stderr, err);
+    origin_write(&writer_errors, err.origin, allocator);
+    (void)pg_writer_write_string_full(&writer_errors, PG_S(" Error: "),
+                                      allocator);
+    error_print(err, &writer_errors, allocator);
   }
+  (void)pg_writer_flush(&writer_errors);
+
   return 1;
 }
