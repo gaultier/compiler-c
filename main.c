@@ -1,9 +1,6 @@
 #include "amd64.h"
-#include "elf.h"
-#if 0
-#include "type_check.h"
-#endif
 #include "asm.h"
+#include "elf.h"
 #include "ir.h"
 
 typedef struct {
@@ -56,45 +53,34 @@ static CliOptions cli_options_parse(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   CliOptions cli_opts = cli_options_parse(argc, argv);
 
+  PgLogLevel log_level =
+      cli_opts.verbose ? PG_LOG_LEVEL_DEBUG : PG_LOG_LEVEL_ERROR;
+  PgLogger logger = pg_log_make_logger_stdout_logfmt(log_level);
+
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
-
-  {
-    Amd64Instruction ins = {
-        .kind = AMD64_INSTRUCTION_KIND_MOV,
-        .lhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .size = ASM_OPERAND_SIZE_1,
-                .u.reg.value = AMD64_RAX,
-            },
-        .rhs =
-            (Amd64Operand){
-                .kind = AMD64_OPERAND_KIND_REGISTER,
-                .size = ASM_OPERAND_SIZE_1,
-                .u.reg.value = AMD64_R14,
-            },
-    };
-    Pgu8Dyn sb = {0};
-    amd64_encode_instruction_mov(&sb, ins, allocator);
-  }
 
   PgString file_path = pg_cstr_to_string(cli_opts.file_path);
   PgStringResult file_read_res =
       pg_file_read_full_from_path(file_path, allocator);
   if (file_read_res.err) {
-    fprintf(stderr, "Failed to read file %.*s: %u\n", (i32)file_path.len,
-            file_path.data, file_read_res.err);
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read file",
+           pg_log_c_err("err", file_read_res.err),
+           pg_log_c_s("path", file_path));
     return 1;
   }
+  pg_log(&logger, PG_LOG_LEVEL_INFO, "read input file",
+         pg_log_c_s("file_path", file_path),
+         pg_log_c_u64("count_bytes", file_read_res.res.len));
 
   ErrorDyn errors = {0};
   Lexer lexer = lex_make_lexer(file_path, file_read_res.res, &errors);
   lex(&lexer, allocator);
 
   if (cli_opts.verbose) {
-    printf("\n------------ Lex tokens ------------\n");
+    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "lex tokens",
+           pg_log_c_u64("count", lexer.tokens.len));
     lex_tokens_print(lexer.tokens);
   }
 
@@ -114,7 +100,8 @@ int main(int argc, char *argv[]) {
 
     for (u32 i = 0; i < iterations_max; i++) {
       if (cli_opts.verbose) {
-        printf("\n------------ [%u] Constant fold before ------------\n", i);
+        pg_log(&logger, PG_LOG_LEVEL_DEBUG, "constant fold before",
+               pg_log_c_u64("iteration", i));
         ast_print_nodes(nodes_input);
       }
 
@@ -128,7 +115,8 @@ int main(int argc, char *argv[]) {
 
       nodes_input = nodes_output;
       if (cli_opts.verbose) {
-        printf("\n------------ [%u] Constant fold after ------------\n", i);
+        pg_log(&logger, PG_LOG_LEVEL_DEBUG, "constant fold after",
+               pg_log_c_u64("iteration", i));
         ast_print_nodes(nodes_input);
       }
     }
@@ -138,7 +126,8 @@ int main(int argc, char *argv[]) {
   FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
   if (cli_opts.verbose) {
-    printf("\n------------ IR ------------\n");
+    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "IR",
+           pg_log_c_u64("fn_defs_count", fn_defs.len));
     ir_print_fn_defs(fn_defs);
   }
 
@@ -160,27 +149,27 @@ int main(int argc, char *argv[]) {
   asm_emit(&asm_emitter, fn_defs, cli_opts.verbose, allocator);
 
   if (cli_opts.verbose) {
-    printf("\n------------ ASM %.*s ------------\n",
-           (i32)asm_emitter.program.file_path.len,
-           asm_emitter.program.file_path.data);
+    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "ASM",
+           pg_log_c_s("file_path", asm_emitter.program.file_path));
     asm_print_program(stdout, asm_emitter);
   }
 
   PgError err_write = elf_write_exe(&asm_emitter, allocator);
   if (err_write) {
-    fprintf(stderr, "failed to write to file %.*s: %u\n",
-            (i32)asm_emitter.program.file_path.len,
-            asm_emitter.program.file_path.data, err_write);
+    pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to write to file",
+           pg_log_c_err("err", err_write),
+           pg_log_c_s("path", asm_emitter.program.file_path));
     return 1;
   }
 
-  if (cli_opts.verbose) {
-    printf("arena: use=%lu available=%lu\n", pg_arena_mem_use(arena),
-           pg_arena_mem_available(arena));
-  }
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "arena stats",
+         pg_log_c_u64("mem_use_bytes", pg_arena_mem_use(arena)),
+         pg_log_c_u64("mem_available_bytes", pg_arena_mem_available(arena)));
   return 0;
 
 err:
+  // Errors could have been found at various stages so we sort them by order of
+  // appearance in the file.
   qsort(errors.data, errors.len, sizeof(Error),
         err_compare_errors_by_origin_offset);
   for (u64 i = 0; i < errors.len; i++) {
