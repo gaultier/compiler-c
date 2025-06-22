@@ -124,7 +124,7 @@ static LexToken ast_current_or_last_token(AstParser parser) {
   LexToken res = {0};
 
   if (parser.tokens_consumed >= parser.lexer.tokens.len) {
-    return PG_DYN_LAST(parser.lexer.tokens);
+    return PG_SLICE_LAST(parser.lexer.tokens);
   }
 
   res = PG_SLICE_AT(parser.lexer.tokens, parser.tokens_consumed);

@@ -204,7 +204,7 @@ static bool lex_identifier(Lexer *lexer, PgAllocator *allocator) {
     PgRune rune = rune_res.res;
     PG_ASSERT(0 != rune);
 
-    if (!('_' == rune || pg_rune_is_alphanumeric(rune))) {
+    if (!('_' == rune || pg_rune_ascii_is_alphanumeric(rune))) {
       break;
     }
 
@@ -220,7 +220,7 @@ static bool lex_identifier(Lexer *lexer, PgAllocator *allocator) {
   }
 
   lex_add_token(lexer, LEX_TOKEN_KIND_IDENTIFIER, origin, allocator);
-  PG_DYN_LAST_PTR(&lexer->tokens)->s = lit;
+  PG_SLICE_LAST_PTR(&lexer->tokens)->s = lit;
 
   return true;
 }
@@ -242,7 +242,7 @@ static bool lex_keyword(Lexer *lexer, PgAllocator *allocator) {
     PgRune rune = rune_res.res;
     PG_ASSERT(0 != rune);
 
-    if (!('_' == rune || pg_rune_is_alphanumeric(rune))) {
+    if (!('_' == rune || pg_rune_ascii_is_alphanumeric(rune))) {
       break;
     }
 
@@ -300,7 +300,7 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
     PgRune rune = rune_res.res;
     PG_ASSERT(0 != rune);
 
-    if (!pg_rune_is_numeric(rune)) {
+    if (!pg_rune_ascii_is_numeric(rune)) {
       break;
     }
 
@@ -314,12 +314,12 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
   bool starts_with_zero = '0' == PG_SLICE_AT(lit, 0);
   if (starts_with_zero) {
     lex_add_error(lexer, ERROR_KIND_INVALID_LITERAL_NUMBER, allocator);
-    PG_DYN_LAST(*lexer->errors).src_span = lit;
+    PG_SLICE_LAST(*lexer->errors).src_span = lit;
     return;
   }
 
   lex_add_token(lexer, LEX_TOKEN_KIND_LITERAL_NUMBER, origin, allocator);
-  PG_DYN_LAST_PTR(&lexer->tokens)->s = lit;
+  PG_SLICE_LAST_PTR(&lexer->tokens)->s = lit;
 }
 
 [[nodiscard]]
@@ -413,7 +413,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
       if (!lex_match_rune_1_and_2(lexer, ':', '=', LEX_TOKEN_KIND_COLON_EQUAL,
                                   allocator)) {
         lex_add_error(lexer, ERROR_KIND_UNKNOWN_TOKEN, allocator);
-        PG_DYN_LAST(*lexer->errors).src_span =
+        PG_SLICE_LAST(*lexer->errors).src_span =
             PG_SLICE_RANGE(lexer->src, lexer->it.idx, lexer->it.idx + 1);
       }
 

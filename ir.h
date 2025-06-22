@@ -653,7 +653,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_MOV;
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, var->type, allocator);
-      PG_DYN_LAST(fn_def.metadata).virtual_register.addressable = true;
+      PG_SLICE_LAST(fn_def.metadata).virtual_register.addressable = true;
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -679,7 +679,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(lhs_type);
 
       if (!type_compatible(lhs_type, rhs_type)) {
-        Pgu8Dyn sb = pg_sb_make_with_cap(128, allocator);
+        Pgu8Dyn sb = pg_string_builder_make(128, allocator);
         PG_DYN_APPEND_SLICE(&sb, PG_S("types are not compatible: "), allocator);
         PG_DYN_APPEND_SLICE(&sb, lhs_type->name, allocator);
         PG_DYN_APPEND_SLICE(&sb, PG_S(" and "), allocator);
@@ -727,7 +727,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(lhs_type);
 
       if (!type_compatible(lhs_type, rhs_type)) {
-        Pgu8Dyn sb = pg_sb_make_with_cap(128, allocator);
+        Pgu8Dyn sb = pg_string_builder_make(128, allocator);
         PG_DYN_APPEND_SLICE(&sb, PG_S("types are not compatible: "), allocator);
         PG_DYN_APPEND_SLICE(&sb, lhs_type->name, allocator);
         PG_DYN_APPEND_SLICE(&sb, PG_S(" and "), allocator);
@@ -860,7 +860,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
       ins.origin = node.origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
-      PG_DYN_LAST(fn_def.metadata).virtual_register.addressable = true;
+      PG_SLICE_LAST(fn_def.metadata).virtual_register.addressable = true;
 
       PG_SLICE_AT_PTR(&fn_def.metadata, op_meta_idx.value)
           ->virtual_register.addressed = true;
@@ -1029,7 +1029,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(cond_type);
 
       if (TYPE_KIND_BOOLEAN != cond_type->kind) {
-        Pgu8Dyn sb = pg_sb_make_with_cap(128, allocator);
+        Pgu8Dyn sb = pg_string_builder_make(128, allocator);
         PG_DYN_APPEND_SLICE(&sb, PG_S("expected bool, got "), allocator);
         PG_DYN_APPEND_SLICE(&sb, cond_type->name, allocator);
 
@@ -1057,7 +1057,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_ASSERT(cond_type);
 
       if (TYPE_KIND_BOOLEAN != cond_type->kind) {
-        Pgu8Dyn sb = pg_sb_make_with_cap(128, allocator);
+        Pgu8Dyn sb = pg_string_builder_make(128, allocator);
         PG_DYN_APPEND_SLICE(&sb, PG_S("expected bool, got "), allocator);
         PG_DYN_APPEND_SLICE(&sb, cond_type->name, allocator);
 
