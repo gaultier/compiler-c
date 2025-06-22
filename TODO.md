@@ -1,4 +1,6 @@
+- [ ] build: build to run on WASM
 - [ ] cli: choose target(s)
+- [ ] codegen: webassembly
 - [ ] codegen: aarch64
 - [ ] codegen: link with libc & call linker
 - [ ] codegen: macho format
@@ -27,7 +29,6 @@
 - [ ] lsp
 - [ ] regalloc: linear allocator. Compare performance with graph allocator.
 - [ ] simple alias analysis (type-based, conservative)
-- [ ] test: consider bytecode vm to test correctness
 - [ ] test: consider checking output of compiled binary with objdump & ensuring it is the same as the readable assembly from `./main.bin -v` 
 - [x] ast: move to 'stack vm bytecode' representation
 - [x] codegen: move graph coloring to LIR/ASM phase with the target data as input

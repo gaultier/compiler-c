@@ -1,17 +1,2 @@
-- [ ] proper event loop cleanup of tasks and fds
-- [x] real test runner
-  + [x] Spawn compiler in subprocess
-  + [x] Capture stdout in memory. Only print on test assertion error.
-  + Run compiler in verbose & non-verbose modes
-  + [x] Spawn compiled program in subprocess
-  + [ ] Spawn compiler in valgrind
-  + [ ] Spawn compiled program in valgrind
-  + [ ] Later/Maybe: Run tests in parallel
-  + [.]: check that `./main.bin foo.unicorn && objdump -M intel foo.bin` == `./main.bin -S foo.unicorn`
-         Or:  `./main.bin -S foo.unicorn | cc ` == `./main.bin foo.unicorn`
-  + Later: check that the output of the compiled program (`./foo.bin`) equals the output of the program created by: `./main.bin -S foo.unicorn && cc foo.s -o foo.bin` (need `println`)
-  + Later: check output of compiled program equals expected output in comments => need  `println`
-  + Later/Maybe: run compiled program bytecode in VM to check output against output of compiled program to machine code
-    Or: compile & run program with official compiler to compare output (need deps).
 - [.] adapt amd64 encoding to use real sizes from types incl. right registers
-- [ ] Re-consider `Metadata` in the wake of types
+- [ ] consider using a faster assembler e.g. tcc
