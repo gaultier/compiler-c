@@ -460,80 +460,89 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
   lex_add_token(lexer, LEX_TOKEN_KIND_EOF, lex_lexer_origin(*lexer), allocator);
 }
 
-static void lex_tokens_print(LexTokenDyn tokens) {
+static void lex_tokens_print(LexTokenDyn tokens, PgWriter *w,
+                             PgAllocator *allocator) {
   for (u64 i = 0; i < tokens.len; i++) {
     LexToken token = PG_SLICE_AT(tokens, i);
-    printf("[%lu] ", i);
-    origin_print(stdout, token.origin);
-    printf(": ");
+
+    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_u64_as_string(w, i, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+
+    origin_write(w, token.origin, allocator);
+    (void)pg_writer_write_string_full(w, PG_S(": "), allocator);
 
     switch (token.kind) {
     case LEX_TOKEN_KIND_NONE:
       PG_ASSERT(0);
     case LEX_TOKEN_KIND_LITERAL_NUMBER:
-      printf("LiteralU64 %.*s\n", (i32)token.s.len, token.s.data);
+      (void)pg_writer_write_string_full(w, PG_S("LiteralU64 "), allocator);
+      (void)pg_writer_write_string_full(w, token.s, allocator);
       break;
     case LEX_TOKEN_KIND_PLUS:
-      printf("+\n");
+      (void)pg_writer_write_string_full(w, PG_S("+"), allocator);
       break;
     case LEX_TOKEN_KIND_PAREN_LEFT:
-      printf("(\n");
+      (void)pg_writer_write_string_full(w, PG_S("("), allocator);
       break;
     case LEX_TOKEN_KIND_PAREN_RIGHT:
-      printf(")\n");
+      (void)pg_writer_write_string_full(w, PG_S(")"), allocator);
       break;
     case LEX_TOKEN_KIND_CURLY_LEFT:
-      printf("{\n");
+      (void)pg_writer_write_string_full(w, PG_S("{"), allocator);
       break;
     case LEX_TOKEN_KIND_CURLY_RIGHT:
-      printf("}\n");
+      (void)pg_writer_write_string_full(w, PG_S("}"), allocator);
       break;
     case LEX_TOKEN_KIND_COMMA:
-      printf(",\n");
+      (void)pg_writer_write_string_full(w, PG_S(","), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_SYSCALL:
-      printf("syscall\n");
+      (void)pg_writer_write_string_full(w, PG_S("syscall"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_PRINTLN:
-      printf("println\n");
+      (void)pg_writer_write_string_full(w, PG_S("println"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_IF:
-      printf("Keyword if\n");
+      (void)pg_writer_write_string_full(w, PG_S("Keyword if"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_ELSE:
-      printf("Keyword else\n");
+      (void)pg_writer_write_string_full(w, PG_S("Keyword else"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_ASSERT:
-      printf("Keyword assert\n");
+      (void)pg_writer_write_string_full(w, PG_S("Keyword assert"), allocator);
       break;
     case LEX_TOKEN_KIND_COLON_EQUAL:
-      printf(":=\n");
+      (void)pg_writer_write_string_full(w, PG_S(":="), allocator);
       break;
     case LEX_TOKEN_KIND_EQUAL_EQUAL:
-      printf("==\n");
+      (void)pg_writer_write_string_full(w, PG_S("=="), allocator);
       break;
     case LEX_TOKEN_KIND_EQUAL:
-      printf("=\n");
+      (void)pg_writer_write_string_full(w, PG_S("="), allocator);
       break;
     case LEX_TOKEN_KIND_SLASH_SLASH:
-      printf("//\n");
+      (void)pg_writer_write_string_full(w, PG_S("//"), allocator);
       break;
     case LEX_TOKEN_KIND_SLASH:
-      printf("/\n");
+      (void)pg_writer_write_string_full(w, PG_S("/"), allocator);
       break;
     case LEX_TOKEN_KIND_AMPERSAND:
-      printf("&\n");
+      (void)pg_writer_write_string_full(w, PG_S("&"), allocator);
       break;
     case LEX_TOKEN_KIND_IDENTIFIER:
-      printf("Identifier %.*s\n", (i32)token.s.len, token.s.data);
+      (void)pg_writer_write_string_full(w, PG_S("Identifier "), allocator);
+      (void)pg_writer_write_string_full(w, token.s, allocator);
       break;
     case LEX_TOKEN_KIND_EOF:
-      printf("EOF\n");
+      (void)pg_writer_write_string_full(w, PG_S("EOF"), allocator);
       break;
     default:
       PG_ASSERT(0);
     }
+    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
+  (void)pg_writer_flush(w);
 }
 
 static void lex_trim_comments(LexTokenDyn *tokens) {

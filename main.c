@@ -57,6 +57,9 @@ int main(int argc, char *argv[]) {
       cli_opts.verbose ? PG_LOG_LEVEL_DEBUG : PG_LOG_LEVEL_ERROR;
   PgLogger logger = pg_log_make_logger_stdout_logfmt(log_level);
 
+  PgWriter writer_internals =
+      pg_writer_make_from_file_descriptor(pg_os_stdout());
+
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
@@ -81,7 +84,7 @@ int main(int argc, char *argv[]) {
   if (cli_opts.verbose) {
     pg_log(&logger, PG_LOG_LEVEL_DEBUG, "lex tokens",
            pg_log_c_u64("count", lexer.tokens.len));
-    lex_tokens_print(lexer.tokens);
+    lex_tokens_print(lexer.tokens, &writer_internals, allocator);
   }
 
   AstParser parser = {
