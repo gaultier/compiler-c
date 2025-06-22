@@ -269,53 +269,23 @@ static PgProcess test_helper_cc_assemble_spawn(Amd64Instruction ins,
   PgProcess process = res_spawn.res;
   PG_ASSERT(process.stdin_pipe.fd);
 
-  FILE *process_stdin = fdopen(process.stdin_pipe.fd, "w");
-  PG_ASSERT(process_stdin);
+  PgWriter writer_stdin =
+      pg_writer_make_from_file_descriptor(process.stdin_pipe);
+  amd64_print_instruction(ins, false, &writer_stdin, allocator);
+  (void)pg_writer_close(&writer_stdin);
 
-  amd64_print_instruction(process_stdin, ins, false);
-  fclose(process_stdin);
-
-  amd64_print_instruction(stderr, ins, false);
-  fprintf(stderr, "\n");
+  // For troubleshooting.
+  PgWriter writer_stderr = pg_writer_make_from_file_descriptor(pg_os_stderr());
+  amd64_print_instruction(ins, false, &writer_stderr, allocator);
+  (void)pg_writer_write_string_full(&writer_stderr, PG_S("\n"), allocator);
 
   return process;
-}
-
-typedef struct {
-  Pgu8Dyn expected;
-  Pgu8Slice actual;
-  PgString actual_human_readable;
-  PgProcess process;
-  PgAllocator *allocator;
-} TestAssemblerData;
-
-static void
-test_helper_cc_assemble_check_on_child_proc_read(PgAioTask *task, PgError err,
-                                                 Pgu8Slice read_data) {
-
-  PG_ASSERT(task);
-  PG_ASSERT(task->data);
-  TestAssemblerData *data = task->data;
-
-  PG_DYN_APPEND_SLICE(&data->expected, read_data, data->allocator);
-
-  if (PG_ERR_EOF == err) {
-    PG_ASSERT(
-        pg_string_eq(data->actual, PG_DYN_SLICE(Pgu8Slice, data->expected)));
-
-    (void)pg_aio_loop_read_stop(task);
-    (void)pg_process_wait(data->process, data->allocator);
-  }
 }
 
 static void test_assembler_amd64_mov() {
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
-
-  PgAioLoopResult loop_res = pg_aio_loop_make();
-  PG_ASSERT(!loop_res.err);
-  PgAioLoop loop = loop_res.res;
 
   AsmOperandSize sizes[4] = {
       ASM_OPERAND_SIZE_1,
@@ -358,27 +328,28 @@ static void test_assembler_amd64_mov() {
 
         PgProcess proc = test_helper_cc_assemble_spawn(ins, allocator);
 
-        TestAssemblerData *data = PG_NEW(TestAssemblerData, allocator);
-        data->actual = actual;
-        data->actual_human_readable = PG_S("todo");
-        data->process = proc;
-        data->allocator = allocator;
+        PgReader reader_stdout =
+            pg_reader_make_from_file_descriptor(proc.stdout_pipe);
 
-        PgAioTask *task =
-            pg_aio_task_make_for_file(&loop, proc.stdout_pipe, allocator);
-        task->data = data;
+        u8 recv_buf[4096] = {0};
+        Pgu8Slice recv_buf_slice = {
+            .data = recv_buf,
+            .len = PG_STATIC_ARRAY_LEN(recv_buf),
+        };
+        PgStringResult read_res =
+            pg_reader_read_until_full_or_eof(&reader_stdout, recv_buf_slice);
+        PG_ASSERT(!read_res.err);
 
-        PgError err = pg_aio_loop_read(
-            task, test_helper_cc_assemble_check_on_child_proc_read);
-        PG_ASSERT(!err);
+        PgString expected = read_res.res;
+
+        PG_ASSERT(pg_string_eq(actual, PG_DYN_SLICE(Pgu8Slice, expected)));
+
+        PgProcessExitResult res_wait = pg_process_wait(proc, allocator);
+        PG_ASSERT(!res_wait.err);
+        PG_ASSERT(0 == res_wait.res.exit_status);
       }
     }
-    PgError err = pg_aio_loop_wait(&loop, 1000);
-    PG_ASSERT(!err);
   }
-
-  PgError err = pg_aio_loop_wait(&loop, 1000);
-  PG_ASSERT(!err);
 }
 
 int main() {
