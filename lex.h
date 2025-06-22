@@ -540,7 +540,7 @@ static void lex_trim_comments(LexTokenDyn *tokens) {
   for (u64 i = 0; i < tokens->len;) {
     LexToken token = PG_SLICE_AT(*tokens, i);
     if (LEX_TOKEN_KIND_SLASH_SLASH == token.kind) {
-      PG_DYN_REMOVE_AT(tokens, i);
+      PG_SLICE_REMOVE_AT(tokens, i);
     } else {
       i++;
     }
