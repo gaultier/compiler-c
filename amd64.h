@@ -1,4 +1,5 @@
 #pragma once
+
 #include "asm_common.h"
 
 typedef enum {
@@ -51,25 +52,76 @@ static const RegisterSlice amd64_register_allocator_gprs_slice = {
     .len = PG_STATIC_ARRAY_LEN(amd64_register_allocator_gprs),
 };
 
-static const char *amd64_register_to_string[][8 + 1] = {
-    [AMD64_RAX] = {[1] = "al", [2] = "ax", [4] = "eax", [8] = "rax"},
-    [AMD64_RBX] = {[1] = "bl", [2] = "bx", [4] = "ebx", [8] = "rbx"},
-    [AMD64_RCX] = {[1] = "cl", [2] = "cx", [4] = "ecx", [8] = "rcx"},
-    [AMD64_RDX] = {[1] = "dl", [2] = "dx", [4] = "edx", [8] = "rdx"},
-    [AMD64_RDI] = {[1] = "dil", [2] = "di", [4] = "edi", [8] = "rdi"},
-    [AMD64_RSI] = {[1] = "sil", [2] = "si", [4] = "esi", [8] = "rsi"},
-    [AMD64_R8] = {[1] = "r8b", [2] = "r8w", [4] = "r8d", [8] = "r8"},
-    [AMD64_R9] = {[1] = "r9b", [2] = "r9w", [4] = "r9d", [8] = "r9"},
-    [AMD64_R10] = {[1] = "r10b", [2] = "r10w", [4] = "r10d", [8] = "r10"},
-    [AMD64_R11] = {[1] = "r11b", [2] = "r11w", [4] = "r11d", [8] = "r11"},
-    [AMD64_R12] = {[1] = "r12b", [2] = "r12w", [4] = "r12d", [8] = "r12"},
-    [AMD64_R13] = {[1] = "r13b", [2] = "r13w", [4] = "r13d", [8] = "r13"},
-    [AMD64_R14] = {[1] = "r14b", [2] = "r14w", [4] = "r14d", [8] = "r14"},
-    [AMD64_R15] = {[1] = "r15b", [2] = "r15w", [4] = "r15d", [8] = "r15"},
-    [AMD64_RSP] = {[1] = "spl", [2] = "sp", [4] = "esp", [8] = "rsp"},
-    [AMD64_RBP] = {[1] = "bpl", [2] = "bp", [4] = "ebp", [8] = "rbp"},
-    [AMD64_RFLAGS] =
-        {[1] = "rflags", [2] = "rflags", [4] = "rflags", [8] = "rflags"},
+static const PgString amd64_register_to_string_table[][8 + 1] = {
+    [AMD64_RAX] = {[1] = PG_S("al"),
+                   [2] = PG_S("ax"),
+                   [4] = PG_S("eax"),
+                   [8] = PG_S("rax")},
+    [AMD64_RBX] = {[1] = PG_S("bl"),
+                   [2] = PG_S("bx"),
+                   [4] = PG_S("ebx"),
+                   [8] = PG_S("rbx")},
+    [AMD64_RCX] = {[1] = PG_S("cl"),
+                   [2] = PG_S("cx"),
+                   [4] = PG_S("ecx"),
+                   [8] = PG_S("rcx")},
+    [AMD64_RDX] = {[1] = PG_S("dl"),
+                   [2] = PG_S("dx"),
+                   [4] = PG_S("edx"),
+                   [8] = PG_S("rdx")},
+    [AMD64_RDI] = {[1] = PG_S("dil"),
+                   [2] = PG_S("di"),
+                   [4] = PG_S("edi"),
+                   [8] = PG_S("rdi")},
+    [AMD64_RSI] = {[1] = PG_S("sil"),
+                   [2] = PG_S("si"),
+                   [4] = PG_S("esi"),
+                   [8] = PG_S("rsi")},
+    [AMD64_R8] = {[1] = PG_S("r8b"),
+                  [2] = PG_S("r8w"),
+                  [4] = PG_S("r8d"),
+                  [8] = PG_S("r8")},
+    [AMD64_R9] = {[1] = PG_S("r9b"),
+                  [2] = PG_S("r9w"),
+                  [4] = PG_S("r9d"),
+                  [8] = PG_S("r9")},
+    [AMD64_R10] = {[1] = PG_S("r10b"),
+                   [2] = PG_S("r10w"),
+                   [4] = PG_S("r10d"),
+                   [8] = PG_S("r10")},
+    [AMD64_R11] = {[1] = PG_S("r11b"),
+                   [2] = PG_S("r11w"),
+                   [4] = PG_S("r11d"),
+                   [8] = PG_S("r11")},
+    [AMD64_R12] = {[1] = PG_S("r12b"),
+                   [2] = PG_S("r12w"),
+                   [4] = PG_S("r12d"),
+                   [8] = PG_S("r12")},
+    [AMD64_R13] = {[1] = PG_S("r13b"),
+                   [2] = PG_S("r13w"),
+                   [4] = PG_S("r13d"),
+                   [8] = PG_S("r13")},
+    [AMD64_R14] = {[1] = PG_S("r14b"),
+                   [2] = PG_S("r14w"),
+                   [4] = PG_S("r14d"),
+                   [8] = PG_S("r14")},
+    [AMD64_R15] = {[1] = PG_S("r15b"),
+                   [2] = PG_S("r15w"),
+                   [4] = PG_S("r15d"),
+                   [8] = PG_S("r15")},
+    [AMD64_RSP] = {[1] = PG_S("spl"),
+                   [2] = PG_S("sp"),
+                   [4] = PG_S("esp"),
+                   [8] = PG_S("rsp")},
+    [AMD64_RBP] = {[1] = PG_S("bpl"),
+                   [2] = PG_S("bp"),
+                   [4] = PG_S("ebp"),
+                   [8] = PG_S("rbp")},
+    // FIXME
+    [AMD64_RFLAGS] = {[1] = PG_S("rflags"),
+                      [2] = PG_S("rflags"),
+                      [4] = PG_S("rflags"),
+                      [8] = PG_S("rflags")},
 };
 
 static const u8 amd64_register_to_encoded_value[16 + 1] = {
@@ -143,6 +195,11 @@ static const Architecture amd64_arch = {
     .gprs = amd64_register_allocator_gprs_slice,
 };
 
+[[nodiscard]] static PgString amd64_register_to_string(Register reg,
+                                                       AsmOperandSize size) {
+  return amd64_register_to_string_table[reg.value][size];
+}
+
 [[nodiscard]] static bool amd64_is_reg(Amd64Operand op) {
   return AMD64_OPERAND_KIND_REGISTER == op.kind;
 }
@@ -161,10 +218,6 @@ static const Architecture amd64_arch = {
 
 [[nodiscard]] static bool amd64_has_displacement(Amd64Operand op) {
   return amd64_is_mem(op) && op.u.effective_address.displacement;
-}
-
-static void amd64_print_register(FILE *out, Register reg, AsmOperandSize size) {
-  fprintf(out, "%s", amd64_register_to_string[reg.value][size]);
 }
 
 // TODO: If any of the callee-saved registers were used by the register
@@ -222,48 +275,64 @@ static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
   *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_pop;
 }
 
-static void amd64_print_operand(FILE *out, Amd64Operand op, bool with_op_size) {
+static void amd64_print_operand(Amd64Operand op, bool with_op_size, PgWriter *w,
+                                PgAllocator *allocator) {
   switch (op.kind) {
   case AMD64_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case AMD64_OPERAND_KIND_REGISTER:
-    amd64_print_register(out, op.u.reg, op.size);
+    (void)pg_writer_write_string_full(
+        w, amd64_register_to_string(op.u.reg, op.size), allocator);
     break;
   case AMD64_OPERAND_KIND_IMMEDIATE:
-    fprintf(out, "%" PRIu64, op.u.immediate);
+    (void)pg_writer_write_u64_as_string(w, op.u.immediate, allocator);
     break;
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
     if (with_op_size) {
-      fprintf(out, "%s ptr ", amd64_size_to_operand_size_string[op.size]);
+      (void)pg_writer_write_string_full(
+          w, PG_S(amd64_size_to_operand_size_string[op.size]), allocator);
+      (void)pg_writer_write_string_full(w, PG_S(" ptr "), allocator);
     }
-    fprintf(out, "[");
-    amd64_print_register(out, op.u.effective_address.base, ASM_OPERAND_SIZE_8);
+    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_string_full(
+        w,
+        amd64_register_to_string(op.u.effective_address.base,
+                                 ASM_OPERAND_SIZE_8),
+        allocator);
     if (op.u.effective_address.index.value) {
-      fprintf(out, " + ");
-      amd64_print_register(out, op.u.effective_address.index,
-                           ASM_OPERAND_SIZE_8);
-      fprintf(out, " * %" PRIu8 " ", op.u.effective_address.scale);
+      (void)pg_writer_write_string_full(w, PG_S(" + "), allocator);
+      (void)pg_writer_write_string_full(
+          w,
+          amd64_register_to_string(op.u.effective_address.index,
+                                   ASM_OPERAND_SIZE_8),
+          allocator);
+      (void)pg_writer_write_string_full(w, PG_S(" * "), allocator);
+      (void)pg_writer_write_u64_as_string(w, op.u.effective_address.scale,
+                                          allocator);
     }
-    fprintf(out, "%s%" PRIi32 "]",
-            op.u.effective_address.displacement >= 0 ? "+" : "",
-            op.u.effective_address.displacement);
+    (void)pg_writer_write_string_full(
+        w, op.u.effective_address.displacement >= 0 ? PG_S("+") : PG_S(""),
+        allocator);
+    (void)pg_writer_write_u64_as_string(
+        w, (u64)op.u.effective_address.displacement, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
   } break;
   case AMD64_OPERAND_KIND_LABEL:
     PG_ASSERT(op.u.label.value.data);
     PG_ASSERT(op.u.label.value.len);
 
-    fprintf(out, "%.*s", (i32)op.u.label.value.len, op.u.label.value.data);
+    (void)pg_writer_write_string_full(w, op.u.label.value, allocator);
     break;
   default:
     PG_ASSERT(0);
   }
 }
 
-static void amd64_print_instruction(FILE *out, Amd64Instruction ins,
-                                    bool with_origin) {
+static void amd64_print_instruction(Amd64Instruction ins, bool with_origin,
+                                    PgWriter *w, PgAllocator *allocator) {
   if (with_origin) {
-    origin_print(out, ins.origin);
-    fprintf(out, ": ");
+    origin_write(w, ins.origin, allocator);
+    (void)pg_writer_write_string_full(w, PG_S(": "), allocator);
   }
 
   // TODO: Validate operands?
@@ -271,31 +340,31 @@ static void amd64_print_instruction(FILE *out, Amd64Instruction ins,
   case AMD64_INSTRUCTION_KIND_NONE:
     PG_ASSERT(0);
   case AMD64_INSTRUCTION_KIND_UD2:
-    fprintf(out, "ud2 ");
+    (void)pg_writer_write_string_full(w, PG_S("ud2 "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_MOV:
-    fprintf(out, "mov ");
+    (void)pg_writer_write_string_full(w, PG_S("mov "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_ADD:
-    fprintf(out, "add ");
+    (void)pg_writer_write_string_full(w, PG_S("add "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SUB:
-    fprintf(out, "sub ");
+    (void)pg_writer_write_string_full(w, PG_S("sub "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LEA:
-    fprintf(out, "lea ");
+    (void)pg_writer_write_string_full(w, PG_S("lea "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_RET:
-    fprintf(out, "ret ");
+    (void)pg_writer_write_string_full(w, PG_S("ret "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SYSCALL:
-    fprintf(out, "syscall ");
+    (void)pg_writer_write_string_full(w, PG_S("syscall "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_PUSH:
-    fprintf(out, "push ");
+    (void)pg_writer_write_string_full(w, PG_S("push "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_POP:
-    fprintf(out, "pop ");
+    (void)pg_writer_write_string_full(w, PG_S("pop "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
     // The operand carries the actual label.
@@ -304,28 +373,28 @@ static void amd64_print_instruction(FILE *out, Amd64Instruction ins,
     PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
     PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
 
-    fprintf(out, "je ");
+    (void)pg_writer_write_string_full(w, PG_S("je "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_NOT_EQ:
     PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
     PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
 
-    fprintf(out, "jne ");
+    (void)pg_writer_write_string_full(w, PG_S("jne "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
     PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
     PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
 
-    fprintf(out, "jz ");
+    (void)pg_writer_write_string_full(w, PG_S("jz "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP:
-    fprintf(out, "jmp ");
+    (void)pg_writer_write_string_full(w, PG_S("jmp "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_CMP:
-    fprintf(out, "cmp ");
+    (void)pg_writer_write_string_full(w, PG_S("cmp "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SET_IF_EQ:
-    fprintf(out, "sete ");
+    (void)pg_writer_write_string_full(w, PG_S("sete "), allocator);
     break;
   default:
     PG_ASSERT(0);
@@ -334,44 +403,48 @@ static void amd64_print_instruction(FILE *out, Amd64Instruction ins,
 
   bool has_effective_address = (amd64_is_mem(ins.lhs) || amd64_is_mem(ins.rhs));
   if (AMD64_OPERAND_KIND_NONE != ins.lhs.kind) {
-    amd64_print_operand(out, ins.lhs, has_effective_address);
+    amd64_print_operand(ins.lhs, has_effective_address, w, allocator);
   }
 
   if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
     PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
 
-    fprintf(out, ", ");
-    amd64_print_operand(out, ins.rhs, has_effective_address);
+    (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+    amd64_print_operand(ins.rhs, has_effective_address, w, allocator);
   }
 
   if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
-    fprintf(out, ":");
+    (void)pg_writer_write_string_full(w, PG_S(":"), allocator);
   }
 }
 
-static void amd64_print_instructions(FILE *out,
-                                     Amd64InstructionDyn instructions) {
+static void amd64_print_instructions(Amd64InstructionDyn instructions,
+                                     PgWriter *w, PgAllocator *allocator) {
   for (u64 i = 0; i < instructions.len; i++) {
-    fprintf(out, "[%" PRIu64 "] ", i);
+    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_u64_as_string(w, i, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
 
     Amd64Instruction ins = PG_SLICE_AT(instructions, i);
 
-    amd64_print_instruction(stdout, ins, true);
-    fprintf(out, "\n");
+    amd64_print_instruction(ins, true, w, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
+  (void)pg_writer_flush(w);
 }
 
-static void amd64_print_section(FILE *out, AsmCodeSection section) {
+static void amd64_print_section(AsmCodeSection section, PgWriter *w,
+                                PgAllocator *allocator) {
   if (AST_NODE_FLAG_GLOBAL & section.flags) {
-    fprintf(out, "global ");
-    fprintf(out, "%.*s", (i32)section.name.len, section.name.data);
-    fprintf(out, ":\n");
+    (void)pg_writer_write_string_full(w, PG_S("global "), allocator);
+    (void)pg_writer_write_string_full(w, section.name, allocator);
+    (void)pg_writer_write_string_full(w, PG_S(":\n"), allocator);
   }
 
-  fprintf(out, "%.*s", (i32)section.name.len, section.name.data);
-  fprintf(out, ":\n");
+  (void)pg_writer_write_string_full(w, section.name, allocator);
+  (void)pg_writer_write_string_full(w, PG_S(":\n"), allocator);
 
-  amd64_print_instructions(out, section.u.amd64_instructions);
+  amd64_print_instructions(section.u.amd64_instructions, w, allocator);
 }
 
 [[nodiscard]]
@@ -1573,10 +1646,7 @@ amd64_map_constraint_to_register(VirtualRegisterConstraint constraint) {
 
 [[nodiscard]]
 static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
-                                               bool verbose,
                                                PgAllocator *allocator) {
-  (void)verbose;
-
   AsmCodeSection section = {
       .name = fn_def.name,
       .flags = fn_def.flags,

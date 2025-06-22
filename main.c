@@ -125,11 +125,9 @@ int main(int argc, char *argv[]) {
   IrEmitter ir_emitter = {.errors = &errors, .src = lexer.src};
   FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
-  if (cli_opts.verbose) {
-    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "IR",
-           pg_log_c_u64("fn_defs_count", fn_defs.len));
-    ir_print_fn_defs(fn_defs, &writer_internals, allocator);
-  }
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "IR",
+         pg_log_c_u64("fn_defs_count", fn_defs.len));
+  ir_print_fn_defs(fn_defs, &writer_internals, allocator);
 
   if (errors.len) {
     goto err;
@@ -146,14 +144,11 @@ int main(int argc, char *argv[]) {
       .program.file_path = exe_path,
       .program.vm_start = 1 << 22,
   };
-  asm_emit(&asm_emitter, fn_defs, cli_opts.verbose, &writer_internals,
-           allocator);
+  asm_emit(&asm_emitter, fn_defs, &logger, allocator);
 
-  if (cli_opts.verbose) {
-    pg_log(&logger, PG_LOG_LEVEL_DEBUG, "ASM",
-           pg_log_c_s("file_path", asm_emitter.program.file_path));
-    asm_print_program(stdout, asm_emitter);
-  }
+  pg_log(&logger, PG_LOG_LEVEL_DEBUG, "ASM",
+         pg_log_c_s("file_path", asm_emitter.program.file_path));
+  asm_print_program(asm_emitter, &writer_internals, allocator);
 
   PgError err_write = elf_write_exe(&asm_emitter, allocator);
   if (err_write) {
