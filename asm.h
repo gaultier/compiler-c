@@ -287,8 +287,9 @@ static void asm_print_register(FILE *out, ArchitectureKind arch_kind,
 static void asm_color_do_precoloring(FILE *out, AsmEmitter *emitter,
                                      FnDefinition *fn_def,
                                      PgString tombstones_bitfield,
-                                     GprSet *gprs_precolored_set,
-                                     bool verbose) {
+                                     GprSet *gprs_precolored_set, bool verbose,
+                                     PgWriter *writer_internals,
+                                     PgAllocator *allocator) {
   // Dummy.
   pg_bitfield_set(tombstones_bitfield, 0, true);
 
@@ -328,7 +329,8 @@ static void asm_color_do_precoloring(FILE *out, AsmEmitter *emitter,
 
       if (verbose) {
         fprintf(out, "asm: precoloring assigned register: ");
-        metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value));
+        metadata_print_meta(PG_SLICE_AT(fn_def->metadata, node_idx.value),
+                            writer_internals, allocator);
         fprintf(out, " -> ");
         AsmOperandSize op_size =
             asm_type_size_to_operand_size(meta->type->size);
@@ -396,6 +398,7 @@ asm_color_assign_register(InterferenceGraph graph_clone,
 // TODO: Consider coalescing (see literature).
 static void asm_color_interference_graph(FILE *out, AsmEmitter *emitter,
                                          FnDefinition *fn_def, bool verbose,
+                                         PgWriter *writer_internals,
                                          PgAllocator *allocator) {
   if (0 == fn_def->interference_graph.nodes_count) {
     return;
@@ -419,7 +422,8 @@ static void asm_color_interference_graph(FILE *out, AsmEmitter *emitter,
       .registers = emitter->arch.gprs,
   };
   asm_color_do_precoloring(out, emitter, fn_def, node_tombstones_bitfield,
-                           &gprs_precolored, verbose);
+                           &gprs_precolored, verbose, writer_internals,
+                           allocator);
   if (verbose) {
     fprintf(out,
             "\n------------ Adjacency matrix of interference graph after "
@@ -514,7 +518,7 @@ static void asm_color_interference_graph(FILE *out, AsmEmitter *emitter,
       if (verbose) {
         fprintf(out, "asm: coloring assigned register: ");
         Metadata meta = PG_SLICE_AT(fn_def->metadata, node_idx.value);
-        metadata_print_meta(meta);
+        metadata_print_meta(meta, writer_internals, allocator);
         fprintf(out, " -> ");
         AsmOperandSize op_size = asm_type_size_to_operand_size(meta.type->size);
         asm_print_register(out, emitter->arch_kind, reg, op_size);
@@ -579,7 +583,8 @@ static AsmCodeSection asm_emit_fn_definition(ArchitectureKind arch_kind,
 }
 
 static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
-                     bool verbose, PgAllocator *allocator) {
+                     bool verbose, PgWriter *writer_internals,
+                     PgAllocator *allocator) {
 
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
@@ -595,9 +600,9 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, false);
     asm_color_interference_graph(stdout, asm_emitter, &fn_def, verbose,
-                                 allocator);
+                                 writer_internals, allocator);
     if (verbose) {
-      ir_print_fn_def(fn_def);
+      ir_print_fn_def(fn_def, writer_internals, allocator);
     }
     asm_sanity_check_interference_graph(fn_def.interference_graph,
                                         fn_def.metadata, true);

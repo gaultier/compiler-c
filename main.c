@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
   if (cli_opts.verbose) {
     pg_log(&logger, PG_LOG_LEVEL_DEBUG, "IR",
            pg_log_c_u64("fn_defs_count", fn_defs.len));
-    ir_print_fn_defs(fn_defs);
+    ir_print_fn_defs(fn_defs, &writer_internals, allocator);
   }
 
   if (errors.len) {
@@ -146,7 +146,8 @@ int main(int argc, char *argv[]) {
       .program.file_path = exe_path,
       .program.vm_start = 1 << 22,
   };
-  asm_emit(&asm_emitter, fn_defs, cli_opts.verbose, allocator);
+  asm_emit(&asm_emitter, fn_defs, cli_opts.verbose, &writer_internals,
+           allocator);
 
   if (cli_opts.verbose) {
     pg_log(&logger, PG_LOG_LEVEL_DEBUG, "ASM",

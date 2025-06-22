@@ -45,9 +45,9 @@ typedef struct {
   return (*htrie);
 }
 
-static void type_print(Type *type) {
+static void type_print(Type *type, PgWriter *w, PgAllocator *allocator) {
   if (!type) {
-    printf("any");
+    (void)pg_writer_write_string_full(w, PG_S("any"), allocator);
     return;
   }
 
@@ -55,7 +55,7 @@ static void type_print(Type *type) {
   PG_ASSERT(type->name.data);
   PG_ASSERT(type->name.len);
 
-  printf("%.*s", (i32)type->name.len, type->name.data);
+  (void)pg_writer_write_string_full(w, type->name, allocator);
 }
 
 [[nodiscard]] static bool type_compatible(Type *a, Type *b) {

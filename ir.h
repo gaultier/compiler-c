@@ -201,44 +201,46 @@ static void metadata_extend_operand_lifetime_on_use(MetadataDyn metadata,
 }
 
 [[nodiscard]]
-static char *register_constraint_to_cstr(VirtualRegisterConstraint constraint) {
+static PgString
+register_constraint_to_str(VirtualRegisterConstraint constraint) {
   switch (constraint) {
   case VREG_CONSTRAINT_NONE:
-    return "NONE";
+    return PG_S("NONE");
   case VREG_CONSTRAINT_CONDITION_FLAGS:
-    return "CONDITION_FLAGS";
+    return PG_S("CONDITION_FLAGS");
   case VREG_CONSTRAINT_SYSCALL_NUM:
-    return "SYSCALL_NUM";
+    return PG_S("SYSCALL_NUM");
   case VREG_CONSTRAINT_SYSCALL0:
-    return "SYSCALL0";
+    return PG_S("SYSCALL0");
   case VREG_CONSTRAINT_SYSCALL1:
-    return "SYSCALL1";
+    return PG_S("SYSCALL1");
   case VREG_CONSTRAINT_SYSCALL2:
-    return "SYSCALL2";
+    return PG_S("SYSCALL2");
   case VREG_CONSTRAINT_SYSCALL3:
-    return "SYSCALL3";
+    return PG_S("SYSCALL3");
   case VREG_CONSTRAINT_SYSCALL4:
-    return "SYSCALL4";
+    return PG_S("SYSCALL4");
   case VREG_CONSTRAINT_SYSCALL5:
-    return "SYSCALL5";
+    return PG_S("SYSCALL5");
   case VREG_CONSTRAINT_SYSCALL_RET:
-    return "SYSCALL_RET";
+    return PG_S("SYSCALL_RET");
 
   default:
     PG_ASSERT(0);
   }
 }
 
-static void ir_print_operand(IrOperand operand, MetadataDyn metadata) {
+static void ir_print_operand(IrOperand operand, MetadataDyn metadata,
+                             PgWriter *w, PgAllocator *allocator) {
 
   switch (operand.kind) {
   case IR_OPERAND_KIND_NUM:
-    printf("%lu", operand.u.u64);
+    (void)pg_writer_write_u64_as_string(w, operand.u.u64, allocator);
     break;
 
   case IR_OPERAND_KIND_LABEL:
     PG_ASSERT(operand.u.label.value.len);
-    printf("%.*s", (i32)operand.u.label.value.len, operand.u.label.value.data);
+    (void)pg_writer_write_string_full(w, operand.u.label.value, allocator);
     break;
 
   case IR_OPERAND_KIND_VREG: {
@@ -247,7 +249,8 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata) {
         PG_SLICE_AT(metadata, meta_idx.value).virtual_register;
     PG_ASSERT(vreg.value);
 
-    printf("v%u", vreg.value);
+    (void)pg_writer_write_string_full(w, PG_S("v"), allocator);
+    (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
   } break;
 
   case IR_OPERAND_KIND_NONE:
@@ -264,40 +267,56 @@ static void metadata_print_var(Metadata meta) {
   }
 }
 
-static void metadata_print_meta(Metadata meta) {
+static void metadata_print_meta(Metadata meta, PgWriter *w,
+                                PgAllocator *allocator) {
 #if 0
   if (meta.tombstone) {
     printf("\x1B[9m"); // Strikethrough.
   }
 #endif
 
-  printf("identifier=`%.*s`", (i32)meta.identifier.len, meta.identifier.data);
-  printf(" lifetime=[%u:%u]", meta.lifetime_start.value,
-         meta.lifetime_end.value);
+  (void)pg_writer_write_string_full(w, PG_S("identifier=`"), allocator);
+  (void)pg_writer_write_string_full(w, meta.identifier, allocator);
+  (void)pg_writer_write_string_full(w, PG_S("` "), allocator);
+
+  (void)pg_writer_write_string_full(w, PG_S("lifetime=["), allocator);
+  (void)pg_writer_write_u64_as_string(w, meta.lifetime_start.value, allocator);
+  (void)pg_writer_write_string_full(w, PG_S(":"), allocator);
+  (void)pg_writer_write_u64_as_string(w, meta.lifetime_end.value, allocator);
+  (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
 
   if (meta.virtual_register.value) {
-    printf(" vreg=v%u{constraint=%s, addressed=%s}",
-           meta.virtual_register.value,
-           register_constraint_to_cstr(meta.virtual_register.constraint),
-           meta.virtual_register.addressed ? "true" : "false");
+    (void)pg_writer_write_string_full(w, PG_S(" vreg=v"), allocator);
+    (void)pg_writer_write_u64_as_string(w, meta.virtual_register.value,
+                                        allocator);
+    (void)pg_writer_write_string_full(w, PG_S(" constraint="), allocator);
+    (void)pg_writer_write_string_full(
+        w, register_constraint_to_str(meta.virtual_register.constraint),
+        allocator);
+    (void)pg_writer_write_string_full(w, PG_S(" addressed="), allocator);
+    (void)pg_writer_write_string_full(
+        w, meta.virtual_register.addressed ? PG_S("true") : PG_S("false"),
+        allocator);
   }
 
   if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
-    printf(" mem_loc=");
+    (void)pg_writer_write_string_full(w, PG_S(" mem_loc="), allocator);
 
     switch (meta.memory_location.kind) {
     case MEMORY_LOCATION_KIND_REGISTER:
     case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      printf("reg(todo)");
+      (void)pg_writer_write_string_full(w, PG_S("reg(todo)"), allocator);
       // TODO
 #if 0
       amd64_print_register(meta.memory_location.reg);
 #endif
       break;
     case MEMORY_LOCATION_KIND_STACK: {
+      (void)pg_writer_write_string_full(w, PG_S("[sp"), allocator);
       printf("[sp");
       i32 offset = meta.memory_location.u.base_pointer_offset;
-      printf("-%" PRIi32 "]", offset);
+      (void)pg_writer_write_string_full(w, PG_S("-"), allocator);
+      (void)pg_writer_write_u64_as_string(w, (u64)offset, allocator);
     } break;
 #if 0
     case MEMORY_LOCATION_KIND_MEMORY:
@@ -318,12 +337,17 @@ static void metadata_print_meta(Metadata meta) {
 }
 
 static void ir_print_instructions(IrInstructionDyn instructions,
-                                  MetadataDyn metadata) {
+                                  MetadataDyn metadata, PgWriter *w,
+                                  PgAllocator *allocator) {
   for (u32 i = 0; i < instructions.len; i++) {
-    printf("[%u] ", i);
+    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_u64_as_string(w, i, allocator);
+    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+
     IrInstruction ins = PG_SLICE_AT(instructions, i);
-    origin_print(stdout, ins.origin);
-    printf(": ");
+    origin_write(w, ins.origin, allocator);
+
+    (void)pg_writer_write_string_full(w, PG_S(" "), allocator);
 
     switch (ins.kind) {
     case IR_INSTRUCTION_KIND_ADD: {
@@ -336,15 +360,18 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      printf("Add ");
+      (void)pg_writer_write_string_full(w, PG_S("Add "), allocator);
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
-      type_print(type);
+      type_print(type, w, allocator);
 
-      printf(" v%u, ", vreg.value);
-      ir_print_operand(ins.lhs, metadata);
-      printf(", ");
-      ir_print_operand(ins.rhs, metadata);
+      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+
+      ir_print_operand(ins.lhs, metadata, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_COMPARISON: {
@@ -357,15 +384,18 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      printf("Cmp ");
+      (void)pg_writer_write_string_full(w, PG_S("Cmp "), allocator);
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
-      type_print(type);
+      type_print(type, w, allocator);
 
-      printf(" v%u, ", vreg.value);
-      ir_print_operand(ins.lhs, metadata);
-      printf(", ");
-      ir_print_operand(ins.rhs, metadata);
+      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+
+      ir_print_operand(ins.lhs, metadata, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_MOV: {
@@ -377,15 +407,18 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      printf("Mov ");
+      (void)pg_writer_write_string_full(w, PG_S("Mov "), allocator);
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
-      type_print(type);
+      type_print(type, w, allocator);
 
-      printf(" v%u, ", vreg.value);
-      ir_print_operand(ins.lhs, metadata);
-      printf(", ");
-      ir_print_operand(ins.rhs, metadata);
+      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+
+      ir_print_operand(ins.lhs, metadata, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS: {
@@ -396,33 +429,36 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      printf("LoadAddr ");
+      (void)pg_writer_write_string_full(w, PG_S("LoadAddr "), allocator);
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
-      type_print(type);
+      type_print(type, w, allocator);
 
-      printf(" v%u, ", vreg.value);
-      ir_print_operand(ins.lhs, metadata);
-      printf(", ");
-      ir_print_operand(ins.rhs, metadata);
+      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
+
+      ir_print_operand(ins.lhs, metadata, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
       PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 
-      printf("JumpIfFalse ");
-      ir_print_operand(ins.lhs, metadata);
-      printf(", ");
-      ir_print_operand(ins.rhs, metadata);
+      (void)pg_writer_write_string_full(w, PG_S("JumpIfFalse "), allocator);
+
+      ir_print_operand(ins.lhs, metadata, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_JUMP: {
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      printf("Jump ");
-      ir_print_operand(ins.lhs, metadata);
+      (void)pg_writer_write_string_full(w, PG_S("Jump "), allocator);
+      ir_print_operand(ins.lhs, metadata, w, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_SYSCALL: {
@@ -431,10 +467,12 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(ins.args_count > 0);
       PG_ASSERT(ins.args_count <= max_syscall_args_count);
 
-      printf("Syscall(%u) ", ins.args_count);
+      (void)pg_writer_write_string_full(w, PG_S("Syscall["), allocator);
+      (void)pg_writer_write_u64_as_string(w, i, allocator);
+      (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
-      type_print(type);
+      type_print(type, w, allocator);
 
     } break;
 
@@ -442,43 +480,47 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      printf("Label ");
-      ir_print_operand(ins.lhs, metadata);
+      (void)pg_writer_write_string_full(w, PG_S("Label "), allocator);
+      ir_print_operand(ins.lhs, metadata, w, allocator);
     } break;
     case IR_INSTRUCTION_KIND_TRAP: {
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      printf("Trap");
+      (void)pg_writer_write_string_full(w, PG_S("Trap"), allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_NONE:
     default:
-      break;
+      PG_ASSERT(0);
     }
 
     if (ins.meta_idx.value) {
-      printf(" // ");
-      metadata_print_meta(PG_SLICE_AT(metadata, ins.meta_idx.value));
+      (void)pg_writer_write_string_full(w, PG_S(" // "), allocator);
+      metadata_print_meta(PG_SLICE_AT(metadata, ins.meta_idx.value), w,
+                          allocator);
     }
-    printf("\n");
+    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
+  (void)pg_writer_flush(w);
 }
 
-static void ir_print_fn_def(FnDefinition fn_def) {
+static void ir_print_fn_def(FnDefinition fn_def, PgWriter *w,
+                            PgAllocator *allocator) {
   PG_ASSERT(fn_def.name.len);
 
-  printf("%.*s {\n", (i32)fn_def.name.len, fn_def.name.data);
+  (void)pg_writer_write_string_full(w, fn_def.name, allocator);
 
-  ir_print_instructions(fn_def.instructions, fn_def.metadata);
+  ir_print_instructions(fn_def.instructions, fn_def.metadata, w, allocator);
 
-  printf("}\n\n");
+  (void)pg_writer_write_string_full(w, PG_S("\n\n"), allocator);
 }
 
-static void ir_print_fn_defs(FnDefinitionDyn fn_defs) {
+static void ir_print_fn_defs(FnDefinitionDyn fn_defs, PgWriter *w,
+                             PgAllocator *allocator) {
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    ir_print_fn_def(fn_def);
+    ir_print_fn_def(fn_def, w, allocator);
   }
 }
 
