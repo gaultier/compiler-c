@@ -333,31 +333,35 @@ static void test_assembler_amd64_mov() {
   for (u8 i = 1; i < 14; i++) {
     Register reg_a = {i};
 
-    u64 nums[] = {UINT8_MAX, UINT16_MAX, UINT32_MAX, UINT64_MAX};
+    u64 nums[] = {UINT8_MAX, UINT16_MAX, UINT32_MAX, UINT32_MAX + 1,
+                  UINT64_MAX};
     Pgu64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
-    static_assert(PG_STATIC_ARRAY_LEN(nums) == PG_STATIC_ARRAY_LEN(sizes));
 
     for (u64 j = 0; j < nums_slice.len; j++) {
-      AsmOperandSize size = PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), j);
       u64 immediate = PG_SLICE_AT(nums_slice, j);
 
-      Amd64Instruction ins = {
-          .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs =
-              (Amd64Operand){
-                  .kind = AMD64_OPERAND_KIND_REGISTER,
-                  .u.reg = reg_a,
-                  .size = size,
-              },
-          .rhs =
-              (Amd64Operand){
-                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                  .u.immediate = immediate,
-                  .size = size,
-              },
+      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), k);
 
-      };
-      test_helper_assemble_and_check(ins, allocator);
+        Amd64Instruction ins = {
+            .kind = AMD64_INSTRUCTION_KIND_MOV,
+            .lhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_a,
+                    .size = size,
+                },
+            .rhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                    .u.immediate = immediate,
+                    .size = size,
+                },
+
+        };
+        test_helper_assemble_and_check(ins, allocator);
+      }
     }
   }
 
