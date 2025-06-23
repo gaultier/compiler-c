@@ -1,0 +1,1 @@
+mov rsi, rsi

@@ -269,29 +269,39 @@ static void test_asm() {
       if (DT_REG != dir_it->d_type) {
         continue;
       }
-      if (!pg_string_ends_with(file_name, PG_S(".s"))) {
+      if (!pg_string_ends_with(file_name, PG_S(".bin"))) {
         continue;
       }
 
       PgString expected = {0};
-      PgString path_s = pg_path_join(dir_name, file_name, allocator);
+      PgString path_bin = pg_path_join(dir_name, file_name, allocator);
       {
         PgStringResult read_res =
-            pg_file_read_full_from_path(path_s, allocator);
+            pg_file_read_full_from_path(path_bin, allocator);
         PG_ASSERT(0 == read_res.err);
         expected = read_res.res;
       }
 
       Amd64Instruction ins = {0};
       {
-        PgString path_ins_bin =
-            pg_path_join(pg_path_stem(path_s), PG_S(".ins.bin"), allocator);
+        PgString path_ins =
+            pg_string_concat(pg_path_stem(path_bin), PG_S(".ins"), allocator);
         PgStringResult read_res =
-            pg_file_read_full_from_path(path_ins_bin, allocator);
+            pg_file_read_full_from_path(path_ins, allocator);
         PG_ASSERT(0 == read_res.err);
         PG_ASSERT(sizeof(Amd64Instruction) == read_res.res.len);
         ins = *(Amd64Instruction *)(void *)read_res.res.data;
       }
+      PgString asm_human_readable = {0};
+      {
+        PgString path_s =
+            pg_string_concat(pg_path_stem(path_bin), PG_S(".s"), allocator);
+        PgStringResult read_res =
+            pg_file_read_full_from_path(path_s, allocator);
+        PG_ASSERT(0 == read_res.err);
+        asm_human_readable = read_res.res;
+      }
+
       AsmProgram program = {0};
       Pgu8Dyn sb = pg_string_builder_make(256, allocator);
       amd64_encode_instruction(&program, &sb, ins, allocator);
@@ -299,9 +309,11 @@ static void test_asm() {
 
       bool eq = pg_bytes_eq(actual, expected);
       if (!eq) {
-        printf("OK %.*s\n", (i32)path_s.len, path_s.data);
+        printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
+               (i32)asm_human_readable.len, asm_human_readable.data);
       } else {
-        fprintf(stderr, "FAIL %.*s\n", (i32)path_s.len, path_s.data);
+        fprintf(stderr, "FAIL %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
+                (i32)asm_human_readable.len, asm_human_readable.data);
       }
     }
   }
