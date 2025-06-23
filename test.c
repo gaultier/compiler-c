@@ -299,7 +299,7 @@ static void test_asm() {
         PgStringResult read_res =
             pg_file_read_full_from_path(path_s, allocator);
         PG_ASSERT(0 == read_res.err);
-        asm_human_readable = read_res.res;
+        asm_human_readable = pg_string_trim_space(read_res.res);
       }
 
       AsmProgram program = {0};
@@ -308,12 +308,16 @@ static void test_asm() {
       PgString actual = PG_DYN_SLICE(PgString, sb);
 
       bool eq = pg_bytes_eq(actual, expected);
-      if (!eq) {
+      if (eq) {
         printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
                (i32)asm_human_readable.len, asm_human_readable.data);
       } else {
-        fprintf(stderr, "FAIL %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
-                (i32)asm_human_readable.len, asm_human_readable.data);
+        PgString expected_str = pg_bytes_to_hex_string(expected, allocator);
+        PgString actual_str = pg_bytes_to_hex_string(actual, allocator);
+        fprintf(stderr, "FAIL %.*s %.*s\nExpected: %.*s\nActual: %.*s\n\n",
+                (i32)path_bin.len, path_bin.data, (i32)asm_human_readable.len,
+                asm_human_readable.data, (i32)expected_str.len,
+                expected_str.data, (i32)actual_str.len, actual_str.data);
       }
     }
   }
