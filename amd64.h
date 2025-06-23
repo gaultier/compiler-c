@@ -671,6 +671,64 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
+  // MOV r8, imm8
+  // MOV r16, imm16
+  // MOV r32, imm32
+  // MOV r64, imm64
+  if (AMD64_OPERAND_KIND_REGISTER == ins.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind) {
+    PG_ASSERT(ins.lhs.size == ins.rhs.size);
+    PG_ASSERT(0 != ins.lhs.size);
+    Register reg = ins.lhs.u.reg;
+    u64 immediate = ins.rhs.u.immediate;
+
+    // 16 bits prefix.
+    {
+      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+    }
+
+    // Rex.
+    {
+      bool modrm_reg_field = false;
+      bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+      bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                       ins.rhs, allocator);
+    }
+
+    // Opcode.
+    {
+      u8 opcode = 0xB8;
+      if (amd64_is_r_slash_m8(ins.lhs)) {
+        opcode = 0xB0;
+      }
+      opcode |= amd64_encode_register_value(reg) & 0b111;
+      *PG_DYN_PUSH(sb, allocator) = opcode;
+    }
+
+    // No ModRM.
+
+    switch (ins.lhs.size) {
+    case ASM_OPERAND_SIZE_1:
+      pg_byte_buffer_append_u8(sb, (u8)immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_2:
+      pg_byte_buffer_append_u16(sb, (u16)immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_4:
+      pg_byte_buffer_append_u32(sb, (u32)immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_8:
+      pg_byte_buffer_append_u64(sb, immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_0:
+    default:
+      PG_ASSERT(0);
+    }
+
+    return;
+  }
+
   // MOV r/m8, imm8
   // MOV r/m16, imm16
   // MOV r/m32, imm32
@@ -716,39 +774,6 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     default:
       PG_ASSERT(0);
     }
-
-    return;
-  }
-
-  // MOV r64, imm64
-  if (AMD64_OPERAND_KIND_REGISTER == ins.lhs.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind) {
-    PG_ASSERT(ins.lhs.size == ins.rhs.size);
-    PG_ASSERT(ASM_OPERAND_SIZE_8 == ins.lhs.size);
-    Register reg = ins.lhs.u.reg;
-    u64 immediate = ins.rhs.u.immediate;
-
-    // No 16 bits prefix.
-
-    // Rex.
-    {
-      bool modrm_reg_field = false;
-      bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
-      bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
-      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
-                       ins.rhs, allocator);
-    }
-
-    // Opcode.
-    {
-      u8 opcode = 0xB8;
-      opcode |= amd64_encode_register_value(reg) & 0b111;
-      *PG_DYN_PUSH(sb, allocator) = opcode;
-    }
-
-    // No ModRM.
-
-    pg_byte_buffer_append_u64(sb, immediate, allocator);
 
     return;
   }
