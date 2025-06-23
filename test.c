@@ -287,6 +287,36 @@ static PgProcess test_helper_cc_assemble_spawn(Amd64Instruction ins,
   return process;
 }
 
+static void test_helper_assemble_and_check(Amd64Instruction ins,
+                                           PgAllocator *allocator) {
+  AsmProgram program = {0};
+  Pgu8Dyn sb = {0};
+  amd64_encode_instruction(&program, &sb, ins, allocator);
+  Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
+
+  PgProcess proc = test_helper_cc_assemble_spawn(ins, allocator);
+
+  PgReader reader_stdout =
+      pg_reader_make_from_file_descriptor(proc.stdout_pipe);
+
+  u8 recv_buf[4096] = {0};
+  Pgu8Slice recv_buf_slice = {
+      .data = recv_buf,
+      .len = PG_STATIC_ARRAY_LEN(recv_buf),
+  };
+  PgStringResult read_res =
+      pg_reader_read_until_full_or_eof(&reader_stdout, recv_buf_slice);
+  PG_ASSERT(!read_res.err);
+
+  PgString expected = read_res.res;
+
+  PG_ASSERT(pg_string_eq(actual, PG_DYN_SLICE(Pgu8Slice, expected)));
+
+  PgProcessExitResult res_wait = pg_process_wait(proc, allocator);
+  PG_ASSERT(!res_wait.err);
+  PG_ASSERT(0 == res_wait.res.exit_status);
+}
+
 static void test_assembler_amd64_mov() {
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
@@ -298,6 +328,38 @@ static void test_assembler_amd64_mov() {
       ASM_OPERAND_SIZE_4,
       ASM_OPERAND_SIZE_8,
   };
+
+  // Reg-immediate.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    u64 nums[] = {UINT8_MAX, UINT16_MAX, UINT32_MAX, UINT64_MAX};
+    Pgu64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
+    static_assert(PG_STATIC_ARRAY_LEN(nums) == PG_STATIC_ARRAY_LEN(sizes));
+
+    for (u64 j = 0; j < nums_slice.len; j++) {
+      AsmOperandSize size = PG_C_ARRAY_AT(sizes, PG_STATIC_ARRAY_LEN(sizes), j);
+      u64 immediate = PG_SLICE_AT(nums_slice, j);
+
+      Amd64Instruction ins = {
+          .kind = AMD64_INSTRUCTION_KIND_MOV,
+          .lhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_REGISTER,
+                  .u.reg = reg_a,
+                  .size = size,
+              },
+          .rhs =
+              (Amd64Operand){
+                  .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                  .u.immediate = immediate,
+                  .size = size,
+              },
+
+      };
+      test_helper_assemble_and_check(ins, allocator);
+    }
+  }
 
   // Reg-reg.
   for (u8 i = 1; i < 14; i++) {
@@ -327,31 +389,7 @@ static void test_assembler_amd64_mov() {
 
         };
 
-        Pgu8Dyn sb = {0};
-        amd64_encode_instruction_mov(&sb, ins, allocator);
-        Pgu8Slice actual = PG_DYN_SLICE(Pgu8Slice, sb);
-
-        PgProcess proc = test_helper_cc_assemble_spawn(ins, allocator);
-
-        PgReader reader_stdout =
-            pg_reader_make_from_file_descriptor(proc.stdout_pipe);
-
-        u8 recv_buf[4096] = {0};
-        Pgu8Slice recv_buf_slice = {
-            .data = recv_buf,
-            .len = PG_STATIC_ARRAY_LEN(recv_buf),
-        };
-        PgStringResult read_res =
-            pg_reader_read_until_full_or_eof(&reader_stdout, recv_buf_slice);
-        PG_ASSERT(!read_res.err);
-
-        PgString expected = read_res.res;
-
-        PG_ASSERT(pg_string_eq(actual, PG_DYN_SLICE(Pgu8Slice, expected)));
-
-        PgProcessExitResult res_wait = pg_process_wait(proc, allocator);
-        PG_ASSERT(!res_wait.err);
-        PG_ASSERT(0 == res_wait.res.exit_status);
+        test_helper_assemble_and_check(ins, allocator);
       }
     }
   }
