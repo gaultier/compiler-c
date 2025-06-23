@@ -273,13 +273,26 @@ static void test_asm() {
         continue;
       }
 
+      PgString expected = {0};
       PgString path_s = pg_path_join(dir_name, file_name, allocator);
-      PgStringResult read_res = pg_file_read_full_from_path(path_s, allocator);
-      PG_ASSERT(0 == read_res.err);
-      PgString expected = read_res.res;
+      {
+        PgStringResult read_res =
+            pg_file_read_full_from_path(path_s, allocator);
+        PG_ASSERT(0 == read_res.err);
+        expected = read_res.res;
+      }
 
+      Amd64Instruction ins = {0};
+      {
+        PgString path_ins_bin =
+            pg_path_join(pg_path_stem(path_s), PG_S(".ins.bin"), allocator);
+        PgStringResult read_res =
+            pg_file_read_full_from_path(path_ins_bin, allocator);
+        PG_ASSERT(0 == read_res.err);
+        PG_ASSERT(sizeof(Amd64Instruction) == read_res.res.len);
+        ins = *(Amd64Instruction *)(void *)read_res.res.data;
+      }
       AsmProgram program = {0};
-      Amd64Instruction ins = {0}; // FIXME
       Pgu8Dyn sb = pg_string_builder_make(256, allocator);
       amd64_encode_instruction(&program, &sb, ins, allocator);
       PgString actual = PG_DYN_SLICE(PgString, sb);

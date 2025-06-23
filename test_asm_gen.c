@@ -22,6 +22,15 @@ static void gen_helper_run_assembler(Amd64Instruction ins,
   PG_ASSERT(
       0 == pg_file_write_full(path_asm_s, asm_human_readable, 0600, allocator));
 
+  {
+    PgString path_asm_ins = pg_path_join(
+        PG_S("test_amd64"),
+        pg_string_concat(content_hash_str, PG_S(".ins.bin"), allocator),
+        allocator);
+    PgString ins_bin = {.data = (u8 *)&ins, .len = sizeof(ins)};
+    PG_ASSERT(0 == pg_file_write_full(path_asm_ins, ins_bin, 0600, allocator));
+  }
+
   PgString path_asm_bin = pg_path_join(
       PG_S("test_amd64"),
       pg_string_concat(content_hash_str, PG_S(".bin"), allocator), allocator);
