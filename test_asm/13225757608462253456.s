@@ -1,1 +1,0 @@
-mov rsi, r8

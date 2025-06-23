@@ -17,13 +17,13 @@ static void gen_helper_run_assembler(Amd64Instruction ins,
   PgString content_hash_str = pg_u64_to_string(content_hash, allocator);
 
   PgString path_asm_s = pg_path_join(
-      PG_S("test_asm"),
+      PG_S("test_amd64"),
       pg_string_concat(content_hash_str, PG_S(".s"), allocator), allocator);
   PG_ASSERT(
       0 == pg_file_write_full(path_asm_s, asm_human_readable, 0600, allocator));
 
   PgString path_asm_bin = pg_path_join(
-      PG_S("test_asm"),
+      PG_S("test_amd64"),
       pg_string_concat(content_hash_str, PG_S(".bin"), allocator), allocator);
 
   printf("\n--- path_asm_s=%.*s path_asm_bin=%.*s\n%.*s\n---\n",
