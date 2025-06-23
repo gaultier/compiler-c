@@ -1,2 +1,2 @@
 - [.] adapt amd64 encoding to use real sizes from types incl. right registers
-- [ ] consider using a faster assembler e.g. tcc
+- [ ] move build scripts to make

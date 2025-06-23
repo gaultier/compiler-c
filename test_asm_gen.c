@@ -1,0 +1,145 @@
+#include "amd64.h"
+
+static void gen_helper_run_assembler(Amd64Instruction ins,
+                                     PgAllocator *allocator) {
+  PgString asm_human_readable = {0};
+  {
+    Pgu8Dyn sb = {0};
+    PG_DYN_ENSURE_CAP(&sb, 256, allocator);
+    PgWriter w = pg_writer_make_from_string_builder(&sb);
+    amd64_print_instruction(ins, false, &w, allocator);
+    (void)pg_writer_write_string_full(&w, PG_S("\n"), allocator);
+
+    asm_human_readable = PG_DYN_SLICE(PgString, sb);
+  }
+
+  u64 content_hash = pg_hash_fnv(asm_human_readable);
+  PgString content_hash_str = pg_u64_to_string(content_hash, allocator);
+
+  PgString path_asm_s = pg_path_join(
+      PG_S("test_asm"),
+      pg_string_concat(content_hash_str, PG_S(".s"), allocator), allocator);
+  PG_ASSERT(
+      0 == pg_file_write_full(path_asm_s, asm_human_readable, 0600, allocator));
+
+  PgString path_asm_bin = pg_path_join(
+      PG_S("test_asm"),
+      pg_string_concat(content_hash_str, PG_S(".bin"), allocator), allocator);
+
+  printf("\n--- path_asm_s=%.*s path_asm_bin=%.*s\n%.*s\n---\n",
+         (i32)path_asm_s.len, path_asm_s.data, (i32)path_asm_bin.len,
+         path_asm_bin.data, (i32)asm_human_readable.len,
+         asm_human_readable.data);
+
+  PgString args[] = {
+      PG_S("-mllvm"),
+      PG_S("--x86-asm-syntax=intel"),
+      PG_S("-x"),
+      PG_S("assembler"),
+      PG_S("-O0"),
+      PG_S("-nostdlib"),
+      PG_S("-Wl,--oformat=binary"),
+      PG_S("-o"),
+      path_asm_bin,
+      PG_S("-"),
+  };
+  PgStringSlice args_slice = {.data = args, .len = PG_STATIC_ARRAY_LEN(args)};
+
+  PgProcessSpawnOptions options = {
+      .stdin_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
+      .stderr_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
+  };
+  PgProcessResult res_spawn =
+      pg_process_spawn(PG_S("clang"), args_slice, options, allocator);
+  PG_ASSERT(0 == res_spawn.err);
+
+  PgProcess process = res_spawn.res;
+  PG_ASSERT(process.stdin_pipe.fd);
+
+  PG_ASSERT(0 == pg_file_write_full_with_descriptor(process.stdin_pipe,
+                                                    asm_human_readable));
+  (void)pg_file_close(process.stdin_pipe);
+
+  PgProcessExitResult res_proc = pg_process_wait(process, allocator);
+
+  PG_ASSERT(0 == res_proc.err);
+}
+
+static void gen_mov(PgAllocator *allocator) {
+  // Reg-immediate.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    u64 nums[] = {UINT8_MAX, UINT16_MAX, UINT32_MAX, UINT32_MAX + 1,
+                  UINT64_MAX};
+    Pgu64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
+
+    for (u64 j = 0; j < nums_slice.len; j++) {
+      u64 immediate = PG_SLICE_AT(nums_slice, j);
+
+      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        Amd64Instruction ins = {
+            .kind = AMD64_INSTRUCTION_KIND_MOV,
+            .lhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_a,
+                    .size = size,
+                },
+            .rhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+                    .u.immediate = immediate,
+                    .size = size,
+                },
+
+        };
+        gen_helper_run_assembler(ins, allocator);
+      }
+    }
+  }
+
+  // Reg-reg.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    for (u8 j = 1; j < 14; j++) {
+      Register reg_b = {j};
+
+      for (u8 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        Amd64Instruction ins = {
+            .kind = AMD64_INSTRUCTION_KIND_MOV,
+            .lhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_a,
+                    .size = size,
+                },
+            .rhs =
+                (Amd64Operand){
+                    .kind = AMD64_OPERAND_KIND_REGISTER,
+                    .u.reg = reg_b,
+                    .size = size,
+                },
+
+        };
+
+        gen_helper_run_assembler(ins, allocator);
+      }
+    }
+  }
+}
+
+int main() {
+  PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
+  PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
+  PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  gen_mov(allocator);
+}

@@ -44,6 +44,13 @@ typedef enum {
   // TODO: More (SIMD).
 } AsmOperandSize;
 
+static const AsmOperandSize asm_sizes[] = {
+    ASM_OPERAND_SIZE_1,
+    ASM_OPERAND_SIZE_2,
+    ASM_OPERAND_SIZE_4,
+    ASM_OPERAND_SIZE_8,
+};
+
 typedef struct {
   Amd64OperandKind kind;
   union {
