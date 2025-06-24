@@ -464,7 +464,10 @@ static bool amd64_is_register_64_bits_only(Register reg) {
 
 [[nodiscard]]
 static bool amd64_is_operand_register_64_bits_only(Amd64Operand op) {
-  return amd64_is_reg(op) && amd64_is_register_64_bits_only(op.u.reg);
+  return (amd64_is_reg(op) && amd64_is_register_64_bits_only(op.u.reg)) ||
+         (amd64_is_mem(op) &&
+          // TODO: Check `op.u.effective_address.index`?
+          amd64_is_register_64_bits_only(op.u.effective_address.base));
 }
 
 static const u8 AMD64_REX_DEFAULT = 0b0100'0000;

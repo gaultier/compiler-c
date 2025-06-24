@@ -318,6 +318,7 @@ static void test_asm() {
                 (i32)path_bin.len, path_bin.data, (i32)asm_human_readable.len,
                 asm_human_readable.data, (i32)expected_str.len,
                 expected_str.data, (i32)actual_str.len, actual_str.data);
+        PG_ASSERT(0);
       }
     }
   }
