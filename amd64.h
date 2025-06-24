@@ -671,12 +671,18 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
+  bool is_lhs_64_bits_reg_and_rhs_imm32_sign_extendable =
+      AMD64_OPERAND_KIND_REGISTER == ins.lhs.kind &&
+      AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind &&
+      ASM_OPERAND_SIZE_8 == ins.lhs.size &&
+      ((u64)(i32)ins.rhs.u.immediate == ins.rhs.u.immediate);
   // MOV r8, imm8
   // MOV r16, imm16
   // MOV r32, imm32
   // MOV r64, imm64
   if (AMD64_OPERAND_KIND_REGISTER == ins.lhs.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind) {
+      AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind &&
+      !is_lhs_64_bits_reg_and_rhs_imm32_sign_extendable) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size);
     PG_ASSERT(0 != ins.lhs.size);
     Register reg = ins.lhs.u.reg;
@@ -732,8 +738,9 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
   // MOV r/m8, imm8
   // MOV r/m16, imm16
   // MOV r/m32, imm32
+  // MOV r/m64, imm32 (sign extended)
   if (lhs_is_reg_or_mem && AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind &&
-      ASM_OPERAND_SIZE_8 != ins.rhs.size) {
+      is_lhs_64_bits_reg_and_rhs_imm32_sign_extendable) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size);
     PG_ASSERT(0 != ins.lhs.size);
     u64 immediate = ins.rhs.u.immediate;
@@ -743,7 +750,14 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
       amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
     }
 
-    // No REX.
+    // Rex.
+    {
+      bool modrm_reg_field = false;
+      bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+      bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                       ins.rhs, allocator);
+    }
 
     // Opcode.
     {
@@ -769,8 +783,10 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     case ASM_OPERAND_SIZE_4:
       pg_byte_buffer_append_u32(sb, (u32)immediate, allocator);
       break;
-    case ASM_OPERAND_SIZE_0:
     case ASM_OPERAND_SIZE_8:
+      pg_byte_buffer_append_u32(sb, (u32)immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_0:
     default:
       PG_ASSERT(0);
     }
