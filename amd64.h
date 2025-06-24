@@ -306,11 +306,15 @@ static void amd64_print_operand(Amd64Operand op, bool with_op_size, PgWriter *w,
       (void)pg_writer_write_u64_as_string(w, op.u.effective_address.scale,
                                           allocator);
     }
-    (void)pg_writer_write_string_full(
-        w, op.u.effective_address.displacement >= 0 ? PG_S("+") : PG_S(""),
-        allocator);
-    (void)pg_writer_write_u64_as_string(
-        w, (u64)op.u.effective_address.displacement, allocator);
+
+    if (op.u.effective_address.displacement) {
+      (void)pg_writer_write_string_full(
+          w, op.u.effective_address.displacement >= 0 ? PG_S("+") : PG_S(""),
+          allocator);
+      (void)pg_writer_write_u64_as_string(
+          w, (u64)op.u.effective_address.displacement, allocator);
+    }
+
     (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
   } break;
   case AMD64_OPERAND_KIND_LABEL:
