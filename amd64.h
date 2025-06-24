@@ -133,11 +133,11 @@ static const u8 amd64_register_to_encoded_value[16 + 1] = {
     [AMD64_RBP] = 0b0101,
 };
 
-static const char *amd64_size_to_operand_size_string[8 + 1] = {
-    [ASM_OPERAND_SIZE_1] = "byte",
-    [ASM_OPERAND_SIZE_2] = "word",
-    [ASM_OPERAND_SIZE_4] = "dword",
-    [ASM_OPERAND_SIZE_8] = "qword",
+static const PgString amd64_size_to_operand_size_string[8 + 1] = {
+    [ASM_OPERAND_SIZE_1] = PG_S("byte"),
+    [ASM_OPERAND_SIZE_2] = PG_S("word"),
+    [ASM_OPERAND_SIZE_4] = PG_S("dword"),
+    [ASM_OPERAND_SIZE_8] = PG_S("qword"),
 };
 
 static const Pgu8Slice amd64_register_to_encoded_value_slice = {
@@ -290,7 +290,7 @@ static void amd64_print_operand(Amd64Operand op, bool with_op_size, PgWriter *w,
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
     if (with_op_size) {
       (void)pg_writer_write_string_full(
-          w, PG_S(amd64_size_to_operand_size_string[op.size]), allocator);
+          w, amd64_size_to_operand_size_string[op.size], allocator);
       (void)pg_writer_write_string_full(w, PG_S(" ptr "), allocator);
     }
     (void)pg_writer_write_string_full(w, PG_S("["), allocator);
@@ -474,7 +474,7 @@ static const u8 AMD64_REX_MASK_W = 0b0000'1000;
 static const u8 AMD64_REX_MASK_R = 0b0000'0100;
 // Enable use of 64 bits registers in SIB.
 static const u8 AMD64_REX_MASK_X = 0b0000'0010;
-// Enable use of 64 bits registers in the ModRM(r/m) field.
+// Enable use of 64 bits registers in the ModRM(reg/mem) field.
 static const u8 AMD64_REX_MASK_B = 0b0000'0001;
 
 // No index register.
@@ -625,10 +625,10 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
 
   bool lhs_is_reg_or_mem = amd64_is_reg(ins.lhs) || amd64_is_mem(ins.lhs);
 
-  // MOV r/m8, r8
-  // MOV r/m16, r16
-  // MOV r/m32, r32
-  // MOV r/m64, r64
+  // MOV reg/mem8, r8
+  // MOV reg/mem16, r16
+  // MOV reg/mem32, r32
+  // MOV reg/mem64, r64
   if (lhs_is_reg_or_mem && amd64_is_reg(ins.rhs)) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size);
     PG_ASSERT(0 != ins.lhs.size);
@@ -735,10 +735,10 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
-  // MOV r/m8, imm8
-  // MOV r/m16, imm16
-  // MOV r/m32, imm32
-  // MOV r/m64, imm32 (sign extended)
+  // MOV reg/mem8, imm8
+  // MOV reg/mem16, imm16
+  // MOV reg/mem32, imm32
+  // MOV reg/mem64, imm32 (sign extended)
   if (lhs_is_reg_or_mem && AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind &&
       is_lhs_64_bits_reg_and_rhs_imm32_sign_extendable) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size);
@@ -789,6 +789,53 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     case ASM_OPERAND_SIZE_0:
     default:
       PG_ASSERT(0);
+    }
+
+    return;
+  }
+
+  // MOV reg/mem8, reg8
+  // MOV reg/mem16, reg16
+  // MOV reg/mem32, reg32
+  // MOV reg/mem64, reg64
+  if (lhs_is_reg_or_mem && AMD64_OPERAND_KIND_REGISTER == ins.rhs.kind) {
+    PG_ASSERT(ins.lhs.size == ins.rhs.size);
+    PG_ASSERT(0 != ins.lhs.size);
+    Register rhs = ins.rhs.u.reg;
+
+    // 16 bits prefix.
+    {
+      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+    }
+
+    // Rex.
+    {
+      bool modrm_reg_field = amd64_is_register_64_bits_only(rhs);
+      bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+      bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                       ins.rhs, allocator);
+    }
+
+    // Opcode.
+    {
+      u8 opcode = 0x89;
+      if (amd64_is_r_slash_m8(ins.lhs)) {
+        opcode = 0x88;
+      }
+      *PG_DYN_PUSH(sb, allocator) = opcode;
+    }
+
+    // ModRM.
+    {
+      amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+    }
+
+    // SIB.
+    {
+      if (amd64_is_mem(ins.lhs) && amd64_has_displacement(ins.lhs)) {
+        PG_ASSERT(0 && "todo");
+      }
     }
 
     return;

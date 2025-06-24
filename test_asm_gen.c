@@ -74,6 +74,53 @@ static void gen_helper_run_assembler(Amd64Instruction ins,
 }
 
 static void gen_mov(PgAllocator *allocator) {
+  // Reg/mem-Reg.
+  // TODO: Scale, index.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    i32 displacements[] = {0, 8, INT32_MAX};
+    Pgi32Slice displacements_slice = {
+        .data = displacements,
+        .len = PG_STATIC_ARRAY_LEN(displacements),
+    };
+
+    for (u8 j = 1; j < 14; j++) {
+      Register reg_b = {j};
+
+      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        for (u64 l = 0; l < displacements_slice.len; l++) {
+          i32 displacement = PG_SLICE_AT(displacements_slice, l);
+
+          Amd64Instruction ins = {
+              .kind = AMD64_INSTRUCTION_KIND_MOV,
+              .lhs =
+                  (Amd64Operand){
+                      .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+                      .u.effective_address =
+                          {
+                              .base = reg_a,
+                              .displacement = displacement,
+                          },
+                      .size = size,
+                  },
+              .rhs =
+                  (Amd64Operand){
+                      .kind = AMD64_OPERAND_KIND_REGISTER,
+                      .u.reg = reg_b,
+                      .size = size,
+                  },
+
+          };
+          gen_helper_run_assembler(ins, allocator);
+        }
+      }
+    }
+  }
+
   // Reg-immediate.
   for (u8 i = 1; i < 14; i++) {
     Register reg_a = {i};
