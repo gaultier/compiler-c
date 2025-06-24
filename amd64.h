@@ -216,10 +216,6 @@ static const Architecture amd64_arch = {
   return amd64_is_reg(op) && ASM_OPERAND_SIZE_1 == op.size;
 }
 
-[[nodiscard]] static bool amd64_has_displacement(Amd64Operand op) {
-  return amd64_is_mem(op) && op.u.effective_address.displacement;
-}
-
 // TODO: If any of the callee-saved registers were used by the register
 // allocator, emit storing code (push).
 static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
@@ -579,7 +575,8 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
 
 [[nodiscard]]
 static bool amd64_is_r_slash_m8(Amd64Operand op) {
-  return amd64_is_reg8(op) || AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == op.kind;
+  return amd64_is_reg8(op) ||
+         (amd64_is_mem(op) && ASM_OPERAND_SIZE_1 == op.size);
 }
 
 static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
@@ -620,51 +617,36 @@ static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
 }
 
 static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr,
-                             u8 modrm_mod, u8 modrm_rm,
                              PgAllocator *allocator) {
-  (void)modrm_mod;
-  (void)modrm_rm;
+  PG_ASSERT(0 != addr.base.value);
 
   PG_ASSERT(0 == addr.scale || 1 == addr.scale || 2 == addr.scale ||
             4 == addr.scale || 8 == addr.scale);
+
+  PG_ASSERT(0 == addr.scale && "todo");
+
+  PG_ASSERT(0 == addr.index.value && "todo");
+
+#if 0
   u8 scale_encoding[] = {
       [0] = 0b0, [1] = 0b0, [2] = 0b01, [4] = 0b10, [8] = 0b11,
   };
   u8 scale_encoded = PG_C_ARRAY_AT(
       scale_encoding, PG_STATIC_ARRAY_LEN(scale_encoding), addr.scale);
-
   u8 index_encoded = 0;
-  PG_ASSERT(0 == addr.index.value && "todo");
-
-  u8 base_encoded = 0;
-  if (0b100 == modrm_rm) {
-    if (AMD64_RAX == addr.base.value) {
-      base_encoded = 0b000;
-    } else if (AMD64_RCX == addr.base.value && 0 == addr.displacement) {
-      base_encoded = 0b001;
-    } else if (AMD64_RDX == addr.base.value && 0 == addr.displacement) {
-      base_encoded = 0b010;
-    } else if (AMD64_RBX == addr.base.value && 0 == addr.displacement) {
-      base_encoded = 0b011;
-    } else if (AMD64_RSP == addr.base.value && 0 == addr.displacement) {
-      base_encoded = 0b100;
-    } else if (AMD64_RBP == addr.base.value) { // TODO: Check this condition.
-      base_encoded = 0b101;
-    } else if (AMD64_RSI == addr.base.value && 0 == addr.displacement) {
-      base_encoded = 0b110;
-    } else if (AMD64_RDI == addr.base.value && 0 == addr.displacement) {
-      base_encoded = 0b111;
-    } else {
-      PG_ASSERT(0);
-    }
-  } else {
-    PG_ASSERT(0 && "todo");
-  }
-
   u8 res = (u8)(scale_encoded << 6) | (u8)((index_encoded & 0b111) << 3) |
            (u8)(base_encoded & 0b111);
 
   *PG_DYN_PUSH(sb, allocator) = res;
+#endif
+
+  if (addr.displacement) {
+    if (addr.displacement <= INT8_MAX) {
+      pg_byte_buffer_append_u8(sb, (u8)addr.displacement, allocator);
+    } else {
+      pg_byte_buffer_append_u32(sb, (u32)addr.displacement, allocator);
+    }
+  }
 }
 
 static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
@@ -712,8 +694,8 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     }
     // SIB.
     {
-      if (amd64_has_displacement(ins.lhs)) {
-        amd64_encode_sib(sb, ins.lhs.u.effective_address, 0, 0, allocator);
+      if (amd64_is_mem(ins.lhs)) {
+        amd64_encode_sib(sb, ins.lhs.u.effective_address, allocator);
       }
     }
     return;
