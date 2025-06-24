@@ -95,25 +95,21 @@ static void gen_mov(PgAllocator *allocator) {
         for (u64 l = 0; l < displacements_slice.len; l++) {
           i32 displacement = PG_SLICE_AT(displacements_slice, l);
 
-          Amd64Instruction ins = {
-              .kind = AMD64_INSTRUCTION_KIND_MOV,
-              .lhs =
-                  (Amd64Operand){
-                      .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
-                      .u.effective_address =
-                          {
-                              .base = reg_a,
-                              .displacement = displacement,
-                          },
-                      .size = size,
+          Amd64Instruction ins = {};
+          ins.kind = AMD64_INSTRUCTION_KIND_MOV;
+          ins.lhs = (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+              .u.effective_address =
+                  {
+                      .base = reg_a,
+                      .displacement = displacement,
                   },
-              .rhs =
-                  (Amd64Operand){
-                      .kind = AMD64_OPERAND_KIND_REGISTER,
-                      .u.reg = reg_b,
-                      .size = size,
-                  },
-
+              .size = size,
+          };
+          ins.rhs = (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .u.reg = reg_b,
+              .size = size,
           };
           gen_helper_run_assembler(ins, allocator);
         }
@@ -136,21 +132,17 @@ static void gen_mov(PgAllocator *allocator) {
         AsmOperandSize size =
             PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
 
-        Amd64Instruction ins = {
-            .kind = AMD64_INSTRUCTION_KIND_MOV,
-            .lhs =
-                (Amd64Operand){
-                    .kind = AMD64_OPERAND_KIND_REGISTER,
-                    .u.reg = reg_a,
-                    .size = size,
-                },
-            .rhs =
-                (Amd64Operand){
-                    .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-                    .u.immediate = immediate,
-                    .size = size,
-                },
-
+        Amd64Instruction ins = {};
+        ins.kind = AMD64_INSTRUCTION_KIND_MOV;
+        ins.lhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_a,
+            .size = size,
+        };
+        ins.rhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+            .u.immediate = immediate,
+            .size = size,
         };
         gen_helper_run_assembler(ins, allocator);
       }
@@ -168,23 +160,18 @@ static void gen_mov(PgAllocator *allocator) {
         AsmOperandSize size =
             PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
 
-        Amd64Instruction ins = {
-            .kind = AMD64_INSTRUCTION_KIND_MOV,
-            .lhs =
-                (Amd64Operand){
-                    .kind = AMD64_OPERAND_KIND_REGISTER,
-                    .u.reg = reg_a,
-                    .size = size,
-                },
-            .rhs =
-                (Amd64Operand){
-                    .kind = AMD64_OPERAND_KIND_REGISTER,
-                    .u.reg = reg_b,
-                    .size = size,
-                },
-
+        Amd64Instruction ins = {};
+        ins.kind = AMD64_INSTRUCTION_KIND_MOV;
+        ins.lhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_a,
+            .size = size,
         };
-
+        ins.rhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_b,
+            .size = size,
+        };
         gen_helper_run_assembler(ins, allocator);
       }
     }
