@@ -637,7 +637,29 @@ static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr,
   PG_ASSERT(0 == addr.index.value && "todo");
 
   u8 base_encoded = 0;
-  // TODO
+  if (0b100 == modrm_rm) {
+    if (AMD64_RAX == addr.base.value) {
+      base_encoded = 0b000;
+    } else if (AMD64_RCX == addr.base.value && 0 == addr.displacement) {
+      base_encoded = 0b001;
+    } else if (AMD64_RDX == addr.base.value && 0 == addr.displacement) {
+      base_encoded = 0b010;
+    } else if (AMD64_RBX == addr.base.value && 0 == addr.displacement) {
+      base_encoded = 0b011;
+    } else if (AMD64_RSP == addr.base.value && 0 == addr.displacement) {
+      base_encoded = 0b100;
+    } else if (AMD64_RBP == addr.base.value) { // TODO: Check this condition.
+      base_encoded = 0b101;
+    } else if (AMD64_RSI == addr.base.value && 0 == addr.displacement) {
+      base_encoded = 0b110;
+    } else if (AMD64_RDI == addr.base.value && 0 == addr.displacement) {
+      base_encoded = 0b111;
+    } else {
+      PG_ASSERT(0);
+    }
+  } else {
+    PG_ASSERT(0 && "todo");
+  }
 
   u8 res = (u8)(scale_encoded << 6) | (u8)((index_encoded & 0b111) << 3) |
            (u8)(base_encoded & 0b111);
