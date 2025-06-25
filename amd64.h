@@ -125,12 +125,12 @@ static const PgString amd64_register_to_string_table[][8 + 1] = {
 };
 
 static const u8 amd64_register_to_encoded_value[16 + 1] = {
-    [AMD64_RAX] = 0b0000, [AMD64_RBX] = 0b0011, [AMD64_RCX] = 0b0001,
-    [AMD64_RDX] = 0b0010, [AMD64_RDI] = 0b0111, [AMD64_RSI] = 0b0110,
-    [AMD64_R8] = 0b1000,  [AMD64_R9] = 0b1001,  [AMD64_R10] = 0b1010,
-    [AMD64_R11] = 0b1011, [AMD64_R12] = 0b1100, [AMD64_R13] = 0b1101,
-    [AMD64_R14] = 0b1110, [AMD64_R15] = 0b1111, [AMD64_RSP] = 0b0100,
-    [AMD64_RBP] = 0b0101,
+    [AMD64_RAX] = 0b0000, [AMD64_RCX] = 0b0001, [AMD64_RDX] = 0b0010,
+    [AMD64_RBX] = 0b0011, [AMD64_RSP] = 0b0100, [AMD64_RBP] = 0b0101,
+    [AMD64_RSI] = 0b0110, [AMD64_RDI] = 0b0111, [AMD64_R8] = 0b1000,
+    [AMD64_R9] = 0b1001,  [AMD64_R10] = 0b1010, [AMD64_R11] = 0b1011,
+    [AMD64_R12] = 0b1100, [AMD64_R13] = 0b1101, [AMD64_R14] = 0b1110,
+    [AMD64_R15] = 0b1111,
 };
 
 static const PgString amd64_size_to_operand_size_string[8 + 1] = {
@@ -470,14 +470,16 @@ static bool amd64_is_operand_register_64_bits_only(Amd64Operand op) {
           amd64_is_register_64_bits_only(op.u.effective_address.base));
 }
 
+// REX: 0100WRXB
 static const u8 AMD64_REX_DEFAULT = 0b0100'0000;
 // Enable use of 64 operand size.
 static const u8 AMD64_REX_MASK_W = 0b0000'1000;
-// Enable use of 64 bits registers in the ModRM(reg) field.
+// Enable use of 64 bits registers in the `modrm.reg` field.
 static const u8 AMD64_REX_MASK_R = 0b0000'0100;
-// Enable use of 64 bits registers in SIB.
+// Enable use of 64 bits registers in `sib.index` field.
 static const u8 AMD64_REX_MASK_X = 0b0000'0010;
-// Enable use of 64 bits registers in the ModRM(reg/mem) field.
+// Enable use of 64 bits registers in the `modrm.rm` field,
+// `sib.base` field, or `opcode.reg` field.
 static const u8 AMD64_REX_MASK_B = 0b0000'0001;
 
 // No index register.
@@ -627,6 +629,7 @@ static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
   }
 }
 
+// Encoding: `Scale(2 bits) | Index(3 bits) | Base (3bits)`.
 static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr,
                              PgAllocator *allocator) {
   PG_ASSERT(0 != addr.base.value);
@@ -635,22 +638,60 @@ static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr,
             4 == addr.scale || 8 == addr.scale);
 
   PG_ASSERT(0 == addr.scale && "todo");
-
   PG_ASSERT(0 == addr.index.value && "todo");
 
-#if 0
-  u8 scale_encoding[] = {
-      [0] = 0b0, [1] = 0b0, [2] = 0b01, [4] = 0b10, [8] = 0b11,
-  };
-  u8 scale_encoded = PG_C_ARRAY_AT(
-      scale_encoding, PG_STATIC_ARRAY_LEN(scale_encoding), addr.scale);
+  bool sib_byte_required =
+      AMD64_R12 == addr.base.value || AMD64_RSP == addr.base.value;
+  if (!sib_byte_required) {
+    goto encode_displacement;
+  }
+
+  // Scale.
+  u8 scale_encoded = 0;
+  {
+    u8 scale_encoding[] = {
+        [0] = 0b0, [1] = 0b0, [2] = 0b01, [4] = 0b10, [8] = 0b11,
+    };
+    scale_encoded = PG_C_ARRAY_AT(
+        scale_encoding, PG_STATIC_ARRAY_LEN(scale_encoding), addr.scale);
+  }
+
   u8 index_encoded = 0;
+  // Index.
+  {
+    // TODO: Same as the plain 3 bits register encoding?
+    // NOTE: R12 is the same as RSP is the same as 'none'.
+    u8 index_encoding[] = {
+        [0] = 0b100,         [AMD64_RAX] = 0b000, [AMD64_RCX] = 0b001,
+        [AMD64_RDX] = 0b010, [AMD64_RBX] = 0b011, [AMD64_RBP] = 0b101,
+        [AMD64_RSI] = 0b110, [AMD64_RDI] = 0b111, [AMD64_R8] = 0b010,
+        [AMD64_R9] = 0b001,  [AMD64_R10] = 0b010, [AMD64_R11] = 0b011,
+        [AMD64_R12] = 0b100, [AMD64_R13] = 0b101, [AMD64_R14] = 0b0110,
+        [AMD64_R15] = 0b111,
+
+    };
+    index_encoded = PG_C_ARRAY_AT(
+        index_encoding, PG_STATIC_ARRAY_LEN(index_encoding), addr.index.value);
+  }
+
+  // Base.
+  u8 base_encoded = 0;
+  {
+
+    // > SIB byte required for ESP-based addressing.
+    // > SIB byte also required for R12-based addressing.
+    if (AMD64_R12 == addr.base.value || AMD64_RSP == addr.base.value) {
+      base_encoded = amd64_encode_register_value_3bits(addr.base);
+    }
+  }
+
   u8 res = (u8)(scale_encoded << 6) | (u8)((index_encoded & 0b111) << 3) |
            (u8)(base_encoded & 0b111);
 
   *PG_DYN_PUSH(sb, allocator) = res;
-#endif
 
+encode_displacement:
+  // Displacement bytes.
   if (addr.displacement) {
     if (addr.displacement <= INT8_MAX) {
       pg_byte_buffer_append_u8(sb, (u8)addr.displacement, allocator);
