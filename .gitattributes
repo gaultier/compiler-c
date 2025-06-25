@@ -1,0 +1,2 @@
+*.bin binary diff=hex
+*.ins binary diff=hex
