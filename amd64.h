@@ -592,6 +592,14 @@ static bool amd64_is_r_slash_m8(Amd64Operand op) {
          (amd64_is_mem(op) && ASM_OPERAND_SIZE_1 == op.size);
 }
 
+[[nodiscard]]
+static bool amd64_is_modrm_encoding_rip_relative(u8 modrm) {
+  u8 mod = (u8)(modrm >> 6);
+  u8 rm = modrm & 0b111;
+
+  return (mod == AMD64_MODRM_MOD_00) && (rm == 0b101);
+}
+
 // Format: `mod (2 bits) | reg (3 bits) | rm (3bits)`.
 static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
                              PgAllocator *allocator) {
@@ -607,8 +615,23 @@ static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
     mod = AMD64_MODRM_MOD_00;
     rm = 0b101;
   } else if (amd64_is_mem(lhs) && 0 == lhs.u.effective_address.displacement) {
-    mod = AMD64_MODRM_MOD_00;
-    rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+    // Avoid accidentally using RIP-relative addressing:
+    // > The ModR/M encoding for RIP-relative addressing does not depend on
+    // > using a prefix. Specifically, the r/m bit field encoding of 101B (used
+    // > to select RIP-relative addressing) is not affected by the REX prefix.
+    // > For example, selecting
+    // > R13 (REX.B = 1, r/m = 101B) with mod = 00B still results in
+    // > RIP-relative addressing. The 4-bit r/m field of REX.B combined with
+    // > ModR/M is not fully decoded. In order to address R13 with no
+    // > displacement, software must encode R13 + 0 using a 1-byte displacement
+    // > of zero.
+    if (amd64_is_register_64_bits_only(lhs.u.effective_address.base)) {
+      mod = AMD64_MODRM_MOD_01;
+      rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+    } else {
+      mod = AMD64_MODRM_MOD_00;
+      rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+    }
   } else if (amd64_is_mem(lhs) &&
              lhs.u.effective_address.displacement <= UINT8_MAX) {
     mod = AMD64_MODRM_MOD_01;
@@ -626,13 +649,18 @@ static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
     PG_ASSERT(rm <= 0b111);
 
     u8 modrm = (u8)(mod << 6) | (u8)(reg << 3) | rm;
+
+    // We do not support RIP addressing for now. Ensure we do not accidentally
+    // fall into it.
+    PG_ASSERT(!amd64_is_modrm_encoding_rip_relative(modrm));
+
     *PG_DYN_PUSH(sb, allocator) = modrm;
     return modrm;
   }
 }
 
 [[nodiscard]] static bool amd64_is_sib_required(u8 modrm) {
-  u8 mod = (u8)(modrm << 6);
+  u8 mod = (u8)(modrm >> 6);
   u8 rm = modrm & 0b111;
 
   return (mod == AMD64_MODRM_MOD_00 || mod == AMD64_MODRM_MOD_01 ||
