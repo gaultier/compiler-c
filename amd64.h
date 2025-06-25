@@ -592,8 +592,9 @@ static bool amd64_is_r_slash_m8(Amd64Operand op) {
          (amd64_is_mem(op) && ASM_OPERAND_SIZE_1 == op.size);
 }
 
-static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
-                               PgAllocator *allocator) {
+// Format: `mod (2 bits) | reg (3 bits) | rm (3bits)`.
+static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
+                             PgAllocator *allocator) {
 
   Amd64ModRmMod mod = 0;
   u8 reg = amd64_is_reg(rhs) ? amd64_encode_register_value_3bits(rhs.u.reg) : 0;
@@ -626,11 +627,21 @@ static void amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
 
     u8 modrm = (u8)(mod << 6) | (u8)(reg << 3) | rm;
     *PG_DYN_PUSH(sb, allocator) = modrm;
+    return modrm;
   }
 }
 
+[[nodiscard]] static bool amd64_is_sib_required(u8 modrm) {
+  u8 mod = (u8)(modrm << 6);
+  u8 rm = modrm & 0b111;
+
+  return (mod == AMD64_MODRM_MOD_00 || mod == AMD64_MODRM_MOD_01 ||
+          mod == AMD64_MODRM_MOD_10) &&
+         (rm == 0b100);
+}
+
 // Encoding: `Scale(2 bits) | Index(3 bits) | Base (3bits)`.
-static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr,
+static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr, u8 modrm,
                              PgAllocator *allocator) {
   PG_ASSERT(0 != addr.base.value);
 
@@ -640,9 +651,7 @@ static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr,
   PG_ASSERT(0 == addr.scale && "todo");
   PG_ASSERT(0 == addr.index.value && "todo");
 
-  bool sib_byte_required =
-      AMD64_R12 == addr.base.value || AMD64_RSP == addr.base.value;
-  if (!sib_byte_required) {
+  if (!amd64_is_sib_required(modrm)) {
     goto encode_displacement;
   }
 
@@ -741,13 +750,12 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     }
 
     // ModRM.
-    {
-      amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
-    }
+    u8 modrm = amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+
     // SIB.
     {
       if (amd64_is_mem(ins.lhs)) {
-        amd64_encode_sib(sb, ins.lhs.u.effective_address, allocator);
+        amd64_encode_sib(sb, ins.lhs.u.effective_address, modrm, allocator);
       }
     }
     return;
