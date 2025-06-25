@@ -13,26 +13,30 @@ static void gen_helper_run_assembler(Amd64Instruction ins,
     asm_human_readable = PG_DYN_SLICE(PgString, sb);
   }
 
-  u64 content_hash = pg_hash_fnv(asm_human_readable);
-  PgString content_hash_str = pg_u64_to_string(content_hash, allocator);
+  // NOTE: We could reduce the number of bytes written (and then read in the
+  // tests) by not serializing the `origin` field which is always zero in this
+  // context.
+  Pgu8Slice ins_bytes = {.data = (u8 *)&ins, .len = sizeof(ins)};
+  PgString ins_bytes_str = pg_bytes_to_hex_string(ins_bytes, 0, allocator);
+  PG_ASSERT(!pg_string_is_empty(ins_bytes_str));
 
   PgString path_asm_s = pg_path_join(
       PG_S("test_amd64"),
-      pg_string_concat(content_hash_str, PG_S(".s"), allocator), allocator);
+      pg_string_concat(ins_bytes_str, PG_S(".s"), allocator), allocator);
   PG_ASSERT(
       0 == pg_file_write_full(path_asm_s, asm_human_readable, 0600, allocator));
 
   {
     PgString path_asm_ins = pg_path_join(
         PG_S("test_amd64"),
-        pg_string_concat(content_hash_str, PG_S(".ins"), allocator), allocator);
-    PgString ins_bin = {.data = (u8 *)&ins, .len = sizeof(ins)};
-    PG_ASSERT(0 == pg_file_write_full(path_asm_ins, ins_bin, 0600, allocator));
+        pg_string_concat(ins_bytes_str, PG_S(".ins"), allocator), allocator);
+    PG_ASSERT(0 ==
+              pg_file_write_full(path_asm_ins, ins_bytes, 0600, allocator));
   }
 
   PgString path_asm_bin = pg_path_join(
       PG_S("test_amd64"),
-      pg_string_concat(content_hash_str, PG_S(".bin"), allocator), allocator);
+      pg_string_concat(ins_bytes_str, PG_S(".bin"), allocator), allocator);
 
   printf("\n--- path_asm_s=%.*s path_asm_bin=%.*s\n%.*s\n---\n",
          (i32)path_asm_s.len, path_asm_s.data, (i32)path_asm_bin.len,
@@ -179,7 +183,9 @@ static void gen_mov(PgAllocator *allocator) {
 }
 
 int main() {
-  PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
+  // NOTE: Trivial to reduce memory usage if needed by reusing strings for file
+  // paths etc.
+  PgArena arena = pg_arena_make_from_virtual_mem(512 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 

@@ -35,6 +35,7 @@ typedef struct {
   i32 displacement;
 } Amd64EffectiveAddress;
 
+// Size in bytes.
 typedef enum : u8 {
   ASM_OPERAND_SIZE_0 = 0,
   ASM_OPERAND_SIZE_1 = 1,
