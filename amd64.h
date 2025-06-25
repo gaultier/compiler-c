@@ -499,6 +499,10 @@ static void amd64_encode_16bits_prefix(Pgu8Dyn *sb, Amd64Operand op,
   }
 }
 
+// > A REX prefix is necessary only if an instruction references
+// > one of the extended registers or one of the byte registers SPL, BPL, SIL,
+// DIL;
+// > or uses a 64-bit operand.
 [[nodiscard]] static bool amd64_is_rex_needed(Amd64Operand lhs,
                                               Amd64Operand rhs) {
   PG_ASSERT(lhs.size == rhs.size);
