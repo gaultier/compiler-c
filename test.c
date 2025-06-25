@@ -312,8 +312,9 @@ static void test_asm() {
         printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
                (i32)asm_human_readable.len, asm_human_readable.data);
       } else {
-        PgString expected_str = pg_bytes_to_hex_string(expected, allocator);
-        PgString actual_str = pg_bytes_to_hex_string(actual, allocator);
+        PgString expected_str =
+            pg_bytes_to_hex_string(expected, ' ', allocator);
+        PgString actual_str = pg_bytes_to_hex_string(actual, ' ', allocator);
         fprintf(stderr, "FAIL %.*s %.*s\nExpected: %.*s\nActual: %.*s\n\n",
                 (i32)path_bin.len, path_bin.data, (i32)asm_human_readable.len,
                 asm_human_readable.data, (i32)expected_str.len,
