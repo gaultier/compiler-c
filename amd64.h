@@ -600,6 +600,12 @@ static bool amd64_is_modrm_encoding_rip_relative(u8 modrm) {
   return (mod == AMD64_MODRM_MOD_00) && (rm == 0b101);
 }
 
+[[nodiscard]] static bool
+amd64_can_base_reg_in_address_be_mistaken_for_rip_rel_addressing(
+    Amd64EffectiveAddress addr) {
+  return AMD64_R13 == addr.base.value || AMD64_RBP == addr.base.value;
+}
+
 // Format: `mod (2 bits) | reg (3 bits) | rm (3bits)`.
 static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
                              PgAllocator *allocator) {
@@ -625,7 +631,8 @@ static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
     // > ModR/M is not fully decoded. In order to address R13 with no
     // > displacement, software must encode R13 + 0 using a 1-byte displacement
     // > of zero.
-    if (amd64_is_register_64_bits_only(lhs.u.effective_address.base)) {
+    if (amd64_can_base_reg_in_address_be_mistaken_for_rip_rel_addressing(
+            lhs.u.effective_address)) {
       mod = AMD64_MODRM_MOD_01;
       rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
     } else {
@@ -729,7 +736,8 @@ static void amd64_encode_sib(Pgu8Dyn *sb, Amd64EffectiveAddress addr, u8 modrm,
 
 encode_displacement:
   // Displacement bytes.
-  if (addr.displacement) {
+  if (addr.displacement ||
+      amd64_can_base_reg_in_address_be_mistaken_for_rip_rel_addressing(addr)) {
     if (addr.displacement <= INT8_MAX) {
       pg_byte_buffer_append_u8(sb, (u8)addr.displacement, allocator);
     } else {
