@@ -345,10 +345,9 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      (void)pg_writer_write_string_full(w, PG_S("Add "), allocator);
-
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(".add"), allocator);
 
       (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
@@ -369,10 +368,9 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      (void)pg_writer_write_string_full(w, PG_S("Cmp "), allocator);
-
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(".cmp"), allocator);
 
       (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
@@ -392,10 +390,9 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      (void)pg_writer_write_string_full(w, PG_S("Mov "), allocator);
-
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(".mov"), allocator);
 
       (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
@@ -414,13 +411,13 @@ static void ir_print_instructions(IrInstructionDyn instructions,
           PG_SLICE_AT(metadata, ins.meta_idx.value).virtual_register;
       PG_ASSERT(vreg.value);
 
-      (void)pg_writer_write_string_full(w, PG_S("LoadAddr "), allocator);
-
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(".load"), allocator);
 
       (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
+      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
 
       ir_print_operand(ins.lhs, metadata, w, allocator);
       (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
@@ -452,12 +449,12 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(ins.args_count > 0);
       PG_ASSERT(ins.args_count <= max_syscall_args_count);
 
-      (void)pg_writer_write_string_full(w, PG_S("Syscall["), allocator);
-      (void)pg_writer_write_u64_as_string(w, i, allocator);
-      (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
-
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
+
+      (void)pg_writer_write_string_full(w, PG_S(".syscall["), allocator);
+      (void)pg_writer_write_u64_as_string(w, i, allocator);
+      (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
 
     } break;
 
