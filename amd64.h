@@ -628,35 +628,38 @@ amd64_can_base_reg_in_address_be_mistaken_for_rip_rel_addressing(
 }
 
 // Format: `mod (2 bits) | reg (3 bits) | rm (3bits)`.
-static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand lhs, Amd64Operand rhs,
-                             PgAllocator *allocator) {
+static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand op_rm,
+                             Amd64Operand op_reg, PgAllocator *allocator) {
 
   Amd64ModRmMod mod = 0;
-  u8 reg = amd64_is_reg(rhs) ? amd64_encode_register_value_3bits(rhs.u.reg) : 0;
+  u8 reg = amd64_is_reg(op_reg)
+               ? amd64_encode_register_value_3bits(op_reg.u.reg)
+               : 0;
 
   u8 rm = 0;
-  if (amd64_is_reg(lhs)) {
+  if (amd64_is_reg(op_rm)) {
     mod = AMD64_MODRM_MOD_11;
-    rm = amd64_encode_register_value_3bits(lhs.u.reg);
-  } else if (amd64_is_imm(lhs)) { // disp32
+    rm = amd64_encode_register_value_3bits(op_rm.u.reg);
+  } else if (amd64_is_imm(op_rm)) { // disp32
     mod = AMD64_MODRM_MOD_00;
     rm = 0b101;
-  } else if (amd64_is_mem(lhs) && 0 == lhs.u.effective_address.displacement) {
+  } else if (amd64_is_mem(op_rm) &&
+             0 == op_rm.u.effective_address.displacement) {
     if (amd64_can_base_reg_in_address_be_mistaken_for_rip_rel_addressing(
-            lhs.u.effective_address)) {
+            op_rm.u.effective_address)) {
       mod = AMD64_MODRM_MOD_01;
-      rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+      rm = amd64_encode_register_value_3bits(op_rm.u.effective_address.base);
     } else {
       mod = AMD64_MODRM_MOD_00;
-      rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+      rm = amd64_encode_register_value_3bits(op_rm.u.effective_address.base);
     }
-  } else if (amd64_is_mem(lhs) &&
-             lhs.u.effective_address.displacement <= UINT8_MAX) {
+  } else if (amd64_is_mem(op_rm) &&
+             op_rm.u.effective_address.displacement <= UINT8_MAX) {
     mod = AMD64_MODRM_MOD_01;
-    rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
-  } else if (amd64_is_mem(lhs)) {
+    rm = amd64_encode_register_value_3bits(op_rm.u.effective_address.base);
+  } else if (amd64_is_mem(op_rm)) {
     mod = AMD64_MODRM_MOD_10;
-    rm = amd64_encode_register_value_3bits(lhs.u.effective_address.base);
+    rm = amd64_encode_register_value_3bits(op_rm.u.effective_address.base);
   } else {
     PG_ASSERT(0);
   }
@@ -963,7 +966,7 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     }
 
     // ModRM.
-    u8 modrm = amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+    u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
 
     // SIB.
     {
