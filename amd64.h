@@ -560,43 +560,6 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
   *PG_DYN_PUSH(sb, allocator) = rex;
 }
 
-#if 0
-[[nodiscard]] static bool amd64_is_reg_or_mem8(Amd64Operand op) {
-  return amd64_is_reg8(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
-                               op.u.immediate <= UINT8_MAX);
-}
-
-[[nodiscard]] static bool amd64_is_reg16(Amd64Operand op) {
-  return amd64_is_reg(op)&&
-         ASM_OPERAND_SIZE_2 == op.size;
-}
-
-[[nodiscard]] static bool amd64_is_reg_or_mem16(Amd64Operand op) {
-  return amd64_is_reg16(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
-                                op.u.immediate <= UINT16_MAX);
-}
-
-[[nodiscard]] static bool amd64_is_reg32(Amd64Operand op) {
-  return amd64_is_reg(op)&&
-         ASM_OPERAND_SIZE_4 == op.size;
-}
-
-[[nodiscard]] static bool amd64_is_reg_or_mem32(Amd64Operand op) {
-  return amd64_is_reg32(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
-                                op.u.immediate <= UINT32_MAX);
-}
-
-[[nodiscard]] static bool amd64_is_reg64(Amd64Operand op) {
-  return amd64_is_reg(op)&&
-         ASM_OPERAND_SIZE_8 == op.size;
-}
-
-[[nodiscard]] static bool amd64_is_reg_or_mem64(Amd64Operand op) {
-  return amd64_is_reg64(op) || (AMD64_OPERAND_KIND_IMMEDIATE == op.kind &&
-                                op.u.immediate <= UINT64_MAX);
-}
-#endif
-
 [[nodiscard]]
 static bool amd64_is_r_slash_m8(Amd64Operand op) {
   return amd64_is_reg8(op) ||
