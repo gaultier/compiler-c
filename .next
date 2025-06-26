@@ -1,1 +1,2 @@
+- [ ] test(amd64): generate lea forms
 - [ ] builtin: implement println
