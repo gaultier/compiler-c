@@ -398,8 +398,6 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
       (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
 
-      ir_print_operand(ins.lhs, metadata, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
       ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 

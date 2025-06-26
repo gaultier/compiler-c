@@ -1,3 +1,4 @@
+- [ ] builtin: implement println
 - [ ] build: build to run on WASM
 - [ ] cli: choose target(s)
 - [ ] codegen: webassembly
@@ -29,7 +30,7 @@
 - [ ] lsp
 - [ ] regalloc: linear allocator. Compare performance with graph allocator.
 - [ ] simple alias analysis (type-based, conservative)
-- [ ] test: consider checking output of compiled binary with objdump & ensuring it is the same as the readable assembly from `./main.bin -v` 
+- [ ] test: consider checking output of compiled binary with objdump & ensuring it is the same as an oracle (e.g. clang)
 - [x] ast: move to 'stack vm bytecode' representation
 - [x] codegen: move graph coloring to LIR/ASM phase with the target data as input
 - [x] errors: report all errors
