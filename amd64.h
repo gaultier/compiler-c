@@ -215,6 +215,10 @@ static const Architecture amd64_arch = {
   return AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == op.kind;
 }
 
+[[nodiscard]] static bool amd64_is_reg_or_mem(Amd64Operand op) {
+  return amd64_is_reg(op) || amd64_is_mem(op);
+}
+
 [[nodiscard]] static bool amd64_is_imm(Amd64Operand op) {
   return AMD64_OPERAND_KIND_IMMEDIATE == op.kind;
 }
@@ -757,13 +761,11 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_MOV == ins.kind);
 
-  bool lhs_is_reg_or_mem = amd64_is_reg(ins.lhs) || amd64_is_mem(ins.lhs);
-
   // MOV reg/mem8, r8
   // MOV reg/mem16, r16
   // MOV reg/mem32, r32
   // MOV reg/mem64, r64
-  if (lhs_is_reg_or_mem && amd64_is_reg(ins.rhs)) {
+  if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_reg(ins.rhs)) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size); // TODO: Check.
     PG_ASSERT(0 != ins.lhs.size);
 
@@ -872,7 +874,8 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
   // MOV reg/mem16, imm16
   // MOV reg/mem32, imm32
   // MOV reg/mem64, imm32 (sign extended)
-  if (lhs_is_reg_or_mem && AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind &&
+  if (amd64_is_reg_or_mem(ins.lhs) &&
+      AMD64_OPERAND_KIND_IMMEDIATE == ins.rhs.kind &&
       is_lhs_64_bits_reg_and_rhs_imm32_sign_extendable) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size);
     PG_ASSERT(0 != ins.lhs.size);
@@ -922,6 +925,51 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     case ASM_OPERAND_SIZE_0:
     default:
       PG_ASSERT(0);
+    }
+
+    return;
+  }
+
+  // MOV reg8, reg/mem8
+  // MOV reg16, reg/mem16
+  // MOV reg32, reg/mem32
+  // MOV reg64, reg/mem64
+  if (amd64_is_reg(ins.lhs) && amd64_is_reg_or_mem(ins.rhs)) {
+    PG_ASSERT(ins.lhs.size == ins.rhs.size);
+    PG_ASSERT(0 != ins.lhs.size);
+    Register lhs = ins.lhs.u.reg;
+
+    // 16 bits prefix.
+    {
+      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+    }
+
+    // Rex.
+    {
+      bool modrm_reg_field = amd64_is_register_64_bits_only(lhs);
+      bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.rhs);
+      bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                       ins.rhs, allocator);
+    }
+
+    // Opcode.
+    {
+      u8 opcode = 0x8B;
+      if (amd64_is_r_slash_m8(ins.lhs)) {
+        opcode = 0x8A;
+      }
+      *PG_DYN_PUSH(sb, allocator) = opcode;
+    }
+
+    // ModRM.
+    u8 modrm = amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+
+    // SIB.
+    {
+      if (amd64_is_mem(ins.rhs)) {
+        amd64_encode_sib(sb, ins.rhs.u.effective_address, modrm, allocator);
+      }
     }
 
     return;
