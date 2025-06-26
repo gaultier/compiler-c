@@ -78,7 +78,7 @@ static void gen_helper_run_assembler(Amd64Instruction ins,
 }
 
 static void gen_mov(PgAllocator *allocator) {
-  // Reg/mem-Reg.
+  // Reg/mem-Reg and Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
     Register reg_a = {i};
@@ -116,6 +116,14 @@ static void gen_mov(PgAllocator *allocator) {
               .size = size,
           };
           gen_helper_run_assembler(ins, allocator);
+
+          // Swap operands.
+          {
+            Amd64Operand tmp = ins.lhs;
+            ins.lhs = ins.rhs;
+            ins.rhs = tmp;
+            gen_helper_run_assembler(ins, allocator);
+          }
         }
       }
     }
