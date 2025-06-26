@@ -133,11 +133,18 @@ static const u8 amd64_register_to_encoded_value[16 + 1] = {
     [AMD64_R15] = 0b1111,
 };
 
-static const PgString amd64_size_to_operand_size_string[8 + 1] = {
+static const PgString amd64_size_to_operand_size_string[] = {
     [ASM_OPERAND_SIZE_1] = PG_S("byte"),
     [ASM_OPERAND_SIZE_2] = PG_S("word"),
     [ASM_OPERAND_SIZE_4] = PG_S("dword"),
     [ASM_OPERAND_SIZE_8] = PG_S("qword"),
+};
+
+static const AsmOperandSize amd64_size_to_operand_size[] = {
+    [1] = ASM_OPERAND_SIZE_1,
+    [2] = ASM_OPERAND_SIZE_2,
+    [4] = ASM_OPERAND_SIZE_4,
+    [8] = ASM_OPERAND_SIZE_8,
 };
 
 static const Pgu8Slice amd64_register_to_encoded_value_slice = {
@@ -1496,12 +1503,20 @@ amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
 }
 
 [[nodiscard]] static Amd64Operand
-amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataDyn metadata) {
+amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataIndex meta_idx,
+                                          MetadataDyn metadata) {
   if (IR_OPERAND_KIND_NUM == op.kind) {
+    PG_ASSERT(meta_idx.value);
+    Metadata meta = PG_SLICE_AT(metadata, meta_idx.value);
+    PG_ASSERT(meta.type);
+    PG_ASSERT(meta.type->size);
+
     return (Amd64Operand){
         .kind = AMD64_OPERAND_KIND_IMMEDIATE,
         .u.immediate = op.u.u64,
-        .size = ASM_OPERAND_SIZE_8,
+        .size = PG_C_ARRAY_AT(amd64_size_to_operand_size,
+                              PG_STATIC_ARRAY_LEN(amd64_size_to_operand_size),
+                              meta.type->size),
     };
   }
 
@@ -1558,10 +1573,10 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
       PG_ASSERT(ins.meta_idx.value);
       Amd64Instruction ins_mov = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
-          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
-                                                           fn_def.metadata),
-          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.rhs,
-                                                           fn_def.metadata),
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.lhs, ins.meta_idx, fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.rhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_mov;
@@ -1575,10 +1590,10 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
 
       Amd64Instruction ins_cmp = {
           .kind = AMD64_INSTRUCTION_KIND_CMP,
-          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
-                                                           fn_def.metadata),
-          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.rhs,
-                                                           fn_def.metadata),
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.lhs, ins.meta_idx, fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.rhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_cmp;
@@ -1601,8 +1616,8 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
           .kind = AMD64_INSTRUCTION_KIND_MOV,
           .lhs = amd64_convert_memory_location_to_amd64_operand(
               ins.meta_idx, fn_def.metadata),
-          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
-                                                           fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.lhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_mov;
@@ -1611,8 +1626,8 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
           .kind = AMD64_INSTRUCTION_KIND_ADD,
           .lhs = amd64_convert_memory_location_to_amd64_operand(
               ins.meta_idx, fn_def.metadata),
-          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.rhs,
-                                                           fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.rhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_add;
@@ -1632,8 +1647,8 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
       Amd64Instruction ins_jmp = {
           .kind = AMD64_INSTRUCTION_KIND_JMP,
           .origin = ins.origin,
-          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
-                                                           fn_def.metadata),
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.lhs, ins.meta_idx, fn_def.metadata),
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_jmp;
     } break;
@@ -1650,10 +1665,10 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
       Amd64Instruction ins_lea = {
           .kind = AMD64_INSTRUCTION_KIND_LEA,
           .origin = ins.origin,
-          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
-                                                           fn_def.metadata),
-          .rhs = amd64_convert_ir_operand_to_amd64_operand(ins.rhs,
-                                                           fn_def.metadata),
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.lhs, ins.meta_idx, fn_def.metadata),
+          .rhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.rhs, ins.meta_idx, fn_def.metadata),
       };
       *PG_DYN_PUSH(&section->u.amd64_instructions, allocator) = ins_lea;
 
@@ -1691,8 +1706,8 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
       Amd64Instruction ins_cmp = {
           .kind = AMD64_INSTRUCTION_KIND_CMP,
           .origin = ins.origin,
-          .lhs = amd64_convert_ir_operand_to_amd64_operand(ins.lhs,
-                                                           fn_def.metadata),
+          .lhs = amd64_convert_ir_operand_to_amd64_operand(
+              ins.lhs, ins.meta_idx, fn_def.metadata),
           .rhs =
               (Amd64Operand){
                   .kind = AMD64_OPERAND_KIND_IMMEDIATE,
