@@ -312,8 +312,43 @@ static void test_asm() {
           (4 == actual.len) && (*(u32 *)(void *)actual.data == 0xff'ff'05'66) &&
           (4 == expected.len) &&
           (*(u32 *)(void *)expected.data == 0xff'c0'83'66);
+      bool also_valid_add_eax_u32_max =
+          (5 == actual.len) &&
+          (0x05 == actual.data[0] && 0xff == actual.data[1] &&
+           0xff == actual.data[2] && 0xff == actual.data[3] &&
+           0xff == actual.data[4]) &&
+          (3 == expected.len) &&
+          (0x83 == expected.data[0] && 0xC0 == expected.data[1] &&
+           0xff == expected.data[2]);
 
-      if (eq || also_valid_add_ax_u16_max) {
+      bool also_valid_add_ax_0 =
+          (4 == actual.len) &&
+          (0x66 == actual.data[0] && 0x05 == actual.data[1] &&
+           0x00 == actual.data[2] && 0x00 == actual.data[3]) &&
+          (4 == expected.len) &&
+          (0x66 == expected.data[0] && 0x83 == expected.data[1] &&
+           0xC0 == expected.data[2] && 0x00 == expected.data[3]);
+
+      bool also_valid_add_eax_0 =
+          (5 == actual.len) &&
+          (0x05 == actual.data[0] && 0x00 == actual.data[1] &&
+           0x00 == actual.data[2] && 0x00 == actual.data[3] &&
+           0x00 == actual.data[4]) &&
+          (3 == expected.len) &&
+          (0x83 == expected.data[0] && 0xC0 == expected.data[1] &&
+           0x00 == expected.data[2]);
+
+      bool also_valid_add_rax_0 =
+          (6 == actual.len) &&
+          (0x48 == actual.data[0] && 0x05 == actual.data[1] &&
+           0x00 == actual.data[2] && 0x00 == actual.data[3] &&
+           0x00 == actual.data[4] && 0x00 == actual.data[5]) &&
+          (4 == expected.len) &&
+          (0x48 == expected.data[0] && 0x83 == expected.data[1] &&
+           0xC0 == expected.data[2] && 0x00 == expected.data[3]);
+
+      if (eq || also_valid_add_ax_u16_max || also_valid_add_eax_u32_max ||
+          also_valid_add_ax_0 || also_valid_add_eax_0 || also_valid_add_rax_0) {
         printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
                (i32)asm_human_readable.len, asm_human_readable.data);
       } else {
