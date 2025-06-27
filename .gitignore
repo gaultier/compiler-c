@@ -8,4 +8,3 @@ test*
 !.next
 !*.c
 !*.h
-*.dwo

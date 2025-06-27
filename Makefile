@@ -44,13 +44,6 @@ test_asm_gen_release.bin: $(C_FILES)
 test_asm_gen_release_sanitizer.bin: $(C_FILES)
 	$(CC) $(CFLAGS) $(LDFLAGS) test_asm_gen.c -o $@ -O2 -flto -fsanitize=$(SANITIZERS) -Wno-unused
 
-runtime_amd64_linux.bin: runtime_amd64_linux.o
-	objcopy -O binary --only-section=.text $< $@
-
-runtime_amd64_linux.o: runtime_amd64_linux.c
-	$(CC) $(CFLAGS)	$< -O2 -march=native  -nostdlib -nobuiltininc -Wno-incompatible-library-redeclaration -c -Wno-unused-command-line-argument
-
-
 all: main_debug.bin main_debug_sanitizer.bin main_release.bin main_release_sanitizer.bin test_debug.bin test_debug_sanitizer.bin test_release.bin test_release_sanitizer.bin test_asm_gen_debug.bin test_asm_gen_debug_sanitizer.bin test_asm_gen_release.bin test_asm_gen_release_sanitizer.bin
 
 .PHONY: test
