@@ -999,6 +999,58 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_ADD == ins.kind);
 
+  if (amd64_is_reg8(ins.lhs) && AMD64_RAX == ins.lhs.u.reg.value &&
+      amd64_is_imm(ins.rhs)) {
+    PG_ASSERT(ASM_OPERAND_SIZE_1 == ins.lhs.size);
+    PG_ASSERT(ASM_OPERAND_SIZE_1 == ins.rhs.size);
+    PG_ASSERT(ins.rhs.u.immediate <= UINT8_MAX);
+
+    u8 opcode = 0x04;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    *PG_DYN_PUSH(sb, allocator) = (u8)ins.rhs.u.immediate;
+
+    return;
+  }
+
+  if (amd64_is_reg(ins.lhs) && AMD64_RAX == ins.lhs.u.reg.value &&
+      amd64_is_imm(ins.rhs)) {
+    PG_ASSERT(ins.lhs.size == ins.rhs.size);
+
+    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+
+    if (ASM_OPERAND_SIZE_8 == ins.lhs.size) {
+      bool modrm_reg_field = false;
+      bool modrm_rm_field = false;
+      bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+      amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                       ins.rhs, allocator);
+    }
+
+    u8 opcode = 0x05;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    switch (ins.lhs.size) {
+    case ASM_OPERAND_SIZE_2:
+      PG_ASSERT(ins.rhs.u.immediate <= UINT16_MAX);
+      pg_byte_buffer_append_u16(sb, (u16)ins.rhs.u.immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_4:
+      PG_ASSERT(ins.rhs.u.immediate <= UINT32_MAX);
+      pg_byte_buffer_append_u32(sb, (u32)ins.rhs.u.immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_8:
+      pg_byte_buffer_append_u64(sb, (u64)ins.rhs.u.immediate, allocator);
+      break;
+    case ASM_OPERAND_SIZE_0:
+    case ASM_OPERAND_SIZE_1:
+    default:
+      PG_ASSERT(0);
+    }
+
+    return;
+  }
+
   if (amd64_is_reg(ins.lhs) && amd64_is_reg_or_mem(ins.rhs)) {
     amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
@@ -1024,7 +1076,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
   }
 
   if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_imm(ins.rhs) &&
-      ins.lhs.size > ASM_OPERAND_SIZE_8) {
+      ins.lhs.size > ASM_OPERAND_SIZE_8 && ins.rhs.size == ASM_OPERAND_SIZE_8) {
     amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
     bool modrm_reg_field = false;
@@ -1034,6 +1086,27 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
                      ins.rhs, allocator);
 
     u8 opcode = 0x83;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
+
+    if (amd64_is_mem(ins.lhs)) {
+      amd64_encode_sib(sb, ins.lhs.u.effective_address, modrm, allocator);
+    }
+
+    return;
+  }
+
+  if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_imm(ins.rhs)) {
+    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+
+    bool modrm_reg_field = false;
+    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                     ins.rhs, allocator);
+
+    u8 opcode = 0x81;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
     u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
@@ -1055,7 +1128,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
                      ins.rhs, allocator);
 
     u8 opcode = 0x01;
-    if (amd64_is_reg8(ins.lhs)) {
+    if (amd64_is_reg8(ins.rhs)) {
       opcode = 0x00;
     }
     *PG_DYN_PUSH(sb, allocator) = opcode;
