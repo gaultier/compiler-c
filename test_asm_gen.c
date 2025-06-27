@@ -1,5 +1,7 @@
 #include "amd64.h"
 
+#define PG_TEST_AMD64_GEN_DIR_NAME "test_amd64"
+
 static void gen_helper_run_assembler(Amd64Instruction ins,
                                      PgAllocator *allocator) {
   PgString asm_human_readable = {0};
@@ -21,21 +23,21 @@ static void gen_helper_run_assembler(Amd64Instruction ins,
   PG_ASSERT(!pg_string_is_empty(ins_bytes_str));
 
   PgString path_asm_s = pg_path_join(
-      PG_S("test_amd64"),
+      PG_S(PG_TEST_AMD64_GEN_DIR_NAME),
       pg_string_concat(ins_bytes_str, PG_S(".s"), allocator), allocator);
   PG_ASSERT(
       0 == pg_file_write_full(path_asm_s, asm_human_readable, 0600, allocator));
 
   {
     PgString path_asm_ins = pg_path_join(
-        PG_S("test_amd64"),
+        PG_S(PG_TEST_AMD64_GEN_DIR_NAME),
         pg_string_concat(ins_bytes_str, PG_S(".ins"), allocator), allocator);
     PG_ASSERT(0 ==
               pg_file_write_full(path_asm_ins, ins_bytes, 0600, allocator));
   }
 
   PgString path_asm_bin = pg_path_join(
-      PG_S("test_amd64"),
+      PG_S(PG_TEST_AMD64_GEN_DIR_NAME),
       pg_string_concat(ins_bytes_str, PG_S(".bin"), allocator), allocator);
 
   printf("\n--- path_asm_s=%.*s path_asm_bin=%.*s\n%.*s\n---\n",
@@ -242,6 +244,12 @@ int main() {
   PgArena arena = pg_arena_make_from_virtual_mem(512 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  // TODO: Windows.
+  int ret = mkdir(PG_TEST_AMD64_GEN_DIR_NAME, 0777);
+  if (-1 == ret && errno != EEXIST) {
+    PG_ASSERT(0);
+  }
 
   gen_lea(allocator);
   gen_mov(allocator);
