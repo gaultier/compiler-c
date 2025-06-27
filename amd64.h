@@ -1003,12 +1003,11 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
       amd64_is_imm(ins.rhs)) {
     PG_ASSERT(ASM_OPERAND_SIZE_1 == ins.lhs.size);
     PG_ASSERT(ASM_OPERAND_SIZE_1 == ins.rhs.size);
-    PG_ASSERT(ins.rhs.u.immediate <= UINT8_MAX);
 
     u8 opcode = 0x04;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
-    *PG_DYN_PUSH(sb, allocator) = (u8)ins.rhs.u.immediate;
+    pg_byte_buffer_append_u8(sb, (u8)ins.rhs.u.immediate, allocator);
 
     return;
   }
@@ -1032,15 +1031,11 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
 
     switch (ins.lhs.size) {
     case ASM_OPERAND_SIZE_2:
-      PG_ASSERT(ins.rhs.u.immediate <= UINT16_MAX);
       pg_byte_buffer_append_u16(sb, (u16)ins.rhs.u.immediate, allocator);
       break;
     case ASM_OPERAND_SIZE_4:
-      PG_ASSERT(ins.rhs.u.immediate <= UINT32_MAX);
-      pg_byte_buffer_append_u32(sb, (u32)ins.rhs.u.immediate, allocator);
-      break;
     case ASM_OPERAND_SIZE_8:
-      pg_byte_buffer_append_u64(sb, (u64)ins.rhs.u.immediate, allocator);
+      pg_byte_buffer_append_u32(sb, (u32)ins.rhs.u.immediate, allocator);
       break;
     case ASM_OPERAND_SIZE_0:
     case ASM_OPERAND_SIZE_1:

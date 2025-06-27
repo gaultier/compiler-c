@@ -308,7 +308,12 @@ static void test_asm() {
       PgString actual = PG_DYN_SLICE(PgString, sb);
 
       bool eq = pg_bytes_eq(actual, expected);
-      if (eq) {
+      bool also_valid_add_ax_u16_max =
+          (4 == actual.len) && (*(u32 *)(void *)actual.data == 0xff'ff'05'66) &&
+          (4 == expected.len) &&
+          (*(u32 *)(void *)expected.data == 0xff'c0'83'66);
+
+      if (eq || also_valid_add_ax_u16_max) {
         printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
                (i32)asm_human_readable.len, asm_human_readable.data);
       } else {
