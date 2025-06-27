@@ -1,4 +1,7 @@
-- [.] test(amd64): generate lea forms
+- [.] test(amd64): generate add forms
+- [ ] test(amd64): generate sub forms
+- [ ] test(amd64): generate cmp forms
+- [ ] test(amd64): revamp `test_asm_gen.c` to generate only one file, maybe structured with alternative encodings. Consider running clang only once? Consider making `Amd64Instruction` compacter.
 - [ ] builtin: implement println
       + Split `builtin.println` into a form for each type e.g. `builtin.println_u64`
       + ~Link libc?~

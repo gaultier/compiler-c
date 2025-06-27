@@ -1,1 +1,0 @@
-mov bx, cx
