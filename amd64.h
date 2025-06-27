@@ -976,13 +976,11 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb, Amd64Instruction ins,
   }
 
   // ModRM.
-  u8 modrm = amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+  u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
 
   // SIB.
   {
-    if (amd64_is_mem(ins.lhs)) {
-      amd64_encode_sib(sb, effective_address, modrm, allocator);
-    }
+    amd64_encode_sib(sb, effective_address, modrm, allocator);
   }
 
   return;
