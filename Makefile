@@ -8,7 +8,7 @@ C_FILES := $(wildcard *.c *.h)
 
 SANITIZERS := address,undefined
 
-main_debug.bin: $(C_FILES)
+main_debug.bin: $(C_FILES) runtime_amd64_linux.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) main.c -o $@
 
 main_debug_sanitizer.bin: $(C_FILES)

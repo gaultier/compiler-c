@@ -1,16 +1,7 @@
+
+typedef unsigned char u8;
 typedef unsigned long long int u64;
 typedef u64 size_t;
-
-__asm(".intel_syntax\n"
-      ".global _start\n"
-      "_start:\n"
-      "   mov edi, dword ptr [rsp]\n"
-      "   lea rsi, [rsp + 8]\n"
-      "   lea rdx, [rsi + 8 * rdi + 8]\n"
-      "   call main\n"
-      "   mov edi, eax\n"
-      "   mov eax, 60\n"
-      "   syscall\n");
 
 void *memcpy(void *dst, void *src, size_t n) {
   u8 *dst_u8 = dst;
