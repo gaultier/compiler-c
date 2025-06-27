@@ -608,6 +608,7 @@ static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand op_rm,
     rm = 0b101;
   } else if (amd64_is_mem(op_rm) &&
              0 == op_rm.u.effective_address.displacement) {
+    // Encode `[reg]` as `[reg+0]` to avoid accidental RIP relative addressing.
     if (amd64_can_base_reg_in_address_be_mistaken_for_rip_rel_addressing(
             op_rm.u.effective_address)) {
       mod = AMD64_MODRM_MOD_01;
@@ -636,7 +637,10 @@ static u8 amd64_encode_modrm(Pgu8Dyn *sb, Amd64Operand op_rm,
 
     // We do not support RIP addressing for now. Ensure we do not accidentally
     // fall into it.
-    PG_ASSERT(!amd64_is_modrm_encoding_rip_relative(modrm));
+    // NOTE: Maybe only one of the two checks is needed.
+    if (amd64_is_mem(op_rm) || amd64_is_mem(op_reg)) {
+      PG_ASSERT(!amd64_is_modrm_encoding_rip_relative(modrm));
+    }
 
     *PG_DYN_PUSH(sb, allocator) = modrm;
     return modrm;
