@@ -1,6 +1,6 @@
 *_dwo
 *.bin
-*.nasm
+!*.nasm
 a.out
 test*
 !test.s
