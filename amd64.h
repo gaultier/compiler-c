@@ -948,12 +948,10 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb, Amd64Instruction ins,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_LEA == ins.kind);
   PG_ASSERT(AMD64_OPERAND_KIND_REGISTER == ins.lhs.kind);
-  PG_ASSERT(ASM_OPERAND_SIZE_8 == ins.lhs.size);
   PG_ASSERT(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind);
   PG_ASSERT(0 == ins.rhs.u.effective_address.index.value && "todo");
   PG_ASSERT(0 == ins.rhs.u.effective_address.scale && "todo");
-  PG_ASSERT(AMD64_RBP == ins.rhs.u.effective_address.base.value && "todo");
-  PG_ASSERT(ins.lhs.size > ASM_OPERAND_SIZE_8);
+  PG_ASSERT(ins.lhs.size > ASM_OPERAND_SIZE_1);
 
   Amd64EffectiveAddress effective_address = ins.rhs.u.effective_address;
 
@@ -964,8 +962,8 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb, Amd64Instruction ins,
 
   // Rex.
   {
-    bool modrm_reg_field = false;
-    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool modrm_reg_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.rhs);
     bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
     amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
                      ins.rhs, allocator);
