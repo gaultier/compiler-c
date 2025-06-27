@@ -101,15 +101,6 @@ static Pgu8Slice asm_encode_program_text(AsmEmitter *emitter,
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, 4 * PG_KiB, allocator);
 
-  static const u8 runtime_amd64_linux_bytes[] = {
-#embed "runtime_amd64_linux.bin"
-  };
-  Pgu8Slice runtime_amd64_linux_bytes_slice = {
-      .data = (u8 *)runtime_amd64_linux_bytes,
-      .len = PG_STATIC_ARRAY_LEN(runtime_amd64_linux_bytes),
-  };
-  PG_DYN_APPEND_SLICE(&sb, runtime_amd64_linux_bytes_slice, allocator);
-
   for (u64 i = 0; i < emitter->program.text.len; i++) {
     AsmCodeSection section = PG_SLICE_AT(emitter->program.text, i);
     asm_encode_section(emitter->arch_kind, &emitter->program, &sb, section,
