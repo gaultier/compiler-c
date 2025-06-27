@@ -1,4 +1,4 @@
-- [ ] test(amd64): generate lea forms
+- [.] test(amd64): generate lea forms
 - [ ] builtin: implement println
       + Split `builtin.println` into a form for each type e.g. `builtin.println_u64`
       + ~Link libc?~
