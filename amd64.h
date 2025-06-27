@@ -574,6 +574,21 @@ static bool amd64_is_modrm_encoding_rip_relative(u8 modrm) {
   return (mod == AMD64_MODRM_MOD_00) && (rm == 0b101);
 }
 
+[[nodiscard]] static bool
+amd64_does_immediate_fit_in_sign_extended_u8(u64 value) {
+  return value == (u64)(u8)value;
+}
+
+[[nodiscard]] static bool
+amd64_does_immediate_fit_in_sign_extended_u16(u64 value) {
+  return value == (u64)(u16)value;
+}
+
+[[nodiscard]] static bool
+amd64_does_immediate_fit_in_sign_extended_u32(u64 value) {
+  return value == (u64)(u32)value;
+}
+
 // Avoid accidentally using RIP-relative addressing:
 // > The ModR/M encoding for RIP-relative addressing does not depend on
 // > using a prefix. Specifically, the r/m bit field encoding of 101B (used
@@ -1075,7 +1090,8 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
   }
 
   if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_imm(ins.rhs) &&
-      ins.lhs.size > ASM_OPERAND_SIZE_8 && ins.rhs.size == ASM_OPERAND_SIZE_8) {
+      ins.lhs.size == ASM_OPERAND_SIZE_1 &&
+      amd64_does_immediate_fit_in_sign_extended_u8(ins.rhs.u.immediate)) {
     amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
     bool modrm_reg_field = false;
@@ -1084,14 +1100,27 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
                      ins.rhs, allocator);
 
-    u8 opcode = 0x83;
+    u8 opcode = 0x80;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
-    u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
+    amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
 
-    if (amd64_is_mem(ins.lhs)) {
-      amd64_encode_sib(sb, ins.lhs.u.effective_address, modrm, allocator);
-    }
+    pg_byte_buffer_append_u8(sb, (u8)ins.rhs.u.immediate, allocator);
+
+    return;
+  }
+
+  if (amd64_is_reg_or_mem(ins.lhs) && ASM_OPERAND_SIZE_2 == ins.lhs.size &&
+      amd64_is_imm(ins.rhs) &&
+      amd64_does_immediate_fit_in_sign_extended_u16(ins.rhs.u.immediate)) {
+    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+
+    u8 opcode = 0x81;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+
+    pg_byte_buffer_append_u16(sb, (u16)ins.rhs.u.immediate, allocator);
 
     return;
   }
