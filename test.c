@@ -347,8 +347,18 @@ static void test_asm() {
           (0x48 == expected.data[0] && 0x83 == expected.data[1] &&
            0xC0 == expected.data[2] && 0x00 == expected.data[3]);
 
+      bool also_valid_add_rax_u64_max =
+          (6 == actual.len) &&
+          (0x48 == actual.data[0] && 0x05 == actual.data[1] &&
+           0xff == actual.data[2] && 0xff == actual.data[3] &&
+           0xff == actual.data[4] && 0xff == actual.data[5]) &&
+          (4 == expected.len) &&
+          (0x48 == expected.data[0] && 0x83 == expected.data[1] &&
+           0xC0 == expected.data[2] && 0xff == expected.data[3]);
+
       if (eq || also_valid_add_ax_u16_max || also_valid_add_eax_u32_max ||
-          also_valid_add_ax_0 || also_valid_add_eax_0 || also_valid_add_rax_0) {
+          also_valid_add_ax_0 || also_valid_add_eax_0 || also_valid_add_rax_0 ||
+          also_valid_add_rax_u64_max) {
         printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
                (i32)asm_human_readable.len, asm_human_readable.data);
       } else {
