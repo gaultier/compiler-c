@@ -297,6 +297,12 @@ static void gen_add(PgAllocator *allocator) {
     u64 nums[] = {UINT8_MAX, UINT16_MAX, UINT32_MAX, UINT32_MAX + 1,
                   UINT64_MAX};
     Pgu64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
+    u64 maxs[] = {
+        [ASM_OPERAND_SIZE_1] = UINT8_MAX,
+        [ASM_OPERAND_SIZE_2] = UINT16_MAX,
+        [ASM_OPERAND_SIZE_4] = UINT8_MAX,
+        [ASM_OPERAND_SIZE_8] = UINT64_MAX,
+    };
 
     for (u64 j = 0; j < nums_slice.len; j++) {
       u64 immediate = PG_SLICE_AT(nums_slice, j);
@@ -312,9 +318,10 @@ static void gen_add(PgAllocator *allocator) {
             .u.reg = reg_a,
             .size = size,
         };
+        u64 max = maxs[size];
         ins.rhs = (Amd64Operand){
             .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-            .u.immediate = immediate,
+            .u.immediate = immediate > max ? max : immediate,
             .size = size,
         };
         gen_helper_run_assembler(ins, allocator);

@@ -1089,17 +1089,9 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
-  if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_imm(ins.rhs) &&
-      ins.lhs.size == ASM_OPERAND_SIZE_1 &&
+  if (amd64_is_reg_or_mem(ins.lhs) && ins.lhs.size == ASM_OPERAND_SIZE_1 &&
+      amd64_is_imm(ins.rhs) &&
       amd64_does_immediate_fit_in_sign_extended_u8(ins.rhs.u.immediate)) {
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-
-    bool modrm_reg_field = false;
-    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
-    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
-    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
-                     ins.rhs, allocator);
-
     u8 opcode = 0x80;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
