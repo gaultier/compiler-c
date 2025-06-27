@@ -238,6 +238,119 @@ static void gen_mov(PgAllocator *allocator) {
   }
 }
 
+static void gen_add(PgAllocator *allocator) {
+  // Reg/mem-Reg and Reg-Reg/mem.
+  // TODO: Scale, index.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    i32 displacements[] = {0, 8, INT32_MAX};
+    Pgi32Slice displacements_slice = {
+        .data = displacements,
+        .len = PG_STATIC_ARRAY_LEN(displacements),
+    };
+
+    for (u8 j = 1; j < 14; j++) {
+      Register reg_b = {j};
+
+      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        for (u64 l = 0; l < displacements_slice.len; l++) {
+          i32 displacement = PG_SLICE_AT(displacements_slice, l);
+
+          Amd64Instruction ins = {};
+          ins.kind = AMD64_INSTRUCTION_KIND_ADD;
+          ins.lhs = (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+              .u.effective_address =
+                  {
+                      .base = reg_a,
+                      .displacement = displacement,
+                  },
+              .size = size,
+          };
+          ins.rhs = (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .u.reg = reg_b,
+              .size = size,
+          };
+          gen_helper_run_assembler(ins, allocator);
+
+          // Swap operands.
+          {
+            Amd64Operand tmp = ins.lhs;
+            ins.lhs = ins.rhs;
+            ins.rhs = tmp;
+            gen_helper_run_assembler(ins, allocator);
+          }
+        }
+      }
+    }
+  }
+
+  // Reg-immediate.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    u64 nums[] = {UINT8_MAX, UINT16_MAX, UINT32_MAX, UINT32_MAX + 1,
+                  UINT64_MAX};
+    Pgu64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
+
+    for (u64 j = 0; j < nums_slice.len; j++) {
+      u64 immediate = PG_SLICE_AT(nums_slice, j);
+
+      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        Amd64Instruction ins = {};
+        ins.kind = AMD64_INSTRUCTION_KIND_ADD;
+        ins.lhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_a,
+            .size = size,
+        };
+        ins.rhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+            .u.immediate = immediate,
+            .size = size,
+        };
+        gen_helper_run_assembler(ins, allocator);
+      }
+    }
+  }
+
+  // Reg-reg.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    for (u8 j = 1; j < 14; j++) {
+      Register reg_b = {j};
+
+      for (u8 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        Amd64Instruction ins = {};
+        ins.kind = AMD64_INSTRUCTION_KIND_ADD;
+        ins.lhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_a,
+            .size = size,
+        };
+        ins.rhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_b,
+            .size = size,
+        };
+        gen_helper_run_assembler(ins, allocator);
+      }
+    }
+  }
+}
+
 int main() {
   // NOTE: Trivial to reduce memory usage if needed by reusing strings for file
   // paths etc.
@@ -251,6 +364,7 @@ int main() {
     PG_ASSERT(0);
   }
 
+  gen_add(allocator);
   gen_lea(allocator);
   gen_mov(allocator);
 }

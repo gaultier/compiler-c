@@ -992,140 +992,83 @@ static void amd64_encode_instruction_ret(Pgu8Dyn *sb,
   (void)sb;
   (void)instruction;
   (void)allocator;
+  PG_ASSERT(0 && "todo");
 }
 
-static void amd64_encode_instruction_add(Pgu8Dyn *sb,
-                                         Amd64Instruction instruction,
+static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
                                          PgAllocator *allocator) {
-  PG_ASSERT(AMD64_INSTRUCTION_KIND_ADD == instruction.kind);
+  PG_ASSERT(AMD64_INSTRUCTION_KIND_ADD == ins.kind);
 
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
-    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.lhs.u.reg)) {
-      rex |= AMD64_REX_MASK_R;
-    }
-    if (amd64_is_register_64_bits_only(instruction.rhs.u.reg)) {
-      rex |= AMD64_REX_MASK_B;
-    }
-    *PG_DYN_PUSH(sb, allocator) = rex;
+  if (amd64_is_reg(ins.lhs) && amd64_is_reg_or_mem(ins.rhs)) {
+    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+
+    bool modrm_reg_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.rhs);
+    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                     ins.rhs, allocator);
 
     u8 opcode = 0x03;
+    if (amd64_is_reg8(ins.lhs)) {
+      opcode = 0x02;
+    }
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
-    u8 modrm = (0b11 << 6) |
-               (u8)((amd64_encode_register_value(instruction.lhs.u.reg) & 0b111)
-                    << 3) |
-               (u8)(amd64_encode_register_value(instruction.rhs.u.reg) & 0b111);
-    *PG_DYN_PUSH(sb, allocator) = modrm;
+    u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
+
+    if (amd64_is_mem(ins.rhs)) {
+      amd64_encode_sib(sb, ins.rhs.u.effective_address, modrm, allocator);
+    }
+
     return;
   }
 
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
-    PG_ASSERT(instruction.rhs.u.immediate <= INT32_MAX);
+  if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_imm(ins.rhs) &&
+      ins.lhs.size > ASM_OPERAND_SIZE_8) {
+    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
-    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.lhs.u.reg)) {
-      rex |= AMD64_REX_MASK_R;
-    }
-    *PG_DYN_PUSH(sb, allocator) = rex;
+    bool modrm_reg_field = false;
+    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                     ins.rhs, allocator);
 
-    u8 opcode = 0x81;
+    u8 opcode = 0x83;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
-    u8 modrm =
-        (0b11 << 6) |
-        (u8)((amd64_encode_register_value(instruction.lhs.u.reg) & 0b111));
-    *PG_DYN_PUSH(sb, allocator) = modrm;
+    u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
 
-    pg_byte_buffer_append_u32(sb, (u32)instruction.rhs.u.immediate, allocator);
+    if (amd64_is_mem(ins.lhs)) {
+      amd64_encode_sib(sb, ins.lhs.u.effective_address, modrm, allocator);
+    }
+
     return;
   }
-  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
-      AMD64_OPERAND_KIND_REGISTER == instruction.rhs.kind) {
-    PG_ASSERT(0 == instruction.lhs.u.effective_address.scale && "todo");
-    PG_ASSERT(0 == instruction.lhs.u.effective_address.index.value && "todo");
-    PG_ASSERT(AMD64_RBP == instruction.lhs.u.effective_address.base.value &&
-              "todo");
 
-    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(instruction.rhs.u.reg)) {
-      rex |= AMD64_REX_MASK_R;
-    }
-    *PG_DYN_PUSH(sb, allocator) = rex;
+  if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_reg(ins.rhs)) {
+    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+
+    bool modrm_reg_field = amd64_is_operand_register_64_bits_only(ins.rhs);
+    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                     ins.rhs, allocator);
 
     u8 opcode = 0x01;
-    *PG_DYN_PUSH(sb, allocator) = opcode;
-
-    u8 modrm = (0b10 /* rbp+disp32 */ << 6) |
-               (u8)((amd64_encode_register_value(instruction.rhs.u.reg) & 0b111)
-                    << 3) |
-               (u8)(amd64_encode_register_value(
-                   instruction.lhs.u.effective_address.base));
-
-    *PG_DYN_PUSH(sb, allocator) = modrm;
-
-    pg_byte_buffer_append_u32(
-        sb, (u32)instruction.lhs.u.effective_address.displacement, allocator);
-
-    return;
-  }
-  if (AMD64_OPERAND_KIND_REGISTER == instruction.lhs.kind &&
-      AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.rhs.kind) {
-    Register reg = instruction.lhs.u.reg;
-    Amd64EffectiveAddress effective_address =
-        instruction.rhs.u.effective_address;
-    PG_ASSERT(0 == effective_address.scale && "todo");
-    PG_ASSERT(0 == effective_address.index.value && "todo");
-    PG_ASSERT(AMD64_RBP == effective_address.base.value && "todo");
-
-    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(reg)) {
-      rex |= AMD64_REX_MASK_R;
+    if (amd64_is_reg8(ins.lhs)) {
+      opcode = 0x00;
     }
-    *PG_DYN_PUSH(sb, allocator) = rex;
-
-    u8 opcode = 0x03;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
-    u8 modrm = (0b10 /* rbp+disp32 */ << 6) |
-               (u8)((amd64_encode_register_value(reg) & 0b111) << 3) |
-               (u8)(amd64_encode_register_value(effective_address.base));
+    u8 modrm = amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
 
-    *PG_DYN_PUSH(sb, allocator) = modrm;
-
-    pg_byte_buffer_append_u32(sb, (u32)effective_address.displacement,
-                              allocator);
-
-    return;
-  }
-  if (AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == instruction.lhs.kind &&
-      AMD64_OPERAND_KIND_IMMEDIATE == instruction.rhs.kind) {
-    u64 immediate = instruction.rhs.u.immediate;
-    PG_ASSERT(immediate <= INT32_MAX);
-    Amd64EffectiveAddress effective_address =
-        instruction.lhs.u.effective_address;
-
-    u8 rex = AMD64_REX_DEFAULT | AMD64_REX_MASK_W;
-    if (amd64_is_register_64_bits_only(effective_address.base)) {
-      rex |= AMD64_REX_MASK_R;
+    if (amd64_is_mem(ins.lhs)) {
+      amd64_encode_sib(sb, ins.lhs.u.effective_address, modrm, allocator);
     }
-    *PG_DYN_PUSH(sb, allocator) = rex;
 
-    u8 opcode = 0x81;
-    *PG_DYN_PUSH(sb, allocator) = opcode;
-
-    u8 modrm = (0b10 /* rbp+disp32 */ << 6) |
-               (u8)(amd64_encode_register_value(effective_address.base));
-
-    *PG_DYN_PUSH(sb, allocator) = modrm;
-
-    pg_byte_buffer_append_u32(sb, (u32)effective_address.displacement,
-                              allocator);
-    pg_byte_buffer_append_u32(sb, (u32)immediate, allocator);
     return;
   }
+
   PG_ASSERT(0 && "todo");
 }
 
