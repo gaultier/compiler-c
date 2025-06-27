@@ -92,7 +92,8 @@ static void gen_lea(PgAllocator *allocator) {
     for (u8 j = 1; j < 14; j++) {
       Register reg_b = {j};
 
-      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+      // Skip `ASM_OPERAND_SIZE_1` since `lea` does not support it.
+      for (u64 k = 1; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
         AsmOperandSize size =
             PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
 
