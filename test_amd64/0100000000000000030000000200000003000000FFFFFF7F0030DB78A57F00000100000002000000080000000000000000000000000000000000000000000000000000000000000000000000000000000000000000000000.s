@@ -1,1 +1,0 @@
-mov word ptr [rcx+2147483647], r9w
