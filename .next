@@ -1,11 +1,5 @@
-- [.] test(amd64): generate add forms
 - [ ] test(amd64): generate sub forms
 - [ ] test(amd64): generate cmp forms
-- [ ] test(amd64): revamp `test_asm_gen.c` to generate only one file, maybe structured with alternative encodings. Consider running clang only once? Consider making `Amd64Instruction` compacter. Plan:
-      + generate one asm statement per line in one big file. E.g.: `mov ax,1\nmov bx, 1\n[...]` to `test.s`.
-      + assemble this file with clang to `test.bin`.
-      + serialize the list of `Amd64Instruction` to `test.ins`.
-      + In tests, load once `test.{s,bin,ins}`. For each ins, check that `myassemble(ins) == test.bin[idx]`. Advance cursor. Caution about ternate encodings of a different length.
 - [ ] builtin: implement println
       + Split `builtin.println` into a form for each type e.g. `builtin.println_u64`
       + ~Link libc?~
