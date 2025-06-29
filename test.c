@@ -641,6 +641,8 @@ static void test_asm() {
   PG_ASSERT(res_search_ins.ok);
   Pgu64Range range_ins = res_search_ins.res;
 
+  // NOTE: The two excerpts might actually differ in length and this might
+  // truncate/extend `except` by a few bytes.
   Pgu8Slice expected_excerpt =
       PG_SLICE_RANGE(expected, range_ins.start_incl, range_ins.end_excl);
   Pgu8Slice actual_excerpt =
