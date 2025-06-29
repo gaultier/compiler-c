@@ -1,13 +1,18 @@
-CFLAGS := -fpie -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=$(LD) -std=c23 -Wall -Wextra -Werror -Wno-gnu-alignof-expression -g3
+.POSIX:
+.SUFFIXES:
 
-LDFLAGS := -Wl,--gc-sections -flto
+LD = lld
 
-CC := clang
+CFLAGS = -fpie -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=$(LD) -std=c23 -Wall -Wextra -Werror -g3
 
-C_FILES := main.c submodules/cstd/lib.c $(wildcard *.h)
-TEST_C_FILES := test.c submodules/cstd/lib.c $(wildcard *.h)
+LDFLAGS = -Wl,--gc-sections -flto
 
-SANITIZERS := address,undefined
+CC = clang
+
+C_FILES = main.c submodules/cstd/lib.c $(wildcard *.h)
+TEST_C_FILES = test.c submodules/cstd/lib.c $(wildcard *.h)
+
+SANITIZERS = address,undefined
 
 main_debug.bin: $(C_FILES)
 	$(CC) $(CFLAGS) $(LDFLAGS) main.c -o $@
