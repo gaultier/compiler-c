@@ -6,7 +6,6 @@
       + assemble this file with clang to `test.bin`.
       + serialize the list of `Amd64Instruction` to `test.ins`.
       + In tests, load once `test.{s,bin,ins}`. For each ins, check that `myassemble(ins) == test.bin[idx]`. Advance cursor. Caution about ternate encodings of a different length.
-  k
 - [ ] builtin: implement println
       + Split `builtin.println` into a form for each type e.g. `builtin.println_u64`
       + ~Link libc?~

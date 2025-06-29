@@ -10,7 +10,7 @@
 
 .globl _start
 _start:
-mov byte ptr [r13], al
+add rax, 4294967295
 
 __builtin_exit:
 mov rax, 60

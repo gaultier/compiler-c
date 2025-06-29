@@ -2,49 +2,17 @@
 
 #define PG_TEST_AMD64_GEN_DIR_NAME "test_amd64"
 
-static void gen_helper_run_assembler(Amd64Instruction ins,
-                                     PgAllocator *allocator) {
-  PgString asm_human_readable = {0};
-  {
-    Pgu8Dyn sb = {0};
-    PG_DYN_ENSURE_CAP(&sb, 256, allocator);
-    PgWriter w = pg_writer_make_from_string_builder(&sb);
-    amd64_print_instruction(ins, false, &w, allocator);
-    (void)pg_writer_write_string_full(&w, PG_S("\n"), allocator);
+static void write_instruction(Amd64Instruction ins, PgWriter *writer_asm_text,
+                              PgWriter *writer_instructions_binary) {
+  amd64_print_instruction(ins, false, writer_asm_text, nullptr);
+  (void)pg_writer_write_string_full(writer_asm_text, PG_S("\n"), nullptr);
 
-    asm_human_readable = PG_DYN_SLICE(PgString, sb);
-  }
-
-  // NOTE: We could reduce the number of bytes written (and then read in the
-  // tests) by not serializing the `origin` field which is always zero in this
-  // context.
   Pgu8Slice ins_bytes = {.data = (u8 *)&ins, .len = sizeof(ins)};
-  PgString ins_bytes_str = pg_bytes_to_hex_string(ins_bytes, 0, allocator);
-  PG_ASSERT(!pg_string_is_empty(ins_bytes_str));
+  PG_ASSERT(0 == pg_writer_write_string_full(writer_instructions_binary,
+                                             ins_bytes, nullptr));
+}
 
-  PgString path_asm_s = pg_path_join(
-      PG_S(PG_TEST_AMD64_GEN_DIR_NAME),
-      pg_string_concat(ins_bytes_str, PG_S(".s"), allocator), allocator);
-  PG_ASSERT(
-      0 == pg_file_write_full(path_asm_s, asm_human_readable, 0600, allocator));
-
-  {
-    PgString path_asm_ins = pg_path_join(
-        PG_S(PG_TEST_AMD64_GEN_DIR_NAME),
-        pg_string_concat(ins_bytes_str, PG_S(".ins"), allocator), allocator);
-    PG_ASSERT(0 ==
-              pg_file_write_full(path_asm_ins, ins_bytes, 0600, allocator));
-  }
-
-  PgString path_asm_bin = pg_path_join(
-      PG_S(PG_TEST_AMD64_GEN_DIR_NAME),
-      pg_string_concat(ins_bytes_str, PG_S(".bin"), allocator), allocator);
-
-  printf("\n--- path_asm_s=%.*s path_asm_bin=%.*s\n%.*s\n---\n",
-         (i32)path_asm_s.len, path_asm_s.data, (i32)path_asm_bin.len,
-         path_asm_bin.data, (i32)asm_human_readable.len,
-         asm_human_readable.data);
-
+static void run_assembler(PgAllocator *allocator) {
   PgString args[] = {
       PG_S("-mllvm"),
       PG_S("--x86-asm-syntax=intel"),
@@ -53,33 +21,26 @@ static void gen_helper_run_assembler(Amd64Instruction ins,
       PG_S("-O0"),
       PG_S("-nostdlib"),
       PG_S("-Wl,--oformat=binary"),
+      PG_S("test_amd64.s"),
       PG_S("-o"),
-      path_asm_bin,
-      PG_S("-"),
+      PG_S("test_amd64.bin"),
   };
   PgStringSlice args_slice = {.data = args, .len = PG_STATIC_ARRAY_LEN(args)};
 
-  PgProcessSpawnOptions options = {
-      .stdin_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
-      .stderr_capture = PG_CHILD_PROCESS_STD_IO_PIPE,
-  };
+  PgProcessSpawnOptions options = {0};
   PgProcessResult res_spawn =
       pg_process_spawn(PG_S("clang"), args_slice, options, allocator);
   PG_ASSERT(0 == res_spawn.err);
 
   PgProcess process = res_spawn.res;
-  PG_ASSERT(process.stdin_pipe.fd);
-
-  PG_ASSERT(0 == pg_file_write_full_with_descriptor(process.stdin_pipe,
-                                                    asm_human_readable));
-  (void)pg_file_close(process.stdin_pipe);
-
   PgProcessExitResult res_proc = pg_process_wait(process, allocator);
 
   PG_ASSERT(0 == res_proc.err);
+  PG_ASSERT(0 == res_proc.res.exit_status);
 }
 
-static void gen_lea(PgAllocator *allocator) {
+static void gen_lea(PgWriter *writer_asm_text,
+                    PgWriter *writer_instructions_binary) {
   // Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -118,14 +79,15 @@ static void gen_lea(PgAllocator *allocator) {
                   },
               .size = size,
           };
-          gen_helper_run_assembler(ins, allocator);
+          write_instruction(ins, writer_asm_text, writer_instructions_binary);
         }
       }
     }
   }
 }
 
-static void gen_mov(PgAllocator *allocator) {
+static void gen_mov(PgWriter *writer_asm_text,
+                    PgWriter *writer_instructions_binary) {
   // Reg/mem-Reg and Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -163,14 +125,14 @@ static void gen_mov(PgAllocator *allocator) {
               .u.reg = reg_b,
               .size = size,
           };
-          gen_helper_run_assembler(ins, allocator);
+          write_instruction(ins, writer_asm_text, writer_instructions_binary);
 
           // Swap operands.
           {
             Amd64Operand tmp = ins.lhs;
             ins.lhs = ins.rhs;
             ins.rhs = tmp;
-            gen_helper_run_assembler(ins, allocator);
+            write_instruction(ins, writer_asm_text, writer_instructions_binary);
           }
         }
       }
@@ -204,7 +166,7 @@ static void gen_mov(PgAllocator *allocator) {
             .u.immediate = immediate,
             .size = size,
         };
-        gen_helper_run_assembler(ins, allocator);
+        write_instruction(ins, writer_asm_text, writer_instructions_binary);
       }
     }
   }
@@ -232,13 +194,14 @@ static void gen_mov(PgAllocator *allocator) {
             .u.reg = reg_b,
             .size = size,
         };
-        gen_helper_run_assembler(ins, allocator);
+        write_instruction(ins, writer_asm_text, writer_instructions_binary);
       }
     }
   }
 }
 
-static void gen_add(PgAllocator *allocator) {
+static void gen_add(PgWriter *writer_asm_text,
+                    PgWriter *writer_instructions_binary) {
   // Reg/mem-Reg and Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -276,14 +239,14 @@ static void gen_add(PgAllocator *allocator) {
               .u.reg = reg_b,
               .size = size,
           };
-          gen_helper_run_assembler(ins, allocator);
+          write_instruction(ins, writer_asm_text, writer_instructions_binary);
 
           // Swap operands.
           {
             Amd64Operand tmp = ins.lhs;
             ins.lhs = ins.rhs;
             ins.rhs = tmp;
-            gen_helper_run_assembler(ins, allocator);
+            write_instruction(ins, writer_asm_text, writer_instructions_binary);
           }
         }
       }
@@ -294,18 +257,17 @@ static void gen_add(PgAllocator *allocator) {
   for (u8 i = 1; i < 14; i++) {
     Register reg_a = {i};
 
-    u64 nums[] = {UINT8_MAX, UINT16_MAX, UINT32_MAX, UINT32_MAX + 1,
-                  UINT64_MAX};
-    Pgu64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
-    u64 maxs[] = {
-        [ASM_OPERAND_SIZE_1] = UINT8_MAX,
-        [ASM_OPERAND_SIZE_2] = UINT16_MAX,
-        [ASM_OPERAND_SIZE_4] = UINT8_MAX,
-        [ASM_OPERAND_SIZE_8] = UINT64_MAX,
+    i64 nums[] = {INT8_MAX, INT16_MAX, INT32_MAX};
+    Pgi64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
+    i64 maxs[] = {
+        [ASM_OPERAND_SIZE_1] = INT8_MAX,
+        [ASM_OPERAND_SIZE_2] = INT16_MAX,
+        [ASM_OPERAND_SIZE_4] = INT32_MAX,
+        [ASM_OPERAND_SIZE_8] = INT64_MAX,
     };
 
     for (u64 j = 0; j < nums_slice.len; j++) {
-      u64 immediate = PG_SLICE_AT(nums_slice, j);
+      i64 immediate = PG_SLICE_AT(nums_slice, j);
 
       for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
         AsmOperandSize size =
@@ -318,13 +280,13 @@ static void gen_add(PgAllocator *allocator) {
             .u.reg = reg_a,
             .size = size,
         };
-        u64 max = maxs[size];
+        i64 max = maxs[size];
         ins.rhs = (Amd64Operand){
             .kind = AMD64_OPERAND_KIND_IMMEDIATE,
-            .u.immediate = immediate > max ? max : immediate,
+            .u.immediate = (u64)(immediate > max ? max : immediate),
             .size = size,
         };
-        gen_helper_run_assembler(ins, allocator);
+        write_instruction(ins, writer_asm_text, writer_instructions_binary);
       }
     }
   }
@@ -352,26 +314,38 @@ static void gen_add(PgAllocator *allocator) {
             .u.reg = reg_b,
             .size = size,
         };
-        gen_helper_run_assembler(ins, allocator);
+        write_instruction(ins, writer_asm_text, writer_instructions_binary);
       }
     }
   }
 }
 
 int main() {
-  // NOTE: Trivial to reduce memory usage if needed by reusing strings for file
-  // paths etc.
-  PgArena arena = pg_arena_make_from_virtual_mem(512 * PG_MiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(513 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  // TODO: Windows.
-  int ret = mkdir(PG_TEST_AMD64_GEN_DIR_NAME, 0777);
-  if (-1 == ret && errno != EEXIST) {
-    PG_ASSERT(0);
-  }
+  Pgu8Dyn sb_asm_text = {0};
+  PG_DYN_ENSURE_CAP(&sb_asm_text, 256 * PG_MiB, allocator);
+  PgWriter writer_asm_text = pg_writer_make_from_string_builder(&sb_asm_text);
 
-  gen_add(allocator);
-  gen_lea(allocator);
-  gen_mov(allocator);
+  Pgu8Dyn sb_instructions_binary = {0};
+  PG_DYN_ENSURE_CAP(&sb_instructions_binary, 256 * PG_MiB, allocator);
+  PgWriter writer_instructions_binary =
+      pg_writer_make_from_string_builder(&sb_instructions_binary);
+
+  PG_ASSERT(0 == pg_writer_write_string_full(&writer_asm_text,
+                                             PG_S(".globl _start\n _start:\n"),
+                                             nullptr));
+
+  gen_add(&writer_asm_text, &writer_instructions_binary);
+  gen_lea(&writer_asm_text, &writer_instructions_binary);
+  gen_mov(&writer_asm_text, &writer_instructions_binary);
+
+  pg_file_write_full(PG_S("test_amd64.s"), PG_DYN_SLICE(PgString, sb_asm_text),
+                     0600, allocator);
+  pg_file_write_full(PG_S("test_amd64.ins"),
+                     PG_DYN_SLICE(PgString, sb_instructions_binary), 0600,
+                     allocator);
+  run_assembler(allocator);
 }

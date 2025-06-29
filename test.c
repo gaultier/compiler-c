@@ -1,8 +1,18 @@
 #include "submodules/cstd/lib.c"
-#include <dirent.h>
-#include <sys/types.h>
 
 #include "amd64.h"
+
+static const u8 test_amd64_s[] = {
+#embed "test_amd64.s"
+};
+
+static const u8 test_amd64_bin[] = {
+#embed "test_amd64.bin"
+};
+
+static const u8 test_amd64_ins[] = {
+#embed "test_amd64.ins"
+};
 
 typedef struct {
   PgProcessStatus process_status;
@@ -253,124 +263,77 @@ static void test_asm() {
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
   {
-    PgString dir_name = PG_S("test_amd64");
-    DIR *dir = opendir("test_amd64");
-    if (!dir) {
-      fprintf(stderr, "failed to open directory %.*s: %d\n", (i32)dir_name.len,
-              dir_name.data, pg_os_get_last_error());
-      exit(pg_os_get_last_error());
-    }
+    PgString expected = {0};
 
-    struct dirent *dir_it = nullptr;
+    Amd64Instruction ins = {0};
+    PgString asm_human_readable = {0};
 
-    while ((dir_it = readdir(dir))) {
-      PgString file_name = pg_cstr_to_string(dir_it->d_name);
-      // Not a regular file.
-      if (DT_REG != dir_it->d_type) {
-        continue;
-      }
-      if (!pg_string_ends_with(file_name, PG_S(".bin"))) {
-        continue;
-      }
+    AsmProgram program = {0};
+    Pgu8Dyn sb = pg_string_builder_make(256, allocator);
+    amd64_encode_instruction(&program, &sb, ins, allocator);
+    PgString actual = PG_DYN_SLICE(PgString, sb);
 
-      PgString expected = {0};
-      PgString path_bin = pg_path_join(dir_name, file_name, allocator);
-      {
-        PgStringResult read_res =
-            pg_file_read_full_from_path(path_bin, allocator);
-        PG_ASSERT(0 == read_res.err);
-        expected = read_res.res;
-      }
+    bool eq = pg_bytes_eq(actual, expected);
+    bool also_valid_add_ax_u16_max =
+        (4 == actual.len) && (*(u32 *)(void *)actual.data == 0xff'ff'05'66) &&
+        (4 == expected.len) && (*(u32 *)(void *)expected.data == 0xff'c0'83'66);
+    bool also_valid_add_eax_u32_max =
+        (5 == actual.len) &&
+        (0x05 == actual.data[0] && 0xff == actual.data[1] &&
+         0xff == actual.data[2] && 0xff == actual.data[3] &&
+         0xff == actual.data[4]) &&
+        (3 == expected.len) &&
+        (0x83 == expected.data[0] && 0xC0 == expected.data[1] &&
+         0xff == expected.data[2]);
 
-      Amd64Instruction ins = {0};
-      {
-        PgString path_ins =
-            pg_string_concat(pg_path_stem(path_bin), PG_S(".ins"), allocator);
-        PgStringResult read_res =
-            pg_file_read_full_from_path(path_ins, allocator);
-        PG_ASSERT(0 == read_res.err);
-        PG_ASSERT(sizeof(Amd64Instruction) == read_res.res.len);
-        ins = *(Amd64Instruction *)(void *)read_res.res.data;
-      }
-      PgString asm_human_readable = {0};
-      {
-        PgString path_s =
-            pg_string_concat(pg_path_stem(path_bin), PG_S(".s"), allocator);
-        PgStringResult read_res =
-            pg_file_read_full_from_path(path_s, allocator);
-        PG_ASSERT(0 == read_res.err);
-        asm_human_readable = pg_string_trim_space(read_res.res);
-      }
+    bool also_valid_add_ax_0 =
+        (4 == actual.len) &&
+        (0x66 == actual.data[0] && 0x05 == actual.data[1] &&
+         0x00 == actual.data[2] && 0x00 == actual.data[3]) &&
+        (4 == expected.len) &&
+        (0x66 == expected.data[0] && 0x83 == expected.data[1] &&
+         0xC0 == expected.data[2] && 0x00 == expected.data[3]);
 
-      AsmProgram program = {0};
-      Pgu8Dyn sb = pg_string_builder_make(256, allocator);
-      amd64_encode_instruction(&program, &sb, ins, allocator);
-      PgString actual = PG_DYN_SLICE(PgString, sb);
+    bool also_valid_add_eax_0 =
+        (5 == actual.len) &&
+        (0x05 == actual.data[0] && 0x00 == actual.data[1] &&
+         0x00 == actual.data[2] && 0x00 == actual.data[3] &&
+         0x00 == actual.data[4]) &&
+        (3 == expected.len) &&
+        (0x83 == expected.data[0] && 0xC0 == expected.data[1] &&
+         0x00 == expected.data[2]);
 
-      bool eq = pg_bytes_eq(actual, expected);
-      bool also_valid_add_ax_u16_max =
-          (4 == actual.len) && (*(u32 *)(void *)actual.data == 0xff'ff'05'66) &&
-          (4 == expected.len) &&
-          (*(u32 *)(void *)expected.data == 0xff'c0'83'66);
-      bool also_valid_add_eax_u32_max =
-          (5 == actual.len) &&
-          (0x05 == actual.data[0] && 0xff == actual.data[1] &&
-           0xff == actual.data[2] && 0xff == actual.data[3] &&
-           0xff == actual.data[4]) &&
-          (3 == expected.len) &&
-          (0x83 == expected.data[0] && 0xC0 == expected.data[1] &&
-           0xff == expected.data[2]);
+    bool also_valid_add_rax_0 =
+        (6 == actual.len) &&
+        (0x48 == actual.data[0] && 0x05 == actual.data[1] &&
+         0x00 == actual.data[2] && 0x00 == actual.data[3] &&
+         0x00 == actual.data[4] && 0x00 == actual.data[5]) &&
+        (4 == expected.len) &&
+        (0x48 == expected.data[0] && 0x83 == expected.data[1] &&
+         0xC0 == expected.data[2] && 0x00 == expected.data[3]);
 
-      bool also_valid_add_ax_0 =
-          (4 == actual.len) &&
-          (0x66 == actual.data[0] && 0x05 == actual.data[1] &&
-           0x00 == actual.data[2] && 0x00 == actual.data[3]) &&
-          (4 == expected.len) &&
-          (0x66 == expected.data[0] && 0x83 == expected.data[1] &&
-           0xC0 == expected.data[2] && 0x00 == expected.data[3]);
+    bool also_valid_add_rax_u64_max =
+        (6 == actual.len) &&
+        (0x48 == actual.data[0] && 0x05 == actual.data[1] &&
+         0xff == actual.data[2] && 0xff == actual.data[3] &&
+         0xff == actual.data[4] && 0xff == actual.data[5]) &&
+        (4 == expected.len) &&
+        (0x48 == expected.data[0] && 0x83 == expected.data[1] &&
+         0xC0 == expected.data[2] && 0xff == expected.data[3]);
 
-      bool also_valid_add_eax_0 =
-          (5 == actual.len) &&
-          (0x05 == actual.data[0] && 0x00 == actual.data[1] &&
-           0x00 == actual.data[2] && 0x00 == actual.data[3] &&
-           0x00 == actual.data[4]) &&
-          (3 == expected.len) &&
-          (0x83 == expected.data[0] && 0xC0 == expected.data[1] &&
-           0x00 == expected.data[2]);
-
-      bool also_valid_add_rax_0 =
-          (6 == actual.len) &&
-          (0x48 == actual.data[0] && 0x05 == actual.data[1] &&
-           0x00 == actual.data[2] && 0x00 == actual.data[3] &&
-           0x00 == actual.data[4] && 0x00 == actual.data[5]) &&
-          (4 == expected.len) &&
-          (0x48 == expected.data[0] && 0x83 == expected.data[1] &&
-           0xC0 == expected.data[2] && 0x00 == expected.data[3]);
-
-      bool also_valid_add_rax_u64_max =
-          (6 == actual.len) &&
-          (0x48 == actual.data[0] && 0x05 == actual.data[1] &&
-           0xff == actual.data[2] && 0xff == actual.data[3] &&
-           0xff == actual.data[4] && 0xff == actual.data[5]) &&
-          (4 == expected.len) &&
-          (0x48 == expected.data[0] && 0x83 == expected.data[1] &&
-           0xC0 == expected.data[2] && 0xff == expected.data[3]);
-
-      if (eq || also_valid_add_ax_u16_max || also_valid_add_eax_u32_max ||
-          also_valid_add_ax_0 || also_valid_add_eax_0 || also_valid_add_rax_0 ||
-          also_valid_add_rax_u64_max) {
-        printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
-               (i32)asm_human_readable.len, asm_human_readable.data);
-      } else {
-        PgString expected_str =
-            pg_bytes_to_hex_string(expected, ' ', allocator);
-        PgString actual_str = pg_bytes_to_hex_string(actual, ' ', allocator);
-        fprintf(stderr, "FAIL %.*s %.*s\nExpected: %.*s\nActual: %.*s\n\n",
-                (i32)path_bin.len, path_bin.data, (i32)asm_human_readable.len,
-                asm_human_readable.data, (i32)expected_str.len,
-                expected_str.data, (i32)actual_str.len, actual_str.data);
-        PG_ASSERT(0);
-      }
+    if (eq || also_valid_add_ax_u16_max || also_valid_add_eax_u32_max ||
+        also_valid_add_ax_0 || also_valid_add_eax_0 || also_valid_add_rax_0 ||
+        also_valid_add_rax_u64_max) {
+      printf("OK %.*s %.*s\n", (i32)path_bin.len, path_bin.data,
+             (i32)asm_human_readable.len, asm_human_readable.data);
+    } else {
+      PgString expected_str = pg_bytes_to_hex_string(expected, ' ', allocator);
+      PgString actual_str = pg_bytes_to_hex_string(actual, ' ', allocator);
+      fprintf(stderr, "FAIL %.*s %.*s\nExpected: %.*s\nActual: %.*s\n\n",
+              (i32)path_bin.len, path_bin.data, (i32)asm_human_readable.len,
+              asm_human_readable.data, (i32)expected_str.len, expected_str.data,
+              (i32)actual_str.len, actual_str.data);
+      PG_ASSERT(0);
     }
   }
 }
