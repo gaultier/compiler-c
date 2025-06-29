@@ -620,6 +620,7 @@ static void test_asm() {
 
   bool eq = pg_bytes_eq(actual, expected);
   if (eq) {
+    printf("OK AMD64 (%lu forms)\n", instructions.len);
     return;
   }
 
