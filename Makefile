@@ -45,6 +45,10 @@ test: test_debug.bin
 	./$<
 
 
+.PHONY: clean
+clean:
+	rm *.o *.bin testdata/*.bin err_testdata/*.bin *.dwo || true
+
 .PHONY: dev
 dev: 
 	ls *.{c,h} | entr -c make main_debug.bin
