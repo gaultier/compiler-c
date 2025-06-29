@@ -644,6 +644,7 @@ static void test_asm() {
       PG_SLICE_RANGE(expected, range_ins.start_incl, range_ins.end_excl);
   Pgu8Slice actual_excerpt =
       PG_SLICE_RANGE(actual, range_ins.start_incl, range_ins.end_excl);
+  PG_ASSERT(!pg_bytes_eq(expected_excerpt, actual_excerpt));
 
   Amd64Instruction ins = PG_SLICE_AT(instructions, res_search_ins.res.idx);
   PgString ins_str =

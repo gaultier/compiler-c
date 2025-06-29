@@ -1034,6 +1034,31 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
                                          PgAllocator *allocator) {
   PG_ASSERT(AMD64_INSTRUCTION_KIND_ADD == ins.kind);
 
+  // add reg/mem16, imm8
+  // add reg/mem32, imm8
+  // add reg/mem64, imm8
+  if (amd64_is_reg_or_mem(ins.lhs) && ins.lhs.size > ASM_OPERAND_SIZE_1 &&
+      amd64_is_imm(ins.rhs) &&
+      amd64_does_immediate_fit_in_sign_extended_u8(ins.rhs.u.immediate)) {
+    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
+
+    bool modrm_reg_field = false;
+    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                     ins.rhs, allocator);
+
+    u8 opcode = 0x83;
+    *PG_DYN_PUSH(sb, allocator) = opcode;
+
+    amd64_encode_modrm(sb, ins.lhs, ins.rhs, allocator);
+
+    pg_byte_buffer_append_u8(sb, (u8)ins.rhs.u.immediate, allocator);
+
+    return;
+  }
+
+  // add al, imm8
   if (amd64_is_reg8(ins.lhs) && AMD64_RAX == ins.lhs.u.reg.value &&
       amd64_is_imm(ins.rhs)) {
     PG_ASSERT(ASM_OPERAND_SIZE_1 == ins.lhs.size);
@@ -1047,6 +1072,9 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
+  // add ax, imm16
+  // add eax, imm32
+  // add rax, imm32
   if (amd64_is_reg(ins.lhs) && AMD64_RAX == ins.lhs.u.reg.value &&
       amd64_is_imm(ins.rhs)) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size);
@@ -1081,6 +1109,10 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
+  // add reg8, reg/mem8
+  // add reg16, reg/mem16
+  // add reg32, reg/mem32
+  // add reg64, reg/mem64
   if (amd64_is_reg(ins.lhs) && amd64_is_reg_or_mem(ins.rhs)) {
     amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
@@ -1105,9 +1137,17 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
+  // add reg/mem8, imm8
   if (amd64_is_reg_or_mem(ins.lhs) && ins.lhs.size == ASM_OPERAND_SIZE_1 &&
       amd64_is_imm(ins.rhs) &&
       amd64_does_immediate_fit_in_sign_extended_u8(ins.rhs.u.immediate)) {
+
+    bool modrm_reg_field = false;
+    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
+    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
+    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
+                     ins.rhs, allocator);
+
     u8 opcode = 0x80;
     *PG_DYN_PUSH(sb, allocator) = opcode;
 
@@ -1118,6 +1158,7 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
+  // add reg/mem16, imm16
   if (amd64_is_reg_or_mem(ins.lhs) && ASM_OPERAND_SIZE_2 == ins.lhs.size &&
       amd64_is_imm(ins.rhs) &&
       amd64_does_immediate_fit_in_sign_extended_u16(ins.rhs.u.immediate)) {
@@ -1132,6 +1173,8 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
+  // add reg/mem32, imm32
+  // add reg/mem64, imm64
   if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_imm(ins.rhs) &&
       amd64_does_immediate_fit_in_sign_extended_u32(ins.rhs.u.immediate)) {
     bool modrm_reg_field = false;
@@ -1150,27 +1193,10 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
     return;
   }
 
-  if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_imm(ins.rhs)) {
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-
-    bool modrm_reg_field = false;
-    bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
-    bool field_w = ASM_OPERAND_SIZE_8 == ins.rhs.size;
-    amd64_encode_rex(sb, modrm_reg_field, modrm_rm_field, field_w, ins.lhs,
-                     ins.rhs, allocator);
-
-    u8 opcode = 0x81;
-    *PG_DYN_PUSH(sb, allocator) = opcode;
-
-    u8 modrm = amd64_encode_modrm(sb, ins.rhs, ins.lhs, allocator);
-
-    if (amd64_is_mem(ins.lhs)) {
-      amd64_encode_sib(sb, ins.lhs.u.effective_address, modrm, allocator);
-    }
-
-    return;
-  }
-
+  // add reg/mem8, reg8
+  // add reg/mem16, reg16
+  // add reg/mem32, reg32
+  // add reg/mem64, reg64
   if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_reg(ins.rhs)) {
     amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
