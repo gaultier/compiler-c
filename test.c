@@ -580,7 +580,7 @@ static void gen_add(PgWriter *writer_asm_text,
 }
 
 static void test_asm() {
-  PgArena arena = pg_arena_make_from_virtual_mem(32 * PG_MiB);
+  PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
@@ -619,7 +619,6 @@ static void test_asm() {
   PgString actual = PG_DYN_SLICE(PgString, sb);
   bool eq = pg_bytes_eq(actual, expected);
   if (!eq) {
-    // TODO: Better diagnostics.
     for (u64 i = 0; i < PG_MIN(actual.len, expected.len); i++) {
       u8 byte_actual = PG_SLICE_AT(actual, i);
       u8 byte_expected = PG_SLICE_AT(expected, i);
@@ -628,25 +627,30 @@ static void test_asm() {
         continue;
       }
 
-      Pgu64RangeOk res_search =
+      Pgu64RangeOk res_search_ins =
           pg_u64_range_search(PG_DYN_SLICE(Pgu64Slice, ins_offsets), i);
-      PG_ASSERT(res_search.ok);
+      PG_ASSERT(res_search_ins.ok);
+      Pgu64Range range_ins = res_search_ins.res;
 
-      Pgu8Slice expected_excerpt = PG_SLICE_RANGE(
-          expected, res_search.res.start_incl, res_search.res.end_excl);
-      Pgu8Slice actual_excerpt = PG_SLICE_RANGE(
-          actual, res_search.res.start_incl, res_search.res.end_excl);
+      Pgu8Slice expected_excerpt =
+          PG_SLICE_RANGE(expected, range_ins.start_incl, range_ins.end_excl);
+      Pgu8Slice actual_excerpt =
+          PG_SLICE_RANGE(actual, range_ins.start_incl, range_ins.end_excl);
+
+      Amd64Instruction ins = PG_SLICE_AT(instructions, res_search_ins.res.idx);
+      PgString ins_str = amd64_instruction_to_string(ins, false, allocator);
 
       PgString expected_excerpt_hex =
           pg_bytes_to_hex_string(expected_excerpt, ' ', allocator);
       PgString actual_excerpt_hex =
           pg_bytes_to_hex_string(actual_excerpt, ' ', allocator);
 
-      fprintf(stderr, "Diff: offset=%lu\nexpected=%.*s\nactual=  %.*s\n", i,
-              (i32)expected_excerpt_hex.len, expected_excerpt_hex.data,
-              (i32)actual_excerpt_hex.len, actual_excerpt_hex.data);
+      fprintf(stderr,
+              "Diff: offset=%lu ins=%.*s\nexpected=%.*s\nactual=  %.*s\n", i,
+              (i32)ins_str.len, ins_str.data, (i32)expected_excerpt_hex.len,
+              expected_excerpt_hex.data, (i32)actual_excerpt_hex.len,
+              actual_excerpt_hex.data);
 
-      Amd64Instruction ins = PG_SLICE_AT(instructions, res_search.res.idx);
       __builtin_dump_struct(&ins, printf);
       PG_ASSERT(0);
     }

@@ -429,6 +429,23 @@ static void amd64_print_instruction(Amd64Instruction ins, bool with_origin,
   }
 }
 
+[[maybe_unused]] [[nodiscard]]
+static PgString amd64_instruction_to_string(Amd64Instruction ins,
+                                            bool with_origin,
+                                            PgAllocator *allocator) {
+  Pgu8Dyn sb_asm_text = {0};
+  if (with_origin) {
+    PG_DYN_ENSURE_CAP(&sb_asm_text, 1024, allocator);
+  } else {
+    PG_DYN_ENSURE_CAP(&sb_asm_text, 128, allocator);
+  }
+
+  PgWriter w = pg_writer_make_from_string_builder(&sb_asm_text);
+  amd64_print_instruction(ins, false, &w, nullptr);
+
+  return PG_DYN_SLICE(PgString, *pg_writer_as_string_builder(&w));
+}
+
 static void amd64_print_instructions(Amd64InstructionDyn instructions,
                                      PgWriter *w, PgAllocator *allocator) {
   for (u64 i = 0; i < instructions.len; i++) {
