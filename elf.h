@@ -55,11 +55,6 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   }
   PgFileDescriptor file = res_file.res;
 
-  PgError err_truncate = pg_file_truncate(file, 0);
-  if (err_truncate) {
-    return err_truncate;
-  }
-
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;
 
