@@ -28,8 +28,8 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
   {
     PgString args[] = {/*PG_S("-v"),*/ res.file_path};
     PgStringSlice args_slice = {.data = args, .len = PG_STATIC_ARRAY_LEN(args)};
-    PgProcessResult res_spawn =
-        pg_process_spawn(PG_S("./main.bin"), args_slice, options, allocator);
+    PgProcessResult res_spawn = pg_process_spawn(
+        PG_S("./main_release.bin"), args_slice, options, allocator);
     PG_ASSERT(0 == res_spawn.err);
 
     PgProcess process = res_spawn.res;

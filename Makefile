@@ -20,16 +20,16 @@ main_release.bin: $(C_FILES)
 main_release_sanitizer.bin: $(C_FILES)
 	$(CC) $(CFLAGS) $(LDFLAGS) main.c -o $@ -O2 -flto -fsanitize=$(SANITIZERS)
 
-test_debug.bin: $(C_FILES)
+test_debug.bin: $(C_FILES) main_release.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) test.c -o $@ -Wno-unused
 
-test_debug_sanitizer.bin: $(C_FILES)
+test_debug_sanitizer.bin: $(C_FILES) main_release.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) test.c -o $@ -fsanitize=$(SANITIZERS) -Wno-unused
 
-test_release.bin: $(C_FILES)
+test_release.bin: $(C_FILES) main_release.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) test.c -o $@ -O2 -flto -Wno-unused
 
-test_release_sanitizer.bin: $(C_FILES)
+test_release_sanitizer.bin: $(C_FILES) main_release.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) test.c -o $@ -O2 -flto -fsanitize=$(SANITIZERS) -Wno-unused
 
 all: main_debug.bin main_debug_sanitizer.bin main_release.bin main_release_sanitizer.bin test_debug.bin test_debug_sanitizer.bin test_release.bin test_release_sanitizer.bin
