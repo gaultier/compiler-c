@@ -579,6 +579,130 @@ static void gen_add(PgWriter *writer_asm_text,
   }
 }
 
+static void gen_sub(PgWriter *writer_asm_text,
+                    Amd64InstructionDyn *instructions) {
+  // Reg/mem-Reg and Reg-Reg/mem.
+  // TODO: Scale, index.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    i32 displacements[] = {0, 8, INT32_MAX};
+    Pgi32Slice displacements_slice = {
+        .data = displacements,
+        .len = PG_STATIC_ARRAY_LEN(displacements),
+    };
+
+    for (u8 j = 1; j < 14; j++) {
+      Register reg_b = {j};
+
+      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        for (u64 l = 0; l < displacements_slice.len; l++) {
+          i32 displacement = PG_SLICE_AT(displacements_slice, l);
+
+          Amd64Instruction ins = {};
+          ins.kind = AMD64_INSTRUCTION_KIND_SUB;
+          ins.lhs = (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS,
+              .u.effective_address =
+                  {
+                      .base = reg_a,
+                      .displacement = displacement,
+                  },
+              .size = size,
+          };
+          ins.rhs = (Amd64Operand){
+              .kind = AMD64_OPERAND_KIND_REGISTER,
+              .u.reg = reg_b,
+              .size = size,
+          };
+          *PG_DYN_PUSH_WITHIN_CAPACITY(instructions) = ins;
+          write_instruction(ins, writer_asm_text);
+
+          // Swap operands.
+          {
+            Amd64Operand tmp = ins.lhs;
+            ins.lhs = ins.rhs;
+            ins.rhs = tmp;
+            *PG_DYN_PUSH_WITHIN_CAPACITY(instructions) = ins;
+            write_instruction(ins, writer_asm_text);
+          }
+        }
+      }
+    }
+  }
+
+  // Reg-immediate.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    i64 nums[] = {INT8_MAX, INT16_MAX, INT32_MAX};
+    Pgi64Slice nums_slice = {.data = nums, .len = PG_STATIC_ARRAY_LEN(nums)};
+    i64 maxs[] = {
+        [ASM_OPERAND_SIZE_1] = INT8_MAX,
+        [ASM_OPERAND_SIZE_2] = INT16_MAX,
+        [ASM_OPERAND_SIZE_4] = INT32_MAX,
+        [ASM_OPERAND_SIZE_8] = INT64_MAX,
+    };
+
+    for (u64 j = 0; j < nums_slice.len; j++) {
+      i64 immediate = PG_SLICE_AT(nums_slice, j);
+
+      for (u64 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        Amd64Instruction ins = {};
+        ins.kind = AMD64_INSTRUCTION_KIND_SUB;
+        ins.lhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_a,
+            .size = size,
+        };
+        i64 max = maxs[size];
+        ins.rhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_IMMEDIATE,
+            .u.immediate = (u64)(immediate > max ? max : immediate),
+            .size = size,
+        };
+        *PG_DYN_PUSH_WITHIN_CAPACITY(instructions) = ins;
+        write_instruction(ins, writer_asm_text);
+      }
+    }
+  }
+
+  // Reg-reg.
+  for (u8 i = 1; i < 14; i++) {
+    Register reg_a = {i};
+
+    for (u8 j = 1; j < 14; j++) {
+      Register reg_b = {j};
+
+      for (u8 k = 0; k < PG_STATIC_ARRAY_LEN(asm_sizes); k++) {
+        AsmOperandSize size =
+            PG_C_ARRAY_AT(asm_sizes, PG_STATIC_ARRAY_LEN(asm_sizes), k);
+
+        Amd64Instruction ins = {};
+        ins.kind = AMD64_INSTRUCTION_KIND_SUB;
+        ins.lhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_a,
+            .size = size,
+        };
+        ins.rhs = (Amd64Operand){
+            .kind = AMD64_OPERAND_KIND_REGISTER,
+            .u.reg = reg_b,
+            .size = size,
+        };
+        *PG_DYN_PUSH_WITHIN_CAPACITY(instructions) = ins;
+        write_instruction(ins, writer_asm_text);
+      }
+    }
+  }
+}
+
 static void test_asm() {
   PgArena arena = pg_arena_make_from_virtual_mem(128 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
@@ -595,6 +719,7 @@ static void test_asm() {
                                              PG_S(".globl _start\n _start:\n"),
                                              nullptr));
 
+  gen_sub(&writer_asm_text, &instructions);
   gen_add(&writer_asm_text, &instructions);
   gen_lea(&writer_asm_text, &instructions);
   gen_mov(&writer_asm_text, &instructions);
