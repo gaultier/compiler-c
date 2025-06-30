@@ -2186,6 +2186,11 @@ amd64_map_constraint_to_register(VirtualRegisterConstraint constraint) {
   }
 }
 
+static void amd64_emit_runtime(PgAllocator *allocator) {
+  (void)allocator;
+  // TODO
+}
+
 [[nodiscard]]
 static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
                                                PgAllocator *allocator) {
