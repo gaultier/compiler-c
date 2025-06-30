@@ -23,6 +23,7 @@ call __builtin_exit
 
 
 __builtin_amd64_linux_println_u64:
+	// Epilog.
 	push rbp
 	mov rbp, rsp
 	sub rsp, 24
@@ -34,7 +35,10 @@ __builtin_amd64_linux_println_u64:
 	// r10: ptr_len
 	mov r10, 0 
 
+  // *ptr = '\n'
 	mov byte ptr [rsi], '\n'
+
+	// ptr_len += 1
 	inc r10
 
 .loop:
@@ -45,18 +49,24 @@ __builtin_amd64_linux_println_u64:
 	xor rdx, rdx
 	div r8
 	mov r9, rax
+
 	// ptr -= 1
 	dec rsi
-	// *ptr = '0' + (n %10)
+
+	// *ptr = n %10
 	mov [rsi], dl
+
+	// *ptr += '0'
 	add byte ptr [rsi], '0'
 
 	// ptr_len += 1
 	inc r10
 
+	// if (0==n) break;
 	cmp r9, 0
 	jnz .loop
 
+ // Syscall
 	mov rax, 1
 	mov rdi, 1
 	// rsi already in place.
@@ -64,6 +74,7 @@ __builtin_amd64_linux_println_u64:
 	syscall
 	xor rax, rax
 
+	// Epilog.
 	add rsp, 24
 	pop rbp
 	ret
