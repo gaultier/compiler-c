@@ -1,4 +1,3 @@
-- [ ] test(amd64): generate cmp forms
 - [ ] builtin: implement println
       + Split `builtin.println` into a form for each type e.g. `builtin.println_u64`
       + ~Link libc?~

@@ -547,8 +547,6 @@ static void amd64_encode_16bits_prefix(Pgu8Dyn *sb, Amd64Operand op,
 // > or uses a 64-bit operand.
 [[nodiscard]] static bool amd64_is_rex_needed(Amd64Operand lhs,
                                               Amd64Operand rhs) {
-  PG_ASSERT(lhs.size == rhs.size);
-
   bool is_lhs_reg_spl_bpl_sil_dil =
       ASM_OPERAND_SIZE_1 == lhs.size && amd64_is_reg(lhs) &&
       (AMD64_RSP == lhs.u.reg.value || AMD64_RBP == lhs.u.reg.value ||
@@ -569,7 +567,6 @@ static void amd64_encode_rex(Pgu8Dyn *sb, bool upper_registers_modrm_reg_field,
                              bool upper_register_modrm_rm_field, bool field_w,
                              Amd64Operand lhs, Amd64Operand rhs,
                              PgAllocator *allocator) {
-  PG_ASSERT(lhs.size == rhs.size);
   if (!amd64_is_rex_needed(lhs, rhs)) {
     return;
   }
