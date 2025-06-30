@@ -1,4 +1,4 @@
-// clang -masm=intel -c test.s
+// clang -masm=intel -c test.s && ld test.o
 // llvm-objdump -M intel -d ./test.o 
 
 // .data
