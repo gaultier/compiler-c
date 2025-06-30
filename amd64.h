@@ -772,11 +772,6 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
 
     Register rhs = ins.rhs.u.reg;
 
-    // 16 bits prefix.
-    {
-      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-    }
-
     // Rex.
     {
       bool modrm_reg_field = amd64_is_register_64_bits_only(rhs);
@@ -823,11 +818,6 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     PG_ASSERT(0 != ins.lhs.size);
     Register reg = ins.lhs.u.reg;
     u64 immediate = ins.rhs.u.immediate;
-
-    // 16 bits prefix.
-    {
-      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-    }
 
     // Rex.
     {
@@ -882,11 +872,6 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     PG_ASSERT(0 != ins.lhs.size);
     u64 immediate = ins.rhs.u.immediate;
 
-    // 16 bits prefix.
-    {
-      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-    }
-
     // Rex.
     {
       bool modrm_reg_field = false;
@@ -940,11 +925,6 @@ static void amd64_encode_instruction_mov(Pgu8Dyn *sb, Amd64Instruction ins,
     PG_ASSERT(0 != ins.lhs.size);
     Register lhs = ins.lhs.u.reg;
 
-    // 16 bits prefix.
-    {
-      amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-    }
-
     // Rex.
     {
       bool modrm_reg_field = amd64_is_register_64_bits_only(lhs);
@@ -989,11 +969,6 @@ static void amd64_encode_instruction_lea(Pgu8Dyn *sb, Amd64Instruction ins,
   PG_ASSERT(ins.lhs.size > ASM_OPERAND_SIZE_1);
 
   Amd64EffectiveAddress effective_address = ins.rhs.u.effective_address;
-
-  // 16 bits prefix.
-  {
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-  }
 
   // Rex.
   {
@@ -1040,7 +1015,6 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
   if (amd64_is_reg_or_mem(ins.lhs) && ins.lhs.size > ASM_OPERAND_SIZE_1 &&
       amd64_is_imm(ins.rhs) &&
       amd64_does_immediate_fit_in_sign_extended_u8(ins.rhs.u.immediate)) {
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
     bool modrm_reg_field = false;
     bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
@@ -1079,8 +1053,6 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
       amd64_is_imm(ins.rhs)) {
     PG_ASSERT(ins.lhs.size == ins.rhs.size);
 
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
-
     if (ASM_OPERAND_SIZE_8 == ins.lhs.size) {
       bool modrm_reg_field = false;
       bool modrm_rm_field = false;
@@ -1114,7 +1086,6 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
   // add reg/mem32, reg32
   // add reg/mem64, reg64
   if (amd64_is_reg_or_mem(ins.lhs) && amd64_is_reg(ins.rhs)) {
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
     bool modrm_reg_field = amd64_is_operand_register_64_bits_only(ins.rhs);
     bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
@@ -1142,7 +1113,6 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
   // add reg32, reg/mem32
   // add reg64, reg/mem64
   if (amd64_is_reg(ins.lhs) && amd64_is_reg_or_mem(ins.rhs)) {
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
     bool modrm_reg_field = amd64_is_operand_register_64_bits_only(ins.lhs);
     bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.rhs);
@@ -1190,7 +1160,6 @@ static void amd64_encode_instruction_add(Pgu8Dyn *sb, Amd64Instruction ins,
   if (amd64_is_reg_or_mem(ins.lhs) && ASM_OPERAND_SIZE_2 == ins.lhs.size &&
       amd64_is_imm(ins.rhs) &&
       amd64_does_immediate_fit_in_sign_extended_u16(ins.rhs.u.immediate)) {
-    amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
     bool modrm_reg_field = false;
     bool modrm_rm_field = amd64_is_operand_register_64_bits_only(ins.lhs);
@@ -1514,67 +1483,68 @@ static void amd64_encode_instruction_sete(Pgu8Dyn *sb,
 }
 
 static void amd64_encode_instruction(AsmProgram *program, Pgu8Dyn *sb,
-                                     Amd64Instruction instruction,
+                                     Amd64Instruction ins,
                                      PgAllocator *allocator) {
+  amd64_encode_16bits_prefix(sb, ins.lhs, allocator);
 
-  switch (instruction.kind) {
+  switch (ins.kind) {
   case AMD64_INSTRUCTION_KIND_NONE:
     PG_ASSERT(0);
   case AMD64_INSTRUCTION_KIND_UD2:
     amd64_encode_instruction_ud2(sb, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_MOV:
-    amd64_encode_instruction_mov(sb, instruction, allocator);
+    amd64_encode_instruction_mov(sb, ins, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_ADD:
-    amd64_encode_instruction_add(sb, instruction, allocator);
+    amd64_encode_instruction_add(sb, ins, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SUB:
-    amd64_encode_instruction_sub(sb, instruction, allocator);
+    amd64_encode_instruction_sub(sb, ins, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LEA:
-    amd64_encode_instruction_lea(sb, instruction, allocator);
+    amd64_encode_instruction_lea(sb, ins, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_RET:
-    amd64_encode_instruction_ret(sb, instruction, allocator);
+    amd64_encode_instruction_ret(sb, ins, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SYSCALL:
-    amd64_encode_instruction_syscall(sb, instruction, allocator);
+    amd64_encode_instruction_syscall(sb, ins, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_PUSH:
-    amd64_encode_instruction_push(sb, instruction, allocator);
+    amd64_encode_instruction_push(sb, ins, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_POP:
-    amd64_encode_instruction_pop(sb, instruction, allocator);
+    amd64_encode_instruction_pop(sb, ins, allocator);
     break;
 
   case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
-    PG_ASSERT(instruction.lhs.u.label.value.len);
+    PG_ASSERT(ins.lhs.u.label.value.len);
 
     *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
-        .label = instruction.lhs.u.label,
+        .label = ins.lhs.u.label,
         .code_address = sb->len,
     };
     break;
 
   case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
-    amd64_encode_instruction_je(sb, instruction, program, allocator);
+    amd64_encode_instruction_je(sb, ins, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_NOT_EQ:
-    amd64_encode_instruction_jne(sb, instruction, program, allocator);
+    amd64_encode_instruction_jne(sb, ins, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
-    amd64_encode_instruction_jz(sb, instruction, program, allocator);
+    amd64_encode_instruction_jz(sb, ins, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP:
-    amd64_encode_instruction_jmp(sb, instruction, program, allocator);
+    amd64_encode_instruction_jmp(sb, ins, program, allocator);
     break;
   case AMD64_INSTRUCTION_KIND_CMP:
-    amd64_encode_instruction_cmp(sb, instruction, allocator);
+    amd64_encode_instruction_cmp(sb, ins, allocator);
     break;
 
   case AMD64_INSTRUCTION_KIND_SET_IF_EQ:
-    amd64_encode_instruction_sete(sb, instruction, allocator);
+    amd64_encode_instruction_sete(sb, ins, allocator);
     break;
 
   default:
