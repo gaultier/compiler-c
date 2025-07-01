@@ -38,7 +38,6 @@ test_release.bin: $(TEST_C_FILES) main_release.bin
 test_release_sanitizer.bin: $(TEST_C_FILES) main_release.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) test.c -o $@ -O2 -flto -fsanitize=$(SANITIZERS) -Wno-unused
 
-
 runtime_amd64_linux.o: runtime_amd64_linux.c
 	$(CC) $(CFLAGS) $< -c -O2 -Wno-unused -Wno-unused-command-line-argument
 

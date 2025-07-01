@@ -65,6 +65,25 @@ int main(int argc, char *argv[]) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
+  // Runtime.
+  {
+    PgString file_path = PG_S("runtime_amd64_linux.o");
+    PgStringResult res_read = pg_file_read_full_from_path(file_path, allocator);
+    if (res_read.err) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read runtime file",
+             pg_log_c_err("err", res_read.err), pg_log_c_s("path", file_path));
+      return 1;
+    }
+
+    PgString runtime_bin = res_read.res;
+    PgElfResult res_elf = pg_elf_parse(runtime_bin);
+    if (res_elf.err) {
+      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to parse runtime file",
+             pg_log_c_err("err", res_elf.err), pg_log_c_s("path", file_path));
+      return 1;
+    }
+  }
+
   PgString file_path = pg_cstr_to_string(cli_opts.file_path);
   PgStringResult file_read_res =
       pg_file_read_full_from_path(file_path, allocator);

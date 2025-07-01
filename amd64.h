@@ -2186,7 +2186,9 @@ amd64_map_constraint_to_register(VirtualRegisterConstraint constraint) {
   }
 }
 
-static void amd64_emit_runtime(PgAllocator *allocator) {
+[[maybe_unused]] // FIXME
+static void
+amd64_emit_runtime(PgAllocator *allocator) {
   (void)allocator;
   // TODO
 }

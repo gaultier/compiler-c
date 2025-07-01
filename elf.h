@@ -2,41 +2,6 @@
 #include "asm.h"
 #include "submodules/cstd/lib.c"
 
-static const u32 ElfProgramHeaderTypeLoad = 1;
-static const u32 ElfProgramHeaderFlagsExecutable = 1;
-static const u32 ElfProgramHeaderFlagsReadable = 4;
-
-static const u32 ElfSectionHeaderTypeProgBits = 1;
-static const u32 ElfSectionHeaderTypeStrTab = 3;
-static const u64 ElfSectionHeaderFlagAlloc = 2;
-static const u64 ElfSectionHeaderFlagExecInstr = 4;
-
-typedef struct {
-  u32 type;
-  u32 flags;
-  u64 p_offset;
-  u64 p_vaddr;
-  u64 p_paddr;
-  u64 p_filesz;
-  u64 p_memsz;
-  u64 alignment;
-} ElfProgramHeader;
-static_assert(56 == sizeof(ElfProgramHeader));
-
-typedef struct {
-  u32 name;
-  u32 type;
-  u64 flags;
-  u64 addr;
-  u64 offset;
-  u64 size;
-  u32 link;
-  u32 info;
-  u64 align;
-  u64 entsize;
-} ElfSectionHeader;
-static_assert(64 == sizeof(ElfSectionHeader));
-
 [[nodiscard]]
 static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   // The ELF header and program headers take less than a page size but are
@@ -79,20 +44,20 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
     }
   }
 
-  ElfProgramHeader program_headers[] = {
+  PgElfProgramHeader program_headers[] = {
       {
-          .type = ElfProgramHeaderTypeLoad,
+          .type = PgElfProgramHeaderTypeLoad,
           .p_offset = 0,
           .p_vaddr = asm_emitter->program.vm_start,
           .p_paddr = asm_emitter->program.vm_start,
           .p_filesz = page_size + program_encoded.len,
           .p_memsz = page_size + program_encoded.len,
-          .flags =
-              ElfProgramHeaderFlagsExecutable | ElfProgramHeaderFlagsReadable,
+          .flags = PgElfProgramHeaderFlagsExecutable |
+                   PgElfProgramHeaderFlagsReadable,
           .alignment = page_size,
       },
       {
-          .type = ElfProgramHeaderTypeLoad,
+          .type = PgElfProgramHeaderTypeLoad,
           .p_offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
           .p_filesz = rodata_size,
           .p_memsz = rodata_size,
@@ -100,7 +65,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
                      PG_ROUNDUP(program_encoded.len, page_size),
           .p_paddr = asm_emitter->program.vm_start + page_size +
                      PG_ROUNDUP(program_encoded.len, page_size),
-          .flags = ElfProgramHeaderFlagsReadable,
+          .flags = PgElfProgramHeaderFlagsReadable,
           .alignment = page_size,
       },
   };
@@ -122,14 +87,15 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
     strings_size += elf_string.len + 1 /* Null terminator */;
   }
 
-  ElfSectionHeader section_headers[] = {
+  PgElfSectionHeader section_headers[] = {
       // Null
       {0},
       // Text (code).
       {
           .name = 11,
-          .type = ElfSectionHeaderTypeProgBits,
-          .flags = ElfSectionHeaderFlagExecInstr | ElfSectionHeaderFlagAlloc,
+          .type = PgElfSectionHeaderTypeProgBits,
+          .flags =
+              PgElfSectionHeaderFlagExecInstr | PgElfSectionHeaderFlagAlloc,
           .addr = asm_emitter->program.vm_start + page_size,
           .offset = page_size,
           .size = program_encoded.len,
@@ -139,8 +105,8 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
       // Rodata.
       {
           .name = 17,
-          .type = ElfSectionHeaderTypeProgBits,
-          .flags = ElfSectionHeaderFlagAlloc,
+          .type = PgElfSectionHeaderTypeProgBits,
+          .flags = PgElfSectionHeaderFlagAlloc,
           .addr = asm_emitter->program.vm_start + page_size +
                   PG_ROUNDUP(program_encoded.len, page_size),
           .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
@@ -151,7 +117,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
       // Strings.
       {
           .name = 1,
-          .type = ElfSectionHeaderTypeStrTab,
+          .type = PgElfSectionHeaderTypeStrTab,
           .flags = 0,
           .addr = 0,
           .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size) +
@@ -195,11 +161,11 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
 
     PG_ASSERT(52 == sb.len);
 
-    pg_byte_buffer_append_u16_within_capacity(&sb, 64); // Elf header size.
+    pg_byte_buffer_append_u16_within_capacity(&sb, 64); // PgElf header size.
     pg_byte_buffer_append_u16_within_capacity(
         &sb,
-        sizeof(
-            ElfProgramHeader)); // Size of an entry in the program header table.
+        sizeof(PgElfProgramHeader)); // Size of an entry in the program header
+                                     // table.
     pg_byte_buffer_append_u16_within_capacity(
         &sb,
         PG_STATIC_ARRAY_LEN(
@@ -207,8 +173,8 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
 
     pg_byte_buffer_append_u16_within_capacity(
         &sb,
-        sizeof(
-            ElfSectionHeader)); // Size of an entry in the section header table.
+        sizeof(PgElfSectionHeader)); // Size of an entry in the section header
+                                     // table.
     pg_byte_buffer_append_u16_within_capacity(
         &sb,
         PG_STATIC_ARRAY_LEN(
