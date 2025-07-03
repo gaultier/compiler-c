@@ -93,9 +93,9 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
       // Text (code).
       {
           .name = 11,
-          .type = PgElfSectionHeaderTypeProgBits,
-          .flags =
-              PgElfSectionHeaderFlagExecInstr | PgElfSectionHeaderFlagAlloc,
+          .type = PG_ELF_SECTION_HEADER_KIND_PROGBITS,
+          .flags = PG_ELF_SECTION_HEADER_FLAG_EXECINSTR |
+                   PG_ELF_SECTION_HEADER_FLAG_ALLOC,
           .addr = asm_emitter->program.vm_start + page_size,
           .offset = page_size,
           .size = program_encoded.len,
@@ -105,8 +105,8 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
       // Rodata.
       {
           .name = 17,
-          .type = PgElfSectionHeaderTypeProgBits,
-          .flags = PgElfSectionHeaderFlagAlloc,
+          .type = PG_ELF_SECTION_HEADER_KIND_PROGBITS,
+          .flags = PG_ELF_SECTION_HEADER_FLAG_ALLOC,
           .addr = asm_emitter->program.vm_start + page_size +
                   PG_ROUNDUP(program_encoded.len, page_size),
           .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size),
@@ -117,7 +117,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
       // Strings.
       {
           .name = 1,
-          .type = PgElfSectionHeaderTypeStrTab,
+          .type = PG_ELF_SECTION_HEADER_KIND_STRTAB,
           .flags = 0,
           .addr = 0,
           .offset = page_size + PG_ROUNDUP(program_encoded.len, page_size) +

@@ -31,6 +31,7 @@ typedef enum [[clang::flag_enum]] : u8 {
   AST_NODE_FLAG_GLOBAL = 1 << 0,
   AST_NODE_FLAG_FN_NO_FRAME_POINTERS = 1 << 1,
 } AstNodeFlag;
+static_assert(sizeof(AstNodeFlag) == 1);
 
 // Unresolved.
 typedef struct {

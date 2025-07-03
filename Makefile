@@ -54,4 +54,4 @@ clean:
 
 .PHONY: dev
 dev: 
-	ls *.{c,h} | entr -c make main_debug.bin
+	ls *.{c,h} submodules/cstd/*.{c,h} | entr -c make main_debug.bin
