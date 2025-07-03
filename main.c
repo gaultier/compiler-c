@@ -82,6 +82,10 @@ int main(int argc, char *argv[]) {
              pg_log_c_err("err", res_elf.err), pg_log_c_s("path", file_path));
       return 1;
     }
+
+    PgElf elf = res_elf.res;
+    PgStringDyn syms = pg_elf_find_all_symbols(elf, allocator);
+    PG_ASSERT(syms.data);
   }
 
   PgString file_path = pg_cstr_to_string(cli_opts.file_path);
