@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     }
 
     PgElf elf = res_elf.res;
-    PgStringDyn syms = pg_elf_find_all_symbols(elf, allocator);
+    PgStringDyn syms = pg_elf_collect_string_table(elf, allocator);
     PG_ASSERT(syms.data);
   }
 
