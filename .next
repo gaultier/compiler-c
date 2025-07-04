@@ -1,4 +1,5 @@
 - [.] builtin: implement println
-      + Split `builtin.println` into a form for each type e.g. `builtin.println_u64`
-      + ~Link libc?~
-      + Implement our own in internal ASM syntax
+      + [x] Split `builtin.println` into a form for each type e.g. `builtin.println_u64`
+      + [.] Link: embed used external symbols program text in final binary
+      + [ ] amd64: Ensure caller-saved registers are indeed saved
+      + [ ] ir/asm/amd64: generate code for `call builtin.printlnu64`
