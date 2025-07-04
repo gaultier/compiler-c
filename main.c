@@ -2,6 +2,7 @@
 #include "asm.h"
 #include "elf.h"
 #include "ir.h"
+#include "runtime.h"
 
 typedef struct {
   bool verbose;
@@ -65,29 +66,6 @@ int main(int argc, char *argv[]) {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  // Runtime.
-  {
-    PgString file_path = PG_S("runtime_amd64_linux.o");
-    PgStringResult res_read = pg_file_read_full_from_path(file_path, allocator);
-    if (res_read.err) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read runtime file",
-             pg_log_c_err("err", res_read.err), pg_log_c_s("path", file_path));
-      return 1;
-    }
-
-    PgString runtime_bin = res_read.res;
-    PgElfResult res_elf = pg_elf_parse(runtime_bin);
-    if (res_elf.err) {
-      pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to parse runtime file",
-             pg_log_c_err("err", res_elf.err), pg_log_c_s("path", file_path));
-      return 1;
-    }
-
-    PgElf elf = res_elf.res;
-    PgStringDyn syms = pg_elf_collect_string_table(elf, allocator);
-    PG_ASSERT(syms.data);
-  }
-
   PgString file_path = pg_cstr_to_string(cli_opts.file_path);
   PgStringResult file_read_res =
       pg_file_read_full_from_path(file_path, allocator);
@@ -146,6 +124,15 @@ int main(int argc, char *argv[]) {
   }
 
   IrEmitter ir_emitter = {.errors = &errors, .src = lexer.src};
+  // TODO: Should probably be earlier.
+  ExternalFnDynResult res_ext_fns =
+      pg_runtime_load_elf(&ir_emitter.types, &logger, allocator);
+  if (res_ext_fns.err) {
+    return 1;
+  }
+  ExternalFnDyn ext_fns = res_ext_fns.res;
+  PG_ASSERT(ext_fns.len);
+
   FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "IR",
