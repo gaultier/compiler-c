@@ -5,7 +5,7 @@ LD = lld
 
 CFLAGS = -fpie -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=$(LD) -std=c23 -Wall -Wextra -Werror -g3
 
-LDFLAGS = -Wl,--gc-sections -flto
+LDFLAGS = -flto
 
 CC = clang
 
