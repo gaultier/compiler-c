@@ -80,7 +80,7 @@ static void lex_advance(Lexer *lexer, PgRune rune) {
   }
 }
 
-static void lex_advance_rune_res(Lexer *lexer, PgRuneResult rune_res,
+static void lex_advance_rune_res(Lexer *lexer, PgRuneUtf8Result rune_res,
                                  PgAllocator *allocator) {
   if (rune_res.err) {
     lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
@@ -88,15 +88,27 @@ static void lex_advance_rune_res(Lexer *lexer, PgRuneResult rune_res,
     lexer->it.idx += 1;
     return;
   }
+  if (rune_res.end) {
+    return;
+  }
 
-  lex_advance(lexer, rune_res.res);
+  lex_advance(lexer, rune_res.rune);
 }
 
 static void lex_advance_until_rune_excl(Lexer *lexer, PgRune needle,
                                         PgAllocator *allocator) {
   for (u64 _i = lexer->it.idx; _i < lexer->src.len; _i++) {
-    PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (needle == rune_next_res.res) {
+    PgRuneUtf8Result rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_next_res.err) {
+      lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
+      lexer->column += 1;
+      lexer->it.idx += 1;
+      return;
+    }
+    if (rune_next_res.end) {
+      return;
+    }
+    if (needle == rune_next_res.rune) {
       return;
     }
 
@@ -119,8 +131,18 @@ static bool lex_match_rune_1(Lexer *lexer, PgRune rune1,
 
   Origin origin = lex_lexer_origin(*lexer);
 
-  PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
-  if (rune1 == rune_next_res.res) {
+  PgRuneUtf8Result rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+  if (rune_next_res.err) {
+    lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
+    lexer->column += 1;
+    lexer->it.idx += 1;
+    return false;
+  }
+  if (rune_next_res.end) {
+    return false;
+  }
+
+  if (rune1 == rune_next_res.rune) {
     lex_add_token(lexer, token_kind1, origin, allocator);
     lex_advance(lexer, rune1);
 
@@ -137,8 +159,17 @@ static bool lex_match_rune_1_and_2(Lexer *lexer, PgRune rune1, PgRune rune2,
 
   Origin origin = lex_lexer_origin(*lexer);
   {
-    PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (rune1 != rune_next_res.res) {
+    PgRuneUtf8Result rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_next_res.err) {
+      lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
+      lexer->column += 1;
+      lexer->it.idx += 1;
+      return false;
+    }
+    if (rune_next_res.end) {
+      return false;
+    }
+    if (rune1 != rune_next_res.rune) {
       return false;
     }
   }
@@ -147,8 +178,17 @@ static bool lex_match_rune_1_and_2(Lexer *lexer, PgRune rune1, PgRune rune2,
   lex_advance(lexer, rune1);
 
   {
-    PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (rune2 != rune_next_res.res) {
+    PgRuneUtf8Result rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_next_res.err) {
+      lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
+      lexer->column += 1;
+      lexer->it.idx += 1;
+      return false;
+    }
+    if (rune_next_res.end) {
+      return false;
+    }
+    if (rune2 != rune_next_res.rune) {
       lexer->it = it_tmp;
       return false;
     }
@@ -168,16 +208,31 @@ static bool lex_match_rune_1_or_2(Lexer *lexer, PgRune rune1, PgRune rune2,
   Origin origin = lex_lexer_origin(*lexer);
 
   {
-    PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (rune1 != rune_next_res.res) {
+    PgRuneUtf8Result rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_next_res.err) {
+      lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
+      lexer->column += 1;
+      lexer->it.idx += 1;
+      return false;
+    }
+    if (rune_next_res.end) {
+      return false;
+    }
+    if (rune1 != rune_next_res.rune) {
       return false;
     }
 
     lex_advance(lexer, rune1);
   }
 
-  PgRuneResult rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
-  if (rune2 != rune_next_res.res) {
+  PgRuneUtf8Result rune_next_res = pg_utf8_iterator_peek_next(lexer->it);
+  if (rune_next_res.err) {
+    lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
+    lexer->column += 1;
+    lexer->it.idx += 1;
+    return false;
+  }
+  if (rune_next_res.end || rune2 != rune_next_res.rune) {
     lex_add_token(lexer, token_kind1, origin, allocator);
     return true;
   } else {
@@ -195,14 +250,16 @@ static bool lex_identifier(Lexer *lexer, PgAllocator *allocator) {
       return false;
     }
 
-    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (rune_res.err || 0 == rune_res.res) {
+    PgRuneUtf8Result rune_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_res.err) {
       lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
       return false;
     }
+    if (rune_res.end) {
+      break;
+    }
 
-    PgRune rune = rune_res.res;
-    PG_ASSERT(0 != rune);
+    PgRune rune = rune_res.rune;
 
     if (!('_' == rune || pg_rune_ascii_is_alphanumeric(rune))) {
       break;
@@ -233,14 +290,16 @@ static bool lex_keyword(Lexer *lexer, PgAllocator *allocator) {
       return false;
     }
 
-    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (rune_res.err || 0 == rune_res.res) {
+    PgRuneUtf8Result rune_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_res.err) {
       lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
       return false;
     }
+    if (rune_res.end) {
+      break;
+    }
 
-    PgRune rune = rune_res.res;
-    PG_ASSERT(0 != rune);
+    PgRune rune = rune_res.rune;
 
     if (!('_' == rune || pg_rune_ascii_is_alphanumeric(rune))) {
       break;
@@ -291,13 +350,16 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
       return;
     }
 
-    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (rune_res.err || 0 == rune_res.res) {
+    PgRuneUtf8Result rune_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_res.err) {
       lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
       return;
     }
+    if (rune_res.end) {
+      break;
+    }
 
-    PgRune rune = rune_res.res;
+    PgRune rune = rune_res.rune;
     PG_ASSERT(0 != rune);
 
     if (!pg_rune_ascii_is_numeric(rune)) {
@@ -342,13 +404,16 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
       break;
     }
 
-    PgRuneResult rune_res = pg_utf8_iterator_peek_next(lexer->it);
-    if (rune_res.err || 0 == rune_res.res) {
+    PgRuneUtf8Result rune_res = pg_utf8_iterator_peek_next(lexer->it);
+    if (rune_res.err) {
       lex_add_error(lexer, ERROR_KIND_INVALID_UTF8, allocator);
       return;
     }
+    if (rune_res.end) {
+      break;
+    }
 
-    PgRune rune = rune_res.res;
+    PgRune rune = rune_res.rune;
     PG_ASSERT(0 != rune);
 
     // Skip to the next newline if in error mode.
@@ -542,7 +607,7 @@ static void lex_tokens_print(LexTokenDyn tokens, PgWriter *w,
     }
     (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
-  (void)pg_writer_flush(w);
+  // (void)pg_writer_flush(w);
 }
 
 static void lex_trim_comments(LexTokenDyn *tokens) {

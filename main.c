@@ -188,7 +188,7 @@ err:
                                       allocator);
     error_print(err, &writer_errors, allocator);
   }
-  (void)pg_writer_flush(&writer_errors);
+  // (void)pg_writer_flush(&writer_errors);
 
   return 1;
 }

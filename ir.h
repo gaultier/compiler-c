@@ -482,7 +482,7 @@ static void ir_print_instructions(IrInstructionDyn instructions,
     }
     (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
-  (void)pg_writer_flush(w);
+  // (void)pg_writer_flush(w);
 }
 
 static void ir_print_fn_def(FnDefinition fn_def, PgWriter *w,

@@ -38,7 +38,7 @@ static void asm_print_program(AsmEmitter emitter, PgWriter *w,
     asm_print_section(emitter.arch_kind, section, w, allocator);
     (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
-  (void)pg_writer_flush(w);
+  // (void)pg_writer_flush(w);
 }
 
 static void asm_section_resolve_jumps(AsmProgram *program, Pgu8Dyn sb) {

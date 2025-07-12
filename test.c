@@ -34,7 +34,7 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
 
     PgProcess process = res_spawn.res;
 
-    PgProcessExitResult res_wait = pg_process_wait(process, allocator);
+    PgProcessExitResult res_wait = pg_process_wait(process, 0, 512, allocator);
     if ((res.err = res_wait.err)) {
       return res;
     }
@@ -105,7 +105,7 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
 
     PgProcess process = res_spawn.res;
 
-    PgProcessExitResult res_wait = pg_process_wait(process, allocator);
+    PgProcessExitResult res_wait = pg_process_wait(process, 64, 0, allocator);
     if ((res.err = res_wait.err)) {
       return res;
     }
@@ -280,7 +280,8 @@ static PgString run_assembler(PgString in, PgAllocator *allocator) {
       process.stdout_pipe, 1 * PG_MiB, allocator);
   PG_ASSERT(0 == read_res.err);
   PG_ASSERT(read_res.res.len);
-  PgProcessExitResult res_proc = pg_process_wait(process, allocator);
+  PgProcessExitResult res_proc =
+      pg_process_wait(process, 64 * PG_MiB, 0, allocator);
 
   PG_ASSERT(0 == res_proc.err);
   PG_ASSERT(0 == res_proc.res.exit_status);
@@ -832,9 +833,8 @@ static void test_asm() {
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
 
-  Pgu8Dyn sb_asm_text = {0};
-  PG_DYN_ENSURE_CAP(&sb_asm_text, 4 * PG_MiB, allocator);
-  PgWriter writer_asm_text = pg_writer_make_from_string_builder(&sb_asm_text);
+  PgWriter writer_asm_text =
+      pg_writer_make_string_builder(4 * PG_MiB, allocator);
 
   Amd64InstructionDyn instructions = {0};
   PG_DYN_ENSURE_CAP(&instructions, 64'000, allocator);
@@ -849,7 +849,7 @@ static void test_asm() {
   gen_lea(&writer_asm_text, &instructions);
   gen_mov(&writer_asm_text, &instructions);
 
-  PgString asm_s = PG_DYN_SLICE(PgString, *(Pgu8Dyn *)writer_asm_text.ctx.ptr);
+  PgString asm_s = PG_DYN_SLICE(PgString, writer_asm_text.u.bytes);
   PgString expected = run_assembler(asm_s, allocator);
 
   Pgu8Dyn sb = {0};

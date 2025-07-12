@@ -226,7 +226,7 @@ static void ast_print_nodes(AstNodeDyn nodes, PgWriter *w,
     ast_print_node(node, w, allocator);
     (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
   }
-  (void)pg_writer_flush(w);
+  // (void)pg_writer_flush(w);
 }
 
 [[nodiscard]]
