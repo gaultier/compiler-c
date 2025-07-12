@@ -1,3 +1,4 @@
+- [ ] use buf writer
 - [ ] builtin: implement println
 - [ ] build: build to run on WASM
 - [ ] cli: choose target(s)
