@@ -144,70 +144,70 @@ static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
 
 static void ast_print_node(AstNode node, PgWriter *w, PgAllocator *allocator) {
   origin_write(w, node.origin, allocator);
-  (void)pg_writer_write_string_full(w, PG_S(" "), allocator);
+  (void)pg_writer_write_full(w, PG_S(" "), allocator);
 
   switch (node.kind) {
   case AST_NODE_KIND_BOOL:
-    (void)pg_writer_write_string_full(w, PG_S("Bool "), allocator);
+    (void)pg_writer_write_full(w, PG_S("Bool "), allocator);
     (void)pg_writer_write_u64_as_string(w, node.u.n64, allocator);
     break;
   case AST_NODE_KIND_NUMBER:
-    (void)pg_writer_write_string_full(w, PG_S("U64 "), allocator);
+    (void)pg_writer_write_full(w, PG_S("U64 "), allocator);
     (void)pg_writer_write_u64_as_string(w, node.u.n64, allocator);
     break;
   case AST_NODE_KIND_IDENTIFIER:
-    (void)pg_writer_write_string_full(w, PG_S("Identifier "), allocator);
-    (void)pg_writer_write_string_full(w, node.u.s, allocator);
+    (void)pg_writer_write_full(w, PG_S("Identifier "), allocator);
+    (void)pg_writer_write_full(w, node.u.s, allocator);
     break;
   case AST_NODE_KIND_ADDRESS_OF:
-    (void)pg_writer_write_string_full(w, PG_S("AddressOf"), allocator);
+    (void)pg_writer_write_full(w, PG_S("AddressOf"), allocator);
     break;
   case AST_NODE_KIND_BUILTIN_ASSERT:
-    (void)pg_writer_write_string_full(w, PG_S("Assert"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Assert"), allocator);
     break;
   case AST_NODE_KIND_BUILTIN_PRINTLN:
-    (void)pg_writer_write_string_full(w, PG_S("Println"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Println"), allocator);
     break;
   case AST_NODE_KIND_ADD:
-    (void)pg_writer_write_string_full(w, PG_S("Add"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Add"), allocator);
     break;
   case AST_NODE_KIND_COMPARISON:
-    (void)pg_writer_write_string_full(w, PG_S("Comparison"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Comparison"), allocator);
     break;
   case AST_NODE_KIND_SYSCALL: {
     PG_ASSERT(node.u.stack_args_count > 0);
     PG_ASSERT(node.u.stack_args_count <= max_syscall_args_count);
-    (void)pg_writer_write_string_full(w, PG_S("Syscall["), allocator);
+    (void)pg_writer_write_full(w, PG_S("Syscall["), allocator);
     (void)pg_writer_write_u64_as_string(w, node.u.stack_args_count, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+    (void)pg_writer_write_full(w, PG_S("]"), allocator);
   } break;
   case AST_NODE_KIND_BLOCK: {
-    (void)pg_writer_write_string_full(w, PG_S("Block"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Block"), allocator);
   } break;
   case AST_NODE_KIND_VAR_DEFINITION:
-    (void)pg_writer_write_string_full(w, PG_S("VarDef "), allocator);
-    (void)pg_writer_write_string_full(w, node.u.s, allocator);
+    (void)pg_writer_write_full(w, PG_S("VarDef "), allocator);
+    (void)pg_writer_write_full(w, node.u.s, allocator);
     break;
   case AST_NODE_KIND_BRANCH:
-    (void)pg_writer_write_string_full(w, PG_S("Branch"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Branch"), allocator);
     break;
   case AST_NODE_KIND_JUMP:
-    (void)pg_writer_write_string_full(w, PG_S("Jump"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Jump"), allocator);
     break;
   case AST_NODE_KIND_FN_DEFINITION:
-    (void)pg_writer_write_string_full(w, PG_S("FnDef "), allocator);
-    (void)pg_writer_write_string_full(w, node.u.s, allocator);
+    (void)pg_writer_write_full(w, PG_S("FnDef "), allocator);
+    (void)pg_writer_write_full(w, node.u.s, allocator);
     break;
   case AST_NODE_KIND_LABEL_DEFINITION:
-    (void)pg_writer_write_string_full(w, PG_S("LabelDef "), allocator);
-    (void)pg_writer_write_string_full(w, node.u.label.value, allocator);
+    (void)pg_writer_write_full(w, PG_S("LabelDef "), allocator);
+    (void)pg_writer_write_full(w, node.u.label.value, allocator);
     break;
   case AST_NODE_KIND_LABEL:
-    (void)pg_writer_write_string_full(w, PG_S("Label "), allocator);
-    (void)pg_writer_write_string_full(w, node.u.label.value, allocator);
+    (void)pg_writer_write_full(w, PG_S("Label "), allocator);
+    (void)pg_writer_write_full(w, node.u.label.value, allocator);
     break;
   case AST_NODE_KIND_BUILTIN_TRAP:
-    (void)pg_writer_write_string_full(w, PG_S("Trap"), allocator);
+    (void)pg_writer_write_full(w, PG_S("Trap"), allocator);
     break;
   case AST_NODE_KIND_NONE:
   default:
@@ -218,15 +218,15 @@ static void ast_print_node(AstNode node, PgWriter *w, PgAllocator *allocator) {
 static void ast_print_nodes(AstNodeDyn nodes, PgWriter *w,
                             PgAllocator *allocator) {
   for (u32 i = 0; i < nodes.len; i++) {
-    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_full(w, PG_S("["), allocator);
     (void)pg_writer_write_u64_as_string(w, i, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+    (void)pg_writer_write_full(w, PG_S("]"), allocator);
 
     AstNode node = PG_SLICE_AT(nodes, i);
     ast_print_node(node, w, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
+    (void)pg_writer_write_full(w, PG_S("\n"), allocator);
   }
-  // (void)pg_writer_flush(w);
+  (void)pg_writer_flush(w, allocator);
 }
 
 [[nodiscard]]

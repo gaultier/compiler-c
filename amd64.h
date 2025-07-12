@@ -301,7 +301,7 @@ static void amd64_print_operand(Amd64Operand op, bool with_op_size, PgWriter *w,
   case AMD64_OPERAND_KIND_NONE:
     PG_ASSERT(0);
   case AMD64_OPERAND_KIND_REGISTER:
-    (void)pg_writer_write_string_full(
+    (void)pg_writer_write_full(
         w, amd64_register_to_string(op.u.reg, op.size), allocator);
     break;
   case AMD64_OPERAND_KIND_IMMEDIATE:
@@ -309,43 +309,43 @@ static void amd64_print_operand(Amd64Operand op, bool with_op_size, PgWriter *w,
     break;
   case AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS: {
     if (with_op_size) {
-      (void)pg_writer_write_string_full(
+      (void)pg_writer_write_full(
           w, amd64_size_to_operand_size_string[op.size], allocator);
-      (void)pg_writer_write_string_full(w, PG_S(" ptr "), allocator);
+      (void)pg_writer_write_full(w, PG_S(" ptr "), allocator);
     }
-    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
-    (void)pg_writer_write_string_full(
+    (void)pg_writer_write_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_full(
         w,
         amd64_register_to_string(op.u.effective_address.base,
                                  ASM_OPERAND_SIZE_8),
         allocator);
     if (op.u.effective_address.index.value) {
-      (void)pg_writer_write_string_full(w, PG_S(" + "), allocator);
-      (void)pg_writer_write_string_full(
+      (void)pg_writer_write_full(w, PG_S(" + "), allocator);
+      (void)pg_writer_write_full(
           w,
           amd64_register_to_string(op.u.effective_address.index,
                                    ASM_OPERAND_SIZE_8),
           allocator);
-      (void)pg_writer_write_string_full(w, PG_S(" * "), allocator);
+      (void)pg_writer_write_full(w, PG_S(" * "), allocator);
       (void)pg_writer_write_u64_as_string(w, op.u.effective_address.scale,
                                           allocator);
     }
 
     if (op.u.effective_address.displacement) {
-      (void)pg_writer_write_string_full(
+      (void)pg_writer_write_full(
           w, op.u.effective_address.displacement >= 0 ? PG_S("+") : PG_S(""),
           allocator);
       (void)pg_writer_write_u64_as_string(
           w, (u64)op.u.effective_address.displacement, allocator);
     }
 
-    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+    (void)pg_writer_write_full(w, PG_S("]"), allocator);
   } break;
   case AMD64_OPERAND_KIND_LABEL:
     PG_ASSERT(op.u.label.value.data);
     PG_ASSERT(op.u.label.value.len);
 
-    (void)pg_writer_write_string_full(w, op.u.label.value, allocator);
+    (void)pg_writer_write_full(w, op.u.label.value, allocator);
     break;
   default:
     PG_ASSERT(0);
@@ -356,7 +356,7 @@ static void amd64_print_instruction(Amd64Instruction ins, bool with_origin,
                                     PgWriter *w, PgAllocator *allocator) {
   if (with_origin) {
     origin_write(w, ins.origin, allocator);
-    (void)pg_writer_write_string_full(w, PG_S(": "), allocator);
+    (void)pg_writer_write_full(w, PG_S(": "), allocator);
   }
 
   // TODO: Validate operands?
@@ -364,31 +364,31 @@ static void amd64_print_instruction(Amd64Instruction ins, bool with_origin,
   case AMD64_INSTRUCTION_KIND_NONE:
     PG_ASSERT(0);
   case AMD64_INSTRUCTION_KIND_UD2:
-    (void)pg_writer_write_string_full(w, PG_S("ud2 "), allocator);
+    (void)pg_writer_write_full(w, PG_S("ud2 "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_MOV:
-    (void)pg_writer_write_string_full(w, PG_S("mov "), allocator);
+    (void)pg_writer_write_full(w, PG_S("mov "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_ADD:
-    (void)pg_writer_write_string_full(w, PG_S("add "), allocator);
+    (void)pg_writer_write_full(w, PG_S("add "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SUB:
-    (void)pg_writer_write_string_full(w, PG_S("sub "), allocator);
+    (void)pg_writer_write_full(w, PG_S("sub "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LEA:
-    (void)pg_writer_write_string_full(w, PG_S("lea "), allocator);
+    (void)pg_writer_write_full(w, PG_S("lea "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_RET:
-    (void)pg_writer_write_string_full(w, PG_S("ret "), allocator);
+    (void)pg_writer_write_full(w, PG_S("ret "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SYSCALL:
-    (void)pg_writer_write_string_full(w, PG_S("syscall "), allocator);
+    (void)pg_writer_write_full(w, PG_S("syscall "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_PUSH:
-    (void)pg_writer_write_string_full(w, PG_S("push "), allocator);
+    (void)pg_writer_write_full(w, PG_S("push "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_POP:
-    (void)pg_writer_write_string_full(w, PG_S("pop "), allocator);
+    (void)pg_writer_write_full(w, PG_S("pop "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
     // The operand carries the actual label.
@@ -397,28 +397,28 @@ static void amd64_print_instruction(Amd64Instruction ins, bool with_origin,
     PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
     PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
 
-    (void)pg_writer_write_string_full(w, PG_S("je "), allocator);
+    (void)pg_writer_write_full(w, PG_S("je "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_NOT_EQ:
     PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
     PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
 
-    (void)pg_writer_write_string_full(w, PG_S("jne "), allocator);
+    (void)pg_writer_write_full(w, PG_S("jne "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP_IF_ZERO:
     PG_ASSERT(AMD64_OPERAND_KIND_LABEL == ins.lhs.kind);
     PG_ASSERT(AMD64_OPERAND_KIND_NONE == ins.rhs.kind);
 
-    (void)pg_writer_write_string_full(w, PG_S("jz "), allocator);
+    (void)pg_writer_write_full(w, PG_S("jz "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_JMP:
-    (void)pg_writer_write_string_full(w, PG_S("jmp "), allocator);
+    (void)pg_writer_write_full(w, PG_S("jmp "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_CMP:
-    (void)pg_writer_write_string_full(w, PG_S("cmp "), allocator);
+    (void)pg_writer_write_full(w, PG_S("cmp "), allocator);
     break;
   case AMD64_INSTRUCTION_KIND_SET_IF_EQ:
-    (void)pg_writer_write_string_full(w, PG_S("sete "), allocator);
+    (void)pg_writer_write_full(w, PG_S("sete "), allocator);
     break;
   default:
     PG_ASSERT(0);
@@ -433,12 +433,12 @@ static void amd64_print_instruction(Amd64Instruction ins, bool with_origin,
   if (AMD64_OPERAND_KIND_NONE != ins.rhs.kind) {
     PG_ASSERT(AMD64_OPERAND_KIND_NONE != ins.lhs.kind);
 
-    (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+    (void)pg_writer_write_full(w, PG_S(", "), allocator);
     amd64_print_operand(ins.rhs, has_effective_address, w, allocator);
   }
 
   if (AMD64_INSTRUCTION_KIND_LABEL_DEFINITION == ins.kind) {
-    (void)pg_writer_write_string_full(w, PG_S(":"), allocator);
+    (void)pg_writer_write_full(w, PG_S(":"), allocator);
   }
 }
 
@@ -455,28 +455,28 @@ static PgString amd64_instruction_to_string_human_readable(
 static void amd64_print_instructions(Amd64InstructionDyn instructions,
                                      PgWriter *w, PgAllocator *allocator) {
   for (u64 i = 0; i < instructions.len; i++) {
-    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_full(w, PG_S("["), allocator);
     (void)pg_writer_write_u64_as_string(w, i, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+    (void)pg_writer_write_full(w, PG_S("]"), allocator);
 
     Amd64Instruction ins = PG_SLICE_AT(instructions, i);
 
     amd64_print_instruction(ins, true, w, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
+    (void)pg_writer_write_full(w, PG_S("\n"), allocator);
   }
-  // (void)pg_writer_flush(w);
+   (void)pg_writer_flush(w,allocator);
 }
 
 static void amd64_print_section(AsmCodeSection section, PgWriter *w,
                                 PgAllocator *allocator) {
   if (AST_NODE_FLAG_GLOBAL & section.flags) {
-    (void)pg_writer_write_string_full(w, PG_S("global "), allocator);
-    (void)pg_writer_write_string_full(w, section.name, allocator);
-    (void)pg_writer_write_string_full(w, PG_S(":\n"), allocator);
+    (void)pg_writer_write_full(w, PG_S("global "), allocator);
+    (void)pg_writer_write_full(w, section.name, allocator);
+    (void)pg_writer_write_full(w, PG_S(":\n"), allocator);
   }
 
-  (void)pg_writer_write_string_full(w, section.name, allocator);
-  (void)pg_writer_write_string_full(w, PG_S(":\n"), allocator);
+  (void)pg_writer_write_full(w, section.name, allocator);
+  (void)pg_writer_write_full(w, PG_S(":\n"), allocator);
 
   amd64_print_instructions(section.u.amd64_instructions, w, allocator);
 }

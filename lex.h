@@ -530,84 +530,84 @@ static void lex_tokens_print(LexTokenDyn tokens, PgWriter *w,
   for (u64 i = 0; i < tokens.len; i++) {
     LexToken token = PG_SLICE_AT(tokens, i);
 
-    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_full(w, PG_S("["), allocator);
     (void)pg_writer_write_u64_as_string(w, i, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+    (void)pg_writer_write_full(w, PG_S("]"), allocator);
 
     origin_write(w, token.origin, allocator);
-    (void)pg_writer_write_string_full(w, PG_S(": "), allocator);
+    (void)pg_writer_write_full(w, PG_S(": "), allocator);
 
     switch (token.kind) {
     case LEX_TOKEN_KIND_NONE:
       PG_ASSERT(0);
     case LEX_TOKEN_KIND_LITERAL_NUMBER:
-      (void)pg_writer_write_string_full(w, PG_S("LiteralU64 "), allocator);
-      (void)pg_writer_write_string_full(w, token.s, allocator);
+      (void)pg_writer_write_full(w, PG_S("LiteralU64 "), allocator);
+      (void)pg_writer_write_full(w, token.s, allocator);
       break;
     case LEX_TOKEN_KIND_PLUS:
-      (void)pg_writer_write_string_full(w, PG_S("+"), allocator);
+      (void)pg_writer_write_full(w, PG_S("+"), allocator);
       break;
     case LEX_TOKEN_KIND_PAREN_LEFT:
-      (void)pg_writer_write_string_full(w, PG_S("("), allocator);
+      (void)pg_writer_write_full(w, PG_S("("), allocator);
       break;
     case LEX_TOKEN_KIND_PAREN_RIGHT:
-      (void)pg_writer_write_string_full(w, PG_S(")"), allocator);
+      (void)pg_writer_write_full(w, PG_S(")"), allocator);
       break;
     case LEX_TOKEN_KIND_CURLY_LEFT:
-      (void)pg_writer_write_string_full(w, PG_S("{"), allocator);
+      (void)pg_writer_write_full(w, PG_S("{"), allocator);
       break;
     case LEX_TOKEN_KIND_CURLY_RIGHT:
-      (void)pg_writer_write_string_full(w, PG_S("}"), allocator);
+      (void)pg_writer_write_full(w, PG_S("}"), allocator);
       break;
     case LEX_TOKEN_KIND_COMMA:
-      (void)pg_writer_write_string_full(w, PG_S(","), allocator);
+      (void)pg_writer_write_full(w, PG_S(","), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_SYSCALL:
-      (void)pg_writer_write_string_full(w, PG_S("syscall"), allocator);
+      (void)pg_writer_write_full(w, PG_S("syscall"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_PRINTLN:
-      (void)pg_writer_write_string_full(w, PG_S("println"), allocator);
+      (void)pg_writer_write_full(w, PG_S("println"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_IF:
-      (void)pg_writer_write_string_full(w, PG_S("Keyword if"), allocator);
+      (void)pg_writer_write_full(w, PG_S("Keyword if"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_ELSE:
-      (void)pg_writer_write_string_full(w, PG_S("Keyword else"), allocator);
+      (void)pg_writer_write_full(w, PG_S("Keyword else"), allocator);
       break;
     case LEX_TOKEN_KIND_KEYWORD_ASSERT:
-      (void)pg_writer_write_string_full(w, PG_S("Keyword assert"), allocator);
+      (void)pg_writer_write_full(w, PG_S("Keyword assert"), allocator);
       break;
     case LEX_TOKEN_KIND_COLON_EQUAL:
-      (void)pg_writer_write_string_full(w, PG_S(":="), allocator);
+      (void)pg_writer_write_full(w, PG_S(":="), allocator);
       break;
     case LEX_TOKEN_KIND_EQUAL_EQUAL:
-      (void)pg_writer_write_string_full(w, PG_S("=="), allocator);
+      (void)pg_writer_write_full(w, PG_S("=="), allocator);
       break;
     case LEX_TOKEN_KIND_EQUAL:
-      (void)pg_writer_write_string_full(w, PG_S("="), allocator);
+      (void)pg_writer_write_full(w, PG_S("="), allocator);
       break;
     case LEX_TOKEN_KIND_SLASH_SLASH:
-      (void)pg_writer_write_string_full(w, PG_S("//"), allocator);
+      (void)pg_writer_write_full(w, PG_S("//"), allocator);
       break;
     case LEX_TOKEN_KIND_SLASH:
-      (void)pg_writer_write_string_full(w, PG_S("/"), allocator);
+      (void)pg_writer_write_full(w, PG_S("/"), allocator);
       break;
     case LEX_TOKEN_KIND_AMPERSAND:
-      (void)pg_writer_write_string_full(w, PG_S("&"), allocator);
+      (void)pg_writer_write_full(w, PG_S("&"), allocator);
       break;
     case LEX_TOKEN_KIND_IDENTIFIER:
-      (void)pg_writer_write_string_full(w, PG_S("Identifier "), allocator);
-      (void)pg_writer_write_string_full(w, token.s, allocator);
+      (void)pg_writer_write_full(w, PG_S("Identifier "), allocator);
+      (void)pg_writer_write_full(w, token.s, allocator);
       break;
     case LEX_TOKEN_KIND_EOF:
-      (void)pg_writer_write_string_full(w, PG_S("EOF"), allocator);
+      (void)pg_writer_write_full(w, PG_S("EOF"), allocator);
       break;
     default:
       PG_ASSERT(0);
     }
-    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
+    (void)pg_writer_write_full(w, PG_S("\n"), allocator);
   }
-  // (void)pg_writer_flush(w);
+  (void)pg_writer_flush(w, allocator);
 }
 
 static void lex_trim_comments(LexTokenDyn *tokens) {

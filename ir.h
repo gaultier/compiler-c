@@ -240,7 +240,7 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata,
 
   case IR_OPERAND_KIND_LABEL:
     PG_ASSERT(operand.u.label.value.len);
-    (void)pg_writer_write_string_full(w, operand.u.label.value, allocator);
+    (void)pg_writer_write_full(w, operand.u.label.value, allocator);
     break;
 
   case IR_OPERAND_KIND_VREG: {
@@ -249,7 +249,7 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata,
         PG_SLICE_AT(metadata, meta_idx.value).virtual_register;
     PG_ASSERT(vreg.value);
 
-    (void)pg_writer_write_string_full(w, PG_S("v"), allocator);
+    (void)pg_writer_write_full(w, PG_S("v"), allocator);
     (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
   } break;
 
@@ -262,9 +262,9 @@ static void ir_print_operand(IrOperand operand, MetadataDyn metadata,
 static void metadata_print_var(Metadata meta, PgWriter *w,
                                PgAllocator *allocator) {
   if (meta.identifier.len) {
-    (void)pg_writer_write_string_full(w, meta.identifier, allocator);
+    (void)pg_writer_write_full(w, meta.identifier, allocator);
   } else {
-    (void)pg_writer_write_string_full(w, PG_S("v"), allocator);
+    (void)pg_writer_write_full(w, PG_S("v"), allocator);
     (void)pg_writer_write_u64_as_string(w, meta.virtual_register.value,
                                         allocator);
   }
@@ -272,46 +272,46 @@ static void metadata_print_var(Metadata meta, PgWriter *w,
 
 static void metadata_print_meta(Metadata meta, PgWriter *w,
                                 PgAllocator *allocator) {
-  (void)pg_writer_write_string_full(w, PG_S("identifier=`"), allocator);
-  (void)pg_writer_write_string_full(w, meta.identifier, allocator);
-  (void)pg_writer_write_string_full(w, PG_S("` "), allocator);
+  (void)pg_writer_write_full(w, PG_S("identifier=`"), allocator);
+  (void)pg_writer_write_full(w, meta.identifier, allocator);
+  (void)pg_writer_write_full(w, PG_S("` "), allocator);
 
-  (void)pg_writer_write_string_full(w, PG_S("lifetime=["), allocator);
+  (void)pg_writer_write_full(w, PG_S("lifetime=["), allocator);
   (void)pg_writer_write_u64_as_string(w, meta.lifetime_start.value, allocator);
-  (void)pg_writer_write_string_full(w, PG_S(":"), allocator);
+  (void)pg_writer_write_full(w, PG_S(":"), allocator);
   (void)pg_writer_write_u64_as_string(w, meta.lifetime_end.value, allocator);
-  (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+  (void)pg_writer_write_full(w, PG_S("]"), allocator);
 
   if (meta.virtual_register.value) {
-    (void)pg_writer_write_string_full(w, PG_S(" vreg=v"), allocator);
+    (void)pg_writer_write_full(w, PG_S(" vreg=v"), allocator);
     (void)pg_writer_write_u64_as_string(w, meta.virtual_register.value,
                                         allocator);
-    (void)pg_writer_write_string_full(w, PG_S(" constraint="), allocator);
-    (void)pg_writer_write_string_full(
+    (void)pg_writer_write_full(w, PG_S(" constraint="), allocator);
+    (void)pg_writer_write_full(
         w, register_constraint_to_str(meta.virtual_register.constraint),
         allocator);
-    (void)pg_writer_write_string_full(w, PG_S(" addressed="), allocator);
-    (void)pg_writer_write_string_full(
+    (void)pg_writer_write_full(w, PG_S(" addressed="), allocator);
+    (void)pg_writer_write_full(
         w, meta.virtual_register.addressed ? PG_S("true") : PG_S("false"),
         allocator);
   }
 
   if (MEMORY_LOCATION_KIND_NONE != meta.memory_location.kind) {
-    (void)pg_writer_write_string_full(w, PG_S(" mem_loc="), allocator);
+    (void)pg_writer_write_full(w, PG_S(" mem_loc="), allocator);
 
     switch (meta.memory_location.kind) {
     case MEMORY_LOCATION_KIND_REGISTER:
     case MEMORY_LOCATION_KIND_STATUS_REGISTER:
-      (void)pg_writer_write_string_full(w, PG_S("reg(todo)"), allocator);
+      (void)pg_writer_write_full(w, PG_S("reg(todo)"), allocator);
       // TODO
 #if 0
       amd64_print_register(meta.memory_location.reg);
 #endif
       break;
     case MEMORY_LOCATION_KIND_STACK: {
-      (void)pg_writer_write_string_full(w, PG_S("[sp"), allocator);
+      (void)pg_writer_write_full(w, PG_S("[sp"), allocator);
       i32 offset = meta.memory_location.u.base_pointer_offset;
-      (void)pg_writer_write_string_full(w, PG_S("-"), allocator);
+      (void)pg_writer_write_full(w, PG_S("-"), allocator);
       (void)pg_writer_write_u64_as_string(w, (u64)offset, allocator);
     } break;
     case MEMORY_LOCATION_KIND_NONE:
@@ -325,14 +325,14 @@ static void ir_print_instructions(IrInstructionDyn instructions,
                                   MetadataDyn metadata, PgWriter *w,
                                   PgAllocator *allocator) {
   for (u32 i = 0; i < instructions.len; i++) {
-    (void)pg_writer_write_string_full(w, PG_S("["), allocator);
+    (void)pg_writer_write_full(w, PG_S("["), allocator);
     (void)pg_writer_write_u64_as_string(w, i, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+    (void)pg_writer_write_full(w, PG_S("]"), allocator);
 
     IrInstruction ins = PG_SLICE_AT(instructions, i);
     origin_write(w, ins.origin, allocator);
 
-    (void)pg_writer_write_string_full(w, PG_S(" "), allocator);
+    (void)pg_writer_write_full(w, PG_S(" "), allocator);
 
     switch (ins.kind) {
     case IR_INSTRUCTION_KIND_ADD: {
@@ -347,14 +347,14 @@ static void ir_print_instructions(IrInstructionDyn instructions,
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(".add"), allocator);
+      (void)pg_writer_write_full(w, PG_S(".add"), allocator);
 
-      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
 
       ir_print_operand(ins.lhs, metadata, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
       ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
@@ -370,14 +370,14 @@ static void ir_print_instructions(IrInstructionDyn instructions,
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(".cmp"), allocator);
+      (void)pg_writer_write_full(w, PG_S(".cmp"), allocator);
 
-      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
 
       ir_print_operand(ins.lhs, metadata, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
       ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
@@ -392,11 +392,11 @@ static void ir_print_instructions(IrInstructionDyn instructions,
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(".mov"), allocator);
+      (void)pg_writer_write_full(w, PG_S(".mov"), allocator);
 
-      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
 
       ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
@@ -411,14 +411,14 @@ static void ir_print_instructions(IrInstructionDyn instructions,
 
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(".load"), allocator);
+      (void)pg_writer_write_full(w, PG_S(".load"), allocator);
 
-      (void)pg_writer_write_string_full(w, PG_S(" v"), allocator);
+      (void)pg_writer_write_full(w, PG_S(" v"), allocator);
       (void)pg_writer_write_u64_as_string(w, vreg.value, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
 
       ir_print_operand(ins.lhs, metadata, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
       ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
@@ -426,10 +426,10 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(IR_OPERAND_KIND_NONE != ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.rhs.kind);
 
-      (void)pg_writer_write_string_full(w, PG_S("JumpIfFalse "), allocator);
+      (void)pg_writer_write_full(w, PG_S("JumpIfFalse "), allocator);
 
       ir_print_operand(ins.lhs, metadata, w, allocator);
-      (void)pg_writer_write_string_full(w, PG_S(", "), allocator);
+      (void)pg_writer_write_full(w, PG_S(", "), allocator);
       ir_print_operand(ins.rhs, metadata, w, allocator);
     } break;
 
@@ -437,7 +437,7 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      (void)pg_writer_write_string_full(w, PG_S("Jump "), allocator);
+      (void)pg_writer_write_full(w, PG_S("Jump "), allocator);
       ir_print_operand(ins.lhs, metadata, w, allocator);
     } break;
 
@@ -450,9 +450,9 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       Type *type = PG_SLICE_AT(metadata, ins.meta_idx.value).type;
       type_print(type, w, allocator);
 
-      (void)pg_writer_write_string_full(w, PG_S(".syscall["), allocator);
+      (void)pg_writer_write_full(w, PG_S(".syscall["), allocator);
       (void)pg_writer_write_u64_as_string(w, i, allocator);
-      (void)pg_writer_write_string_full(w, PG_S("]"), allocator);
+      (void)pg_writer_write_full(w, PG_S("]"), allocator);
 
     } break;
 
@@ -460,14 +460,14 @@ static void ir_print_instructions(IrInstructionDyn instructions,
       PG_ASSERT(IR_OPERAND_KIND_LABEL == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      (void)pg_writer_write_string_full(w, PG_S("Label "), allocator);
+      (void)pg_writer_write_full(w, PG_S("Label "), allocator);
       ir_print_operand(ins.lhs, metadata, w, allocator);
     } break;
     case IR_INSTRUCTION_KIND_TRAP: {
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.lhs.kind);
       PG_ASSERT(IR_OPERAND_KIND_NONE == ins.rhs.kind);
 
-      (void)pg_writer_write_string_full(w, PG_S("Trap"), allocator);
+      (void)pg_writer_write_full(w, PG_S("Trap"), allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_NONE:
@@ -476,24 +476,24 @@ static void ir_print_instructions(IrInstructionDyn instructions,
     }
 
     if (ins.meta_idx.value) {
-      (void)pg_writer_write_string_full(w, PG_S(" // "), allocator);
+      (void)pg_writer_write_full(w, PG_S(" // "), allocator);
       metadata_print_meta(PG_SLICE_AT(metadata, ins.meta_idx.value), w,
                           allocator);
     }
-    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
+    (void)pg_writer_write_full(w, PG_S("\n"), allocator);
   }
-  // (void)pg_writer_flush(w);
+  (void)pg_writer_flush(w, allocator);
 }
 
 static void ir_print_fn_def(FnDefinition fn_def, PgWriter *w,
                             PgAllocator *allocator) {
   PG_ASSERT(fn_def.name.len);
 
-  (void)pg_writer_write_string_full(w, fn_def.name, allocator);
+  (void)pg_writer_write_full(w, fn_def.name, allocator);
 
   ir_print_instructions(fn_def.instructions, fn_def.metadata, w, allocator);
 
-  (void)pg_writer_write_string_full(w, PG_S("\n\n"), allocator);
+  (void)pg_writer_write_full(w, PG_S("\n\n"), allocator);
 }
 
 static void ir_print_fn_defs(FnDefinitionDyn fn_defs, PgWriter *w,

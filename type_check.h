@@ -47,7 +47,7 @@ typedef struct {
 
 static void type_print(Type *type, PgWriter *w, PgAllocator *allocator) {
   if (!type) {
-    (void)pg_writer_write_string_full(w, PG_S("any"), allocator);
+    (void)pg_writer_write_full(w, PG_S("any"), allocator);
     return;
   }
 
@@ -55,7 +55,7 @@ static void type_print(Type *type, PgWriter *w, PgAllocator *allocator) {
   PG_ASSERT(type->name.data);
   PG_ASSERT(type->name.len);
 
-  (void)pg_writer_write_string_full(w, type->name, allocator);
+  (void)pg_writer_write_full(w, type->name, allocator);
 }
 
 [[nodiscard]] static bool type_compatible(Type *a, Type *b) {

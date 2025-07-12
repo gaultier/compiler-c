@@ -54,17 +54,19 @@ static CliOptions cli_options_parse(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
   CliOptions cli_opts = cli_options_parse(argc, argv);
 
-  PgLogLevel log_level =
-      cli_opts.verbose ? PG_LOG_LEVEL_DEBUG : PG_LOG_LEVEL_ERROR;
-  PgLogger logger = pg_log_make_logger_stdout_logfmt(log_level);
-
-  PgWriter writer_internals =
-      cli_opts.verbose ? pg_writer_make_from_file_descriptor(pg_os_stdout())
-                       : pg_writer_make_noop();
-
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  PgLogLevel log_level =
+      cli_opts.verbose ? PG_LOG_LEVEL_DEBUG : PG_LOG_LEVEL_ERROR;
+  PgLogger logger =
+      pg_log_make_logger_stdout(log_level, PG_LOG_FORMAT_LOGFMT, allocator);
+
+  PgWriter writer_internals = cli_opts.verbose
+                                  ? pg_writer_make_from_file_descriptor(
+                                        pg_os_stdout(), 4 * PG_KiB, allocator)
+                                  : pg_writer_make_noop();
 
   PgString file_path = pg_cstr_to_string(cli_opts.file_path);
   PgStringResult file_read_res =
@@ -179,16 +181,16 @@ err:
   qsort(errors.data, errors.len, sizeof(Error),
         err_compare_errors_by_origin_offset);
 
-  PgWriter writer_errors = pg_writer_make_from_file_descriptor(pg_os_stderr());
+  PgWriter writer_errors = pg_writer_make_from_file_descriptor(
+      pg_os_stderr(), 4 * PG_KiB, allocator);
 
   for (u64 i = 0; i < errors.len; i++) {
     Error err = PG_SLICE_AT(errors, i);
     origin_write(&writer_errors, err.origin, allocator);
-    (void)pg_writer_write_string_full(&writer_errors, PG_S(" Error: "),
-                                      allocator);
+    (void)pg_writer_write_full(&writer_errors, PG_S(" Error: "), allocator);
     error_print(err, &writer_errors, allocator);
   }
-  // (void)pg_writer_flush(&writer_errors);
+  (void)pg_writer_flush(&writer_errors, allocator);
 
   return 1;
 }

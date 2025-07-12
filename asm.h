@@ -36,9 +36,9 @@ static void asm_print_program(AsmEmitter emitter, PgWriter *w,
   for (u64 i = 0; i < emitter.program.text.len; i++) {
     AsmCodeSection section = PG_SLICE_AT(emitter.program.text, i);
     asm_print_section(emitter.arch_kind, section, w, allocator);
-    (void)pg_writer_write_string_full(w, PG_S("\n"), allocator);
+    (void)pg_writer_write_full(w, PG_S("\n"), allocator);
   }
-  // (void)pg_writer_flush(w);
+  (void)pg_writer_flush(w, allocator);
 }
 
 static void asm_section_resolve_jumps(AsmProgram *program, Pgu8Dyn sb) {

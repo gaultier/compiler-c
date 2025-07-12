@@ -245,7 +245,7 @@ static void test_compile_and_run_samples() {
 
 static void write_instruction(Amd64Instruction ins, PgWriter *writer_asm_text) {
   amd64_print_instruction(ins, false, writer_asm_text, nullptr);
-  (void)pg_writer_write_string_full(writer_asm_text, PG_S("\n"), nullptr);
+  (void)pg_writer_write_full(writer_asm_text, PG_S("\n"), nullptr);
 }
 
 [[nodiscard]]
@@ -839,9 +839,9 @@ static void test_asm() {
   Amd64InstructionDyn instructions = {0};
   PG_DYN_ENSURE_CAP(&instructions, 64'000, allocator);
 
-  PG_ASSERT(0 == pg_writer_write_string_full(&writer_asm_text,
-                                             PG_S(".globl _start\n _start:\n"),
-                                             nullptr));
+  PG_ASSERT(0 == pg_writer_write_full(&writer_asm_text,
+                                            PG_S(".globl _start\n _start:\n"),
+                                            nullptr));
 
   gen_cmp(&writer_asm_text, &instructions);
   gen_sub(&writer_asm_text, &instructions);

@@ -71,7 +71,7 @@ static void reg_print_interference_graph(InterferenceGraph graph,
                                          PgWriter *writer_internals,
                                          PgAllocator *allocator) {
 
-  (void)pg_writer_write_string_full(writer_internals, PG_S("nodes_count="),
+  (void)pg_writer_write_full(writer_internals, PG_S("nodes_count="),
                                     allocator);
   (void)pg_writer_write_u64_as_string(writer_internals, graph.nodes_count,
                                       allocator);
@@ -86,10 +86,10 @@ static void reg_print_interference_graph(InterferenceGraph graph,
       Metadata a_meta = PG_SLICE_AT(metadata, row);
       Metadata b_meta = PG_SLICE_AT(metadata, col);
       metadata_print_var(a_meta, writer_internals, allocator);
-      (void)pg_writer_write_string_full(writer_internals, PG_S(" -> "),
+      (void)pg_writer_write_full(writer_internals, PG_S(" -> "),
                                         allocator);
       metadata_print_var(b_meta, writer_internals, allocator);
-      (void)pg_writer_write_string_full(writer_internals, PG_S("\n"),
+      (void)pg_writer_write_full(writer_internals, PG_S("\n"),
                                         allocator);
     }
   }
