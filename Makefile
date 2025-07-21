@@ -14,9 +14,6 @@ TEST_C_FILES = test.c submodules/cstd/lib.c $(wildcard *.h)
 
 SANITIZERS = address,undefined
 
-compile_flags.txt: 
-	echo $(CFLAGS) | tr ' ' '\n' > $@
-
 main_debug.bin: $(C_FILES)
 	$(CC) $(CFLAGS) $(LDFLAGS) main.c -o $@
 
@@ -58,3 +55,7 @@ clean:
 .PHONY: dev
 dev: 
 	ls *.{c,h} submodules/cstd/*.{c,h} | entr -c make main_debug.bin
+
+compile_flags.txt: 
+	echo $(CFLAGS) | tr ' ' '\n' > $@
+
