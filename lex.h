@@ -58,13 +58,14 @@ static Origin lex_lexer_origin(Lexer lexer) {
 static void lex_add_error(Lexer *lexer, ErrorKind error_kind,
                           PgAllocator *allocator) {
   Origin origin = lex_lexer_origin(*lexer);
-  *PG_DYN_PUSH(lexer->errors, allocator) = (Error){
+  Error error = {
       .kind = error_kind,
       .origin = origin,
       .src = lexer->src,
       .src_span = PG_SLICE_RANGE(lexer->src, origin.file_offset_start,
                                  origin.file_offset_start + 1),
   };
+  PG_DYN_PUSH(lexer->errors, error, allocator);
 
   lexer->err_mode = true;
 }
@@ -118,10 +119,12 @@ static void lex_advance_until_rune_excl(Lexer *lexer, PgRune needle,
 
 static void lex_add_token(Lexer *lexer, LexTokenKind token_kind, Origin origin,
                           PgAllocator *allocator) {
-  *PG_DYN_PUSH(&lexer->tokens, allocator) = (LexToken){
-      .kind = token_kind,
-      .origin = origin,
-  };
+  PG_DYN_PUSH(&lexer->tokens,
+              ((LexToken){
+                  .kind = token_kind,
+                  .origin = origin,
+              }),
+              allocator);
 }
 
 // FIXME: Report all UTF8 errors from `pg_utf8_iterator_peek_next`!!!

@@ -165,7 +165,7 @@ static MetadataIndex metadata_make(MetadataDyn *metadata, Type *type,
   res.virtual_register.value = (u32)metadata->len;
   res.type = type;
 
-  *PG_DYN_PUSH(metadata, allocator) = res;
+  PG_DYN_PUSH(metadata, res, allocator);
 
   return metadata_last_idx(*metadata);
 }
@@ -615,9 +615,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .kind = IR_OPERAND_KIND_NUM,
           .u.u64 = node.u.n64,
       };
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
-      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+      PG_DYN_PUSH(&stack, ins.meta_idx, allocator);
 
     } break;
 
@@ -638,9 +638,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .kind = IR_OPERAND_KIND_NUM,
           .u.u64 = node.u.n64,
       };
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
-      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+      PG_DYN_PUSH(&stack, ins.meta_idx, allocator);
     } break;
 
     case AST_NODE_KIND_IDENTIFIER: {
@@ -657,7 +657,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                 PG_SLICE_RANGE(emitter->src, node.origin.file_offset_start,
                                node.origin.file_offset_start + node.u.s.len),
         };
-        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        PG_DYN_PUSH(emitter->errors, err, allocator);
 
         // Pseudo-define the undefined variable to improve error messages
         // downstream and preserve invariants.
@@ -666,7 +666,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
         MetadataIndex meta_idx =
             metadata_make(&fn_def.metadata, type, allocator);
         PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
-        *PG_DYN_PUSH(&stack, allocator) = meta_idx;
+        PG_DYN_PUSH(&stack, meta_idx, allocator);
         continue;
       }
       PG_ASSERT(var->type);
@@ -686,9 +686,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .u.vreg_meta_idx = var->meta_idx,
       };
 
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
-      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+      PG_DYN_PUSH(&stack, ins.meta_idx, allocator);
     } break;
 
     case AST_NODE_KIND_ADD: {
@@ -717,7 +717,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                 node.origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_SLICE(PgString, sb),
         };
-        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        PG_DYN_PUSH(emitter->errors, err, allocator);
       }
 
       IrInstruction ins = {0};
@@ -734,9 +734,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .u.vreg_meta_idx = rhs_meta_idx,
       };
 
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
-      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+      PG_DYN_PUSH(&stack, ins.meta_idx, allocator);
     } break;
 
     case AST_NODE_KIND_COMPARISON: {
@@ -765,7 +765,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                 node.origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_SLICE(PgString, sb),
         };
-        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        PG_DYN_PUSH(emitter->errors, err, allocator);
       }
 
       Type *type = type_upsert(&emitter->types, PG_S("bool"), nullptr);
@@ -785,9 +785,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .u.vreg_meta_idx = rhs_meta_idx,
       };
 
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
-      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+      PG_DYN_PUSH(&stack, ins.meta_idx, allocator);
     } break;
 
     case AST_NODE_KIND_BLOCK: {
@@ -810,7 +810,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                                node.origin.file_offset_start + node.u.s.len),
         };
         // TODO: Include `var` in the error!
-        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        PG_DYN_PUSH(emitter->errors, err, allocator);
       }
 
       MetadataIndex op_meta_idx = PG_DYN_POP(&stack);
@@ -826,12 +826,14 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
 
-      *PG_DYN_PUSH(&local_vars, allocator) = (IrLocalVar){
-          .node_idx = {i},
-          .scope_depth = scope_depth,
-          .meta_idx = ins.meta_idx,
-          .type = type,
-      };
+      PG_DYN_PUSH(&local_vars,
+                  ((IrLocalVar){
+                      .node_idx = {i},
+                      .scope_depth = scope_depth,
+                      .meta_idx = ins.meta_idx,
+                      .type = type,
+                  }),
+                  allocator);
 
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -842,7 +844,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .u.vreg_meta_idx = op_meta_idx,
       };
 
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
     } break;
 
     case AST_NODE_KIND_ADDRESS_OF: {
@@ -863,7 +865,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                                // FIXME: origin should have a src_span directly.
                                node.origin.file_offset_start + 1),
         };
-        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        PG_DYN_PUSH(emitter->errors, err, allocator);
       }
 
       // TODO: When type `T` is explicitly given: check if `*T` == `op_type`.
@@ -895,9 +897,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = op_meta_idx,
       };
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
-      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+      PG_DYN_PUSH(&stack, ins.meta_idx, allocator);
     } break;
 
     case AST_NODE_KIND_BRANCH: {
@@ -932,7 +934,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .kind = IR_OPERAND_KIND_LABEL,
           .u.label = else_label.u.label,
       };
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp_else;
+      PG_DYN_PUSH(&fn_def.instructions, ins_jmp_else, allocator);
     } break;
 
     case AST_NODE_KIND_JUMP: {
@@ -948,7 +950,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           .kind = IR_OPERAND_KIND_LABEL,
           .u.label = op.u.label,
       };
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
     } break;
 
@@ -959,12 +961,12 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_TRAP;
       ins.origin = node.origin;
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
     } break;
 
     case AST_NODE_KIND_FN_DEFINITION: {
       if (fn_def.instructions.len > 0) {
-        *PG_DYN_PUSH(&fn_defs, allocator) = fn_def;
+        PG_DYN_PUSH(&fn_defs, fn_def, allocator);
       }
 
       local_vars.len = 0;
@@ -980,7 +982,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_DYN_ENSURE_CAP(&fn_def.instructions, nodes.len * 2, allocator);
       PG_DYN_ENSURE_CAP(&fn_def.metadata, nodes.len, allocator);
       // Dummy.
-      *PG_DYN_PUSH(&fn_def.metadata, allocator) = (Metadata){0};
+      PG_DYN_PUSH(&fn_def.metadata, (Metadata){0}, allocator);
 
       if (node.flags & AST_NODE_FLAG_GLOBAL) {
         fn_def.flags = IR_FLAG_GLOBAL;
@@ -1017,9 +1019,9 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
           VREG_CONSTRAINT_SYSCALL_RET;
       // TODO: args_count.
 
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
-      *PG_DYN_PUSH(&stack, allocator) = ins.meta_idx;
+      PG_DYN_PUSH(&stack, ins.meta_idx, allocator);
     } break;
 
     case AST_NODE_KIND_LABEL_DEFINITION: {
@@ -1038,7 +1040,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       PG_SLICE_LAST_PTR(&fn_def.metadata)->label = ins.lhs.u.label;
 #endif
 
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins;
+      PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
     } break;
 
     case AST_NODE_KIND_BUILTIN_PRINTLN: {
@@ -1065,7 +1067,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                 node.origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_SLICE(PgString, sb),
         };
-        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        PG_DYN_PUSH(emitter->errors, err, allocator);
       }
       PG_ASSERT(0 && "todo");
     } break;
@@ -1093,7 +1095,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
                 node.origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_SLICE(PgString, sb),
         };
-        *PG_DYN_PUSH(emitter->errors, allocator) = err;
+        PG_DYN_PUSH(emitter->errors, err, allocator);
       }
 
       IrOperand if_end_target =
@@ -1108,18 +1110,18 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
       };
       // TODO: rflags constraint?
       ins_jmp.rhs = if_end_target;
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_jmp;
+      PG_DYN_PUSH(&fn_def.instructions, ins_jmp, allocator);
 
       IrInstruction ins_trap = {0};
       ins_trap.kind = IR_INSTRUCTION_KIND_TRAP;
       ins_trap.origin = node.origin;
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_trap;
+      PG_DYN_PUSH(&fn_def.instructions, ins_trap, allocator);
 
       IrInstruction ins_if_end_label = {0};
       ins_if_end_label.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
       ins_if_end_label.origin = node.origin;
       ins_if_end_label.lhs = if_end_target;
-      *PG_DYN_PUSH(&fn_def.instructions, allocator) = ins_if_end_label;
+      PG_DYN_PUSH(&fn_def.instructions, ins_if_end_label, allocator);
     } break;
 
     case AST_NODE_KIND_NONE:
@@ -1129,7 +1131,7 @@ ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
   }
 
   if (fn_def.instructions.len > 0) {
-    *PG_DYN_PUSH(&fn_defs, allocator) = fn_def;
+    PG_DYN_PUSH(&fn_defs, fn_def, allocator);
   }
 
   ir_compute_fn_defs_lifetimes(fn_defs);

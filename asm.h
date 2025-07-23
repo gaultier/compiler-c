@@ -77,10 +77,12 @@ static void asm_encode_section(ArchitectureKind arch_kind, AsmProgram *program,
                                PgAllocator *allocator) {
   PG_ASSERT(section.name.len);
 
-  *PG_DYN_PUSH(&program->label_addresses, allocator) = (LabelAddress){
-      .label = {section.name},
-      .code_address = sb->len,
-  };
+  PG_DYN_PUSH(&program->label_addresses,
+              ((LabelAddress){
+                  .label = {section.name},
+                  .code_address = sb->len,
+              }),
+              allocator);
 
   switch (arch_kind) {
   case ARCH_KIND_AMD64: {
@@ -558,6 +560,6 @@ static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
     // TODO: Codegen.
     AsmCodeSection section =
         asm_emit_fn_definition(asm_emitter->arch_kind, fn_def, allocator);
-    *PG_DYN_PUSH(&asm_emitter->program.text, allocator) = section;
+    PG_DYN_PUSH(&asm_emitter->program.text, section, allocator);
   }
 }

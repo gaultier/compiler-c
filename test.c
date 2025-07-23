@@ -32,14 +32,14 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
         PG_S("./main_release.bin"), args_slice, options, allocator);
     PG_ASSERT(0 == res_spawn.err);
 
-    PgProcess process = res_spawn.res;
+    PgProcess process = res_spawn.value;
 
     PgProcessExitResult res_wait = pg_process_wait(process, 0, 512, allocator);
     if ((res.err = res_wait.err)) {
       return res;
     }
 
-    res.process_status = res_wait.res;
+    res.process_status = res_wait.value;
     if (!err_expected && 0 != res.process_status.exit_status) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
@@ -103,14 +103,14 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
         pg_process_spawn(exe_path, args_slice, options, allocator);
     PG_ASSERT(0 == res_spawn.err);
 
-    PgProcess process = res_spawn.res;
+    PgProcess process = res_spawn.value;
 
     PgProcessExitResult res_wait = pg_process_wait(process, 64, 0, allocator);
     if ((res.err = res_wait.err)) {
       return res;
     }
 
-    res.process_status = res_wait.res;
+    res.process_status = res_wait.value;
     if (0 != res.process_status.exit_status) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
@@ -272,21 +272,21 @@ static PgString run_assembler(PgString in, PgAllocator *allocator) {
       pg_process_spawn(PG_S("clang"), args_slice, options, allocator);
   PG_ASSERT(0 == res_spawn.err);
 
-  PgProcess process = res_spawn.res;
+  PgProcess process = res_spawn.value;
   PG_ASSERT(0 == pg_file_write_full_with_descriptor(process.stdin_pipe, in));
   (void)pg_file_close(process.stdin_pipe);
 
   PgStringResult read_res = pg_file_read_full_from_descriptor_until_eof(
       process.stdout_pipe, 1 * PG_MiB, allocator);
   PG_ASSERT(0 == read_res.err);
-  PG_ASSERT(read_res.res.len);
+  PG_ASSERT(read_res.value.len);
   PgProcessExitResult res_proc =
       pg_process_wait(process, 64 * PG_MiB, 0, allocator);
 
   PG_ASSERT(0 == res_proc.err);
-  PG_ASSERT(0 == res_proc.res.exit_status);
+  PG_ASSERT(0 == res_proc.value.exit_status);
 
-  return read_res.res;
+  return read_res.value;
 }
 
 static void gen_lea(PgWriter *writer_asm_text,
@@ -840,8 +840,8 @@ static void test_asm() {
   PG_DYN_ENSURE_CAP(&instructions, 64'000, allocator);
 
   PG_ASSERT(0 == pg_writer_write_full(&writer_asm_text,
-                                            PG_S(".globl _start\n _start:\n"),
-                                            nullptr));
+                                      PG_S(".globl _start\n _start:\n"),
+                                      nullptr));
 
   gen_cmp(&writer_asm_text, &instructions);
   gen_sub(&writer_asm_text, &instructions);
@@ -889,7 +889,7 @@ static void test_asm() {
   Pgu64RangeOption res_search_ins = pg_u64_range_search(
       PG_DYN_SLICE(Pgu64Slice, ins_offsets), (u64)first_differing_byte_idx);
   PG_ASSERT(res_search_ins.has_value);
-  Pgu64Range range_ins = res_search_ins.res;
+  Pgu64Range range_ins = res_search_ins.value;
 
   // NOTE: The two excerpts might actually differ in length and this might
   // truncate/extend `except` by a few bytes.
@@ -899,7 +899,7 @@ static void test_asm() {
       PG_SLICE_RANGE(actual, range_ins.start_incl, range_ins.end_excl);
   PG_ASSERT(!pg_bytes_eq(expected_excerpt, actual_excerpt));
 
-  Amd64Instruction ins = PG_SLICE_AT(instructions, res_search_ins.res.idx);
+  Amd64Instruction ins = PG_SLICE_AT(instructions, res_search_ins.value.idx);
   PgString ins_str =
       amd64_instruction_to_string_human_readable(ins, false, allocator);
 

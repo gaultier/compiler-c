@@ -106,7 +106,7 @@ static void ast_add_error(AstParser *parser, ErrorKind error_kind,
 
   PG_ASSERT(origin.line);
 
-  *PG_DYN_PUSH(parser->errors, allocator) = (Error){
+  Error error = {
       .kind = error_kind,
       .origin = origin,
       .src = parser->lexer.src,
@@ -114,6 +114,7 @@ static void ast_add_error(AstParser *parser, ErrorKind error_kind,
       .src_span = PG_SLICE_RANGE(parser->lexer.src, origin.file_offset_start,
                                  origin.file_offset_start + 1),
   };
+  PG_DYN_PUSH(parser->errors, error, allocator);
 
   // Skip to the next newline to avoid having cascading errors.
   ast_advance_to_next_line_from_last_error(parser);
@@ -139,7 +140,7 @@ static LexToken ast_current_or_last_token(AstParser parser) {
 }
 
 static void ast_push(AstParser *parser, AstNode node, PgAllocator *allocator) {
-  *PG_DYN_PUSH(&parser->nodes, allocator) = node;
+  PG_DYN_PUSH(&parser->nodes, node, allocator);
 }
 
 static void ast_print_node(AstNode node, PgWriter *w, PgAllocator *allocator) {
@@ -907,7 +908,7 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     case AST_NODE_KIND_IDENTIFIER:
     case AST_NODE_KIND_BOOL:
     case AST_NODE_KIND_NUMBER: {
-      *PG_DYN_PUSH(&stack, allocator) = node;
+      PG_DYN_PUSH(&stack, node, allocator);
     } break;
 
     case AST_NODE_KIND_ADD: {
@@ -923,10 +924,10 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
         PG_DYN_POP(nodes_after);
 
         *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
-        *PG_DYN_PUSH(&stack, allocator) = folded;
+        PG_DYN_PUSH(&stack, folded, allocator);
         continue;
       }
-      *PG_DYN_PUSH(&stack, allocator) = node;
+      PG_DYN_PUSH(&stack, node, allocator);
     } break;
 
     case AST_NODE_KIND_COMPARISON: {
@@ -946,10 +947,10 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
         PG_DYN_POP(nodes_after);
 
         *PG_DYN_PUSH_WITHIN_CAPACITY(nodes_after) = folded;
-        *PG_DYN_PUSH(&stack, allocator) = folded;
+        PG_DYN_PUSH(&stack, folded, allocator);
         continue;
       }
-      *PG_DYN_PUSH(&stack, allocator) = node;
+      PG_DYN_PUSH(&stack, node, allocator);
     } break;
 
     case AST_NODE_KIND_FN_DEFINITION: {
@@ -965,7 +966,7 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
 
     case AST_NODE_KIND_ADDRESS_OF: {
       PG_DYN_POP(&stack);
-      *PG_DYN_PUSH(&stack, allocator) = node;
+      PG_DYN_PUSH(&stack, node, allocator);
     } break;
 
     case AST_NODE_KIND_BRANCH: {
@@ -988,6 +989,6 @@ static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
     default:
       PG_ASSERT(0);
     }
-    *PG_DYN_PUSH(nodes_after, allocator) = node;
+    PG_DYN_PUSH(nodes_after, node, allocator);
   }
 }

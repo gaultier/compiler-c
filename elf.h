@@ -206,7 +206,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   // Pad.
   for (u64 i = program_encoded.len;
        i < PG_ROUNDUP(program_encoded.len, page_size); i++) {
-    *PG_DYN_PUSH(&sb, allocator) = 0;
+    PG_DYN_PUSH(&sb, 0, allocator);
   }
 
   // Rodata.
@@ -227,11 +227,11 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   }
 
   // Strings.
-  *PG_DYN_PUSH(&sb, allocator) = 0; // Null string.
+  PG_DYN_PUSH(&sb, 0, allocator); // Null string.
 
   for (u64 i = 0; i < PG_STATIC_ARRAY_LEN(elf_strings); i++) {
     PG_DYN_APPEND_SLICE(&sb, elf_strings[i], allocator);
-    *PG_DYN_PUSH(&sb, allocator) = 0; // Null terminator.
+    PG_DYN_PUSH(&sb, 0, allocator); // Null terminator.
   }
 
   for (u64 i = 0; i < PG_STATIC_ARRAY_LEN(section_headers); i++) {

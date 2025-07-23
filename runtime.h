@@ -70,7 +70,7 @@ pg_runtime_load_elf(Type **types, PgLogger *logger, PgAllocator *allocator) {
       ext_sym.type->kind = TYPE_KIND_FN_DEF;
       ext_sym.type->size = sizeof(void *);
 
-      *PG_DYN_PUSH(&res.value, allocator) = ext_sym;
+      PG_DYN_PUSH(&res.value, ext_sym, allocator);
 
       pg_log(logger, PG_LOG_LEVEL_DEBUG, "runtime: loaded external function",
              pg_log_c_s("name", name), pg_log_c_u64("text.len", text.len),
