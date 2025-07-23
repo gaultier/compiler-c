@@ -77,6 +77,12 @@ static CliOptions cli_options_parse(int argc, char *argv[],
       res.verbose = true;
     } else if (pg_string_eq(opt.desc.name_long, PG_S("optimize"))) {
       res.optimize = true;
+    } else if (pg_string_eq(opt.desc.name_long, PG_S("help"))) {
+      PgString help = pg_cli_generate_help(
+          descs, exe, description, plain_arguments_description, allocator);
+      printf("%.*s", (i32)help.len, help.data);
+
+      exit(0);
     }
   }
 
