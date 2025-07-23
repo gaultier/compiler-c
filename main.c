@@ -41,7 +41,7 @@ static CliOptions cli_options_parse(int argc, char *argv[],
   }
 
   if (res_parse.plain_arguments.len != 1) {
-    fprintf(stderr, "Expected one input file, was provided: %llu.",
+    fprintf(stderr, "Expected one input file, was provided: %" PRIu64 ".",
             res_parse.plain_arguments.len);
     goto die;
   }
@@ -52,11 +52,11 @@ static CliOptions cli_options_parse(int argc, char *argv[],
   for (u64 i = 0; i < res_parse.options.len; i++) {
     PgCliOption opt = PG_SLICE_AT(res_parse.options, i);
 
-    if (pg_string_eq(opt.desc.name_long, PG_S("verbose"))) {
+    if (pg_string_eq(opt.description.name_long, PG_S("verbose"))) {
       res.verbose = true;
-    } else if (pg_string_eq(opt.desc.name_long, PG_S("optimize"))) {
+    } else if (pg_string_eq(opt.description.name_long, PG_S("optimize"))) {
       res.optimize = true;
-    } else if (pg_string_eq(opt.desc.name_long, PG_S("help"))) {
+    } else if (pg_string_eq(opt.description.name_long, PG_S("help"))) {
       PgString help = pg_cli_generate_help(
           descs, exe, description, plain_arguments_description, allocator);
       printf("%.*s", (i32)help.len, help.data);
