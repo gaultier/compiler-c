@@ -15,6 +15,7 @@ typedef struct Type Type;
 struct Type {
   TypeKind kind;
   u8 ptr_level;
+  PG_PAD(6); // TODO: Optimize.
   u64 size;
   Origin origin;
 

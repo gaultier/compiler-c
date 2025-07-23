@@ -10,6 +10,7 @@ typedef enum {
 
 typedef struct {
   ArchitectureKind arch_kind;
+  PG_PAD(4);
   Architecture arch;
   AstNodeDyn nodes;
   AsmProgram program;

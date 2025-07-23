@@ -4,6 +4,7 @@
 typedef struct {
   PgString file_path;
   u32 line, column, file_offset_start;
+  PG_PAD(4); // TODO: Optimize.
 } Origin;
 
 static void origin_write(PgWriter *w, Origin origin, PgAllocator *allocator) {

@@ -7,4 +7,6 @@
 -Wall
 -Wextra
 -Werror
+-Wno-cast-function-type-mismatch
+-Wpadded
 -g3

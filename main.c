@@ -5,9 +5,10 @@
 #include "runtime.h"
 
 typedef struct {
+  PgString file_path;
+  PG_PAD(6);
   bool verbose;
   bool optimize;
-  PgString file_path;
 } CliOptions;
 
 static CliOptions cli_options_parse(int argc, char *argv[],

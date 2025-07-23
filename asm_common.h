@@ -4,20 +4,22 @@
 
 typedef struct {
   u32 indices_occupied_bitfield;
+  PG_PAD(4);
   RegisterSlice registers;
 } GprSet;
 
 typedef struct {
-  Register return_value;
   RegisterSlice caller_saved;
   RegisterSlice callee_saved;
   RegisterSlice calling_convention;
-  Register syscall_num;
   RegisterSlice syscall_calling_convention;
+  RegisterSlice gprs;
+  Register syscall_num;
   Register syscall_ret;
+  Register return_value;
   Register stack_pointer;
   Register base_pointer;
-  RegisterSlice gprs;
+  PG_PAD(3);
 } Architecture;
 
 typedef enum {
@@ -32,6 +34,7 @@ typedef struct {
   Register base;
   Register index;
   u8 scale;
+  PG_PAD(1);
   i32 displacement;
 } Amd64EffectiveAddress;
 
@@ -55,7 +58,7 @@ static const AsmOperandSize asm_sizes[] = {
 typedef struct {
   Amd64OperandKind kind;
   AsmOperandSize size;
-  PG_PAD(2);
+  PG_PAD(3);
   union {
     Register reg;
     u64 immediate;
@@ -88,6 +91,7 @@ typedef enum : u16 {
 
 typedef struct {
   Amd64InstructionKind kind;
+  PG_PAD(6); // TODO: Optimize.
   Amd64Operand lhs, rhs;
   Origin origin;
 } Amd64Instruction;
@@ -97,6 +101,7 @@ PG_DYN(Amd64Instruction) Amd64InstructionDyn;
 typedef struct {
   PgString name;
   u16 flags;
+  PG_PAD(6);
   union {
     Amd64InstructionDyn amd64_instructions;
   } u;
@@ -113,6 +118,7 @@ typedef struct {
   PgString name;
   u64 address_absolute;
   AsmConstantKind kind;
+  PG_PAD(4);
   union {
     u64 n64;
     PgString bytes;

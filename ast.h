@@ -49,6 +49,7 @@ typedef struct {
   LexTokenKind token_kind;
   AstNodeFlag flags;
   AstNodeKind kind;
+  PG_PAD(5); // TODO: Optimize.
 } AstNode;
 PG_DYN(AstNode) AstNodeDyn;
 
@@ -67,6 +68,7 @@ typedef struct {
   u32 label_id;
 
   bool err_mode;
+  PG_PAD(3);
 } AstParser;
 
 typedef struct {

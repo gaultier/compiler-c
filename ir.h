@@ -24,7 +24,7 @@ typedef enum : uint8_t {
   IR_OPERAND_KIND_VREG,
 } IrOperandKind;
 
-typedef enum {
+typedef enum : u8 {
   VREG_CONSTRAINT_NONE,
   VREG_CONSTRAINT_CONDITION_FLAGS,
   VREG_CONSTRAINT_SYSCALL_NUM,
@@ -44,11 +44,13 @@ typedef struct {
   VirtualRegisterConstraint constraint;
   bool addressed;
   bool addressable;
+  PG_PAD(1);
 } VirtualRegister;
 PG_DYN(VirtualRegister) VirtualRegisterDyn;
 
 typedef struct {
   IrOperandKind kind;
+  PG_PAD(7); // TODO: Optimize.
 
   union {
     Label label;
@@ -109,17 +111,18 @@ typedef struct {
 PG_DYN(Metadata) MetadataDyn;
 
 typedef struct {
+  IrOperand lhs, rhs;
+  Origin origin;
   IrInstructionKind kind;
   u8 args_count; // For IR readability only.
   u16 flags;
-  Origin origin;
   MetadataIndex meta_idx;
-  IrOperand lhs, rhs;
 } IrInstruction;
 PG_DYN(IrInstruction) IrInstructionDyn;
 
 typedef struct {
   u32 label_id;
+  PG_PAD(4);
   ErrorDyn *errors;
   PgString src;
   Type *types;
@@ -142,14 +145,16 @@ typedef struct {
   InterferenceGraph interference_graph;
   Origin origin;
   u16 flags;
+  PG_PAD(6); // TODO: Optimize.
 } FnDefinition;
 PG_DYN(FnDefinition) FnDefinitionDyn;
 
 typedef struct {
   AstNodeIndex node_idx;
   MetadataIndex meta_idx;
-  u32 scope_depth;
   Type *type;
+  u32 scope_depth;
+  PG_PAD(4); // TODO: Optimize.
 } IrLocalVar;
 PG_DYN(IrLocalVar) IrLocalVarDyn;
 

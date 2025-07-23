@@ -36,6 +36,7 @@ typedef enum {
 
 typedef struct {
   ErrorKind kind;
+  PG_PAD(4);
   Origin origin;
   PgString src_span;
   PgString src;
@@ -92,35 +93,30 @@ static void error_print(Error err, PgWriter *w, PgAllocator *allocator) {
     (void)pg_writer_write_full(w, PG_S("invalid utf8"), allocator);
     break;
   case ERROR_KIND_INVALID_LITERAL_NUMBER:
-    (void)pg_writer_write_full(w, PG_S("invalid number literal"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("invalid number literal"), allocator);
     break;
   case ERROR_KIND_INVALID_KEYWORD:
     (void)pg_writer_write_full(w, PG_S("invalid keyword"), allocator);
     break;
   case ERROR_KIND_PARSE_MISSING_PAREN_LEFT:
-    (void)pg_writer_write_full(w, PG_S("missing left parenthesis"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("missing left parenthesis"), allocator);
     break;
   case ERROR_KIND_PARSE_MISSING_PAREN_RIGHT:
-    (void)pg_writer_write_full(w, PG_S("missing right parenthesis"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("missing right parenthesis"), allocator);
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_COMMA:
-    (void)pg_writer_write_full(
-        w, PG_S("missing comma in syscall arguments"), allocator);
+    (void)pg_writer_write_full(w, PG_S("missing comma in syscall arguments"),
+                               allocator);
     break;
   case ERROR_KIND_PARSE_SYSCALL_MISSING_OPERAND:
-    (void)pg_writer_write_full(w, PG_S("missing syscall argument"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("missing syscall argument"), allocator);
     break;
   case ERROR_KIND_PARSE_BINARY_OP_MISSING_RHS:
     (void)pg_writer_write_full(
         w, PG_S("missing second operand in binary operation"), allocator);
     break;
   case ERROR_KIND_PARSE_STATEMENT:
-    (void)pg_writer_write_full(w, PG_S("failed to parse statement"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("failed to parse statement"), allocator);
     break;
   case ERROR_KIND_PARSE_VAR_DECL_MISSING_COLON_EQUAL:
     (void)pg_writer_write_full(
@@ -128,8 +124,8 @@ static void error_print(Error err, PgWriter *w, PgAllocator *allocator) {
         allocator);
     break;
   case ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE:
-    (void)pg_writer_write_full(
-        w, PG_S("missing value in variable declaration"), allocator);
+    (void)pg_writer_write_full(w, PG_S("missing value in variable declaration"),
+                               allocator);
     break;
   case ERROR_KIND_PARSE_FACTOR_MISSING_RHS:
     (void)pg_writer_write_full(
@@ -155,36 +151,32 @@ static void error_print(Error err, PgWriter *w, PgAllocator *allocator) {
         allocator);
     break;
   case ERROR_KIND_PARSE_IF_MISSING_CONDITION:
-    (void)pg_writer_write_full(w, PG_S("missing if condition"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("missing if condition"), allocator);
     break;
   case ERROR_KIND_PARSE_IF_MISSING_THEN_BLOCK:
-    (void)pg_writer_write_full(w, PG_S("missing if-then block"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("missing if-then block"), allocator);
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_LEFT:
-    (void)pg_writer_write_full(
-        w, PG_S("missing '{' at the start of block"), allocator);
+    (void)pg_writer_write_full(w, PG_S("missing '{' at the start of block"),
+                               allocator);
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_CURLY_RIGHT:
-    (void)pg_writer_write_full(
-        w, PG_S("missing '}' at the end of block"), allocator);
+    (void)pg_writer_write_full(w, PG_S("missing '}' at the end of block"),
+                               allocator);
     break;
   case ERROR_KIND_PARSE_BLOCK_MISSING_STATEMENT:
     (void)pg_writer_write_full(w, PG_S("missing statement in block"),
-                                      allocator);
+                               allocator);
     break;
   case ERROR_KIND_PARSE_ASSERT_MISSING_EXPRESSION:
-    (void)pg_writer_write_full(w, PG_S("missing assert expression"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("missing assert expression"), allocator);
     break;
   case ERROR_KIND_PARSE_PRINTLN_MISSING_EXPRESSION:
     (void)pg_writer_write_full(w, PG_S("missing println expression"),
-                                      allocator);
+                               allocator);
     break;
   case ERROR_KIND_WRONG_ARGS_COUNT:
-    (void)pg_writer_write_full(w, PG_S("wrong argument count"),
-                                      allocator);
+    (void)pg_writer_write_full(w, PG_S("wrong argument count"), allocator);
     break;
 
   case ERROR_KIND_MALFORMED_AST:

@@ -27,21 +27,22 @@ typedef enum : u8 {
 } LexTokenKind;
 
 typedef struct {
-  LexTokenKind kind;
-  Origin origin;
   PgString s;
+  Origin origin;
+  LexTokenKind kind;
+  PG_PAD(7); // TODO: Optimize.
 } LexToken;
 PG_DYN(LexToken) LexTokenDyn;
 
 typedef struct {
   PgString file_path;
   PgString src;
+  ErrorDyn *errors;
   u32 line, column;
   LexTokenDyn tokens;
   PgUtf8Iterator it;
-
-  ErrorDyn *errors;
   bool err_mode;
+  PG_PAD(7);
 } Lexer;
 
 [[nodiscard]]
