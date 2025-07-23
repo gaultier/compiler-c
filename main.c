@@ -7,56 +7,96 @@
 typedef struct {
   bool verbose;
   bool optimize;
-  char *file_path;
+  PgString file_path;
 } CliOptions;
 
-static void cli_print_help(char *exe) {
-  printf("Usage: %s [-O] [-v] <in.unicorn>\n", exe);
-}
-
-static CliOptions cli_options_parse(int argc, char *argv[]) {
+static CliOptions cli_options_parse(int argc, char *argv[],
+                                    PgAllocator *allocator) {
   PG_ASSERT(argc >= 1);
-  char *exe = argv[0];
-  if (argc < 2) {
-    cli_print_help(exe);
-    exit(1);
+  PgString exe = pg_cstr_to_string(argv[0]);
+
+  PgString description =
+      PG_S("An experimental compiler to x86_64 Linux (for now)");
+  PgString plain_arguments_description = PG_S("file.unicorn");
+  PgCliOptionDescription descs[] = {
+      {
+          .name_short = PG_S("v"),
+          .name_long = PG_S("verbose"),
+          .description = PG_S("Enable verbose mode"),
+      },
+      {
+          .name_short = PG_S("O"),
+          .name_long = PG_S("optimize"),
+          .description = PG_S("Enable optimizations (ignored for now)"),
+      },
+  };
+  PgCliOptionDescriptionSlice desc_slice = PG_SLICE_FROM_C(descs);
+
+  PgCliParseResult res_parse = pg_cli_parse(desc_slice, argc, argv, allocator);
+  if (0 != res_parse.err) {
+    switch (res_parse.err) {
+    case PG_ERR_CLI_MISSING_REQUIRED_OPTION:
+      fprintf(stderr, "Missing required CLI option %.*s.",
+              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
+      break;
+    case PG_ERR_CLI_MISSING_REQUIRED_OPTION_VALUE:
+      fprintf(stderr, "Missing required value for CLI option %.*s.",
+              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
+      break;
+    case PG_ERR_CLI_UNKNOWN_OPTION:
+      fprintf(stderr, "Encountered unknown CLI option %.*s.",
+              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
+      break;
+    case PG_ERR_CLI_FORBIDEN_OPTION_VALUE:
+      fprintf(stderr, "Encountered forbidden value for CLI option %.*s.",
+              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
+      break;
+    case PG_ERR_CLI_MALFORMED_OPTION:
+      fprintf(stderr, "Malformed CLI option %.*s.\n",
+              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
+      break;
+    default:
+      fprintf(stderr, "Unknown CLI options parse error.");
+    }
+    goto die;
+  }
+
+  if (res_parse.plain_arguments.len != 1) {
+    fprintf(stderr, "Expected one input file, was provided: %llu.",
+            res_parse.plain_arguments.len);
+    goto die;
   }
 
   CliOptions res = {0};
+  res.file_path = PG_SLICE_AT(res_parse.plain_arguments, 0);
 
-  i32 c = 0;
-  while ((c = getopt(argc, argv, "Ov")) != -1) {
-    switch (c) {
-    case 'O':
-      res.optimize = true;
-      break;
-    case 'v':
+  for (u64 i = 0; i < res_parse.options.len; i++) {
+    PgCliOption opt = PG_SLICE_AT(res_parse.options, i);
+
+    if (pg_string_eq(opt.desc.name_long, PG_S("verbose"))) {
       res.verbose = true;
-      break;
-    default:
-      fprintf(stderr, "Unknown option %c\n", (char)c);
-      cli_print_help(exe);
-      exit(1);
+    } else if (pg_string_eq(opt.desc.name_long, PG_S("optimize"))) {
+      res.optimize = true;
     }
   }
 
-  if (optind >= argc) {
-    fprintf(stderr, "Missing filename <in.unicorn>\n");
-    cli_print_help(exe);
-    exit(1);
-  }
-
-  res.file_path = argv[optind];
-
   return res;
+
+die:
+  fprintf(stderr, "\n\n");
+  PgString help = pg_cli_generate_help(desc_slice, exe, description,
+                                       plain_arguments_description, allocator);
+  fprintf(stderr, "%.*s", (i32)help.len, help.data);
+
+  exit(1);
 }
 
 int main(int argc, char *argv[]) {
-  CliOptions cli_opts = cli_options_parse(argc, argv);
-
   PgArena arena = pg_arena_make_from_virtual_mem(16 * PG_MiB);
   PgArenaAllocator arena_allocator = pg_make_arena_allocator(&arena);
   PgAllocator *allocator = pg_arena_allocator_as_allocator(&arena_allocator);
+
+  CliOptions cli_opts = cli_options_parse(argc, argv, allocator);
 
   PgLogLevel log_level =
       cli_opts.verbose ? PG_LOG_LEVEL_DEBUG : PG_LOG_LEVEL_ERROR;
@@ -68,21 +108,20 @@ int main(int argc, char *argv[]) {
                                         pg_os_stdout(), 4 * PG_KiB, allocator)
                                   : pg_writer_make_noop();
 
-  PgString file_path = pg_cstr_to_string(cli_opts.file_path);
   PgStringResult file_read_res =
-      pg_file_read_full_from_path(file_path, allocator);
+      pg_file_read_full_from_path(cli_opts.file_path, allocator);
   if (file_read_res.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read file",
            pg_log_c_err("err", file_read_res.err),
-           pg_log_c_s("path", file_path));
+           pg_log_c_s("path", cli_opts.file_path));
     return 1;
   }
   pg_log(&logger, PG_LOG_LEVEL_INFO, "read input file",
-         pg_log_c_s("file_path", file_path),
+         pg_log_c_s("file_path", cli_opts.file_path),
          pg_log_c_u64("count_bytes", file_read_res.res.len));
 
   ErrorDyn errors = {0};
-  Lexer lexer = lex_make_lexer(file_path, file_read_res.res, &errors);
+  Lexer lexer = lex_make_lexer(cli_opts.file_path, file_read_res.res, &errors);
   lex(&lexer, allocator);
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "lex tokens",
@@ -145,7 +184,7 @@ int main(int argc, char *argv[]) {
     goto err;
   }
 
-  PgString stem = pg_path_stem(file_path);
+  PgString stem = pg_path_stem(cli_opts.file_path);
   PgString exe_path = pg_string_concat(stem, PG_S(".bin"), allocator);
   ArchitectureKind arch_target = ARCH_KIND_AMD64; // TODO: CLI opt.
   // TODO: function.
