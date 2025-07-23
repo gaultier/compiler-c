@@ -34,30 +34,7 @@ static CliOptions cli_options_parse(int argc, char *argv[],
 
   PgCliParseResult res_parse = pg_cli_parse(&descs, argc, argv, allocator);
   if (0 != res_parse.err) {
-    switch (res_parse.err) {
-    case PG_ERR_CLI_MISSING_REQUIRED_OPTION:
-      fprintf(stderr, "Missing required CLI option %.*s.",
-              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
-      break;
-    case PG_ERR_CLI_MISSING_REQUIRED_OPTION_VALUE:
-      fprintf(stderr, "Missing required value for CLI option %.*s.",
-              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
-      break;
-    case PG_ERR_CLI_UNKNOWN_OPTION:
-      fprintf(stderr, "Encountered unknown CLI option %.*s.",
-              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
-      break;
-    case PG_ERR_CLI_FORBIDEN_OPTION_VALUE:
-      fprintf(stderr, "Encountered forbidden value for CLI option %.*s.",
-              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
-      break;
-    case PG_ERR_CLI_MALFORMED_OPTION:
-      fprintf(stderr, "Malformed CLI option %.*s.\n",
-              (i32)res_parse.err_argv.len, res_parse.err_argv.data);
-      break;
-    default:
-      fprintf(stderr, "Unknown CLI options parse error.");
-    }
+    pg_cli_print_parse_err(res_parse);
     goto die;
   }
 
