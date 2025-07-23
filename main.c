@@ -16,7 +16,7 @@ static CliOptions cli_options_parse(int argc, char *argv[],
   PgString exe = pg_cstr_to_string(argv[0]);
 
   PgString description =
-      PG_S("An experimental compiler to x86_64 Linux (for now)");
+      PG_S("An experimental compiler targeting x86_64 Linux");
   PgString plain_arguments_description = PG_S("file.unicorn");
   PgCliOptionDescriptionDyn descs = {0};
   PG_DYN_ENSURE_CAP(&descs, 4, allocator);
@@ -26,11 +26,13 @@ static CliOptions cli_options_parse(int argc, char *argv[],
       .name_long = PG_S("verbose"),
       .description = PG_S("Enable verbose mode"),
   };
+#if 0
   *PG_DYN_PUSH_WITHIN_CAPACITY(&descs) = (PgCliOptionDescription){
       .name_short = PG_S("O"),
       .name_long = PG_S("optimize"),
-      .description = PG_S("Enable optimizations (ignored for now)"),
-  };
+      .description = PG_S("Enable optimizations"),
+};
+#endif
 
   PgCliParseResult res_parse = pg_cli_parse(&descs, argc, argv, allocator);
   if (0 != res_parse.err) {
