@@ -70,16 +70,16 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
       return res;
     }
 
-    // err_expected | stderr_empty | ok
+    // err_expected | stderr_empty | has_value
     // 0                 0         | 0
     // 0                 1         | 1
     // 1                 0         | 1
     // 1                 1         | 0
     // => xor
 
-    bool stderr_ok =
+    bool stderr_opt =
         err_expected ^ pg_string_is_empty(res.process_status.stderr_captured);
-    if (!stderr_ok) {
+    if (!stderr_opt) {
       res.err = PG_ERR_INVALID_VALUE;
       return res;
     }
@@ -136,7 +136,7 @@ static CompileAndRunResult test_run(PgString dir_name, PgString file_name,
       return res;
     }
 
-    // Could be ok depending on the test case.
+    // Could be has_value depending on the test case.
     // Need code comments to know what output to expect.
 #if 0
     if (!pg_string_is_empty(res.process_status.stdout_captured)) {
@@ -886,9 +886,9 @@ static void test_asm() {
   }
   PG_ASSERT(first_differing_byte_idx >= 0);
 
-  Pgu64RangeOk res_search_ins = pg_u64_range_search(
+  Pgu64RangeOption res_search_ins = pg_u64_range_search(
       PG_DYN_SLICE(Pgu64Slice, ins_offsets), (u64)first_differing_byte_idx);
-  PG_ASSERT(res_search_ins.ok);
+  PG_ASSERT(res_search_ins.has_value);
   Pgu64Range range_ins = res_search_ins.res;
 
   // NOTE: The two excerpts might actually differ in length and this might
