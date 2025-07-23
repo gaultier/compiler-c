@@ -18,7 +18,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   if (res_file.err) {
     return res_file.err;
   }
-  PgFileDescriptor file = res_file.res;
+  PgFileDescriptor file = res_file.value;
 
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;

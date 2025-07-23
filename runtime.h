@@ -11,7 +11,7 @@ PG_RESULT(ExternalFnDyn) ExternalFnDynResult;
 [[nodiscard]] static ExternalFnDynResult
 pg_runtime_load_elf(Type **types, PgLogger *logger, PgAllocator *allocator) {
   ExternalFnDynResult res = {0};
-  PG_DYN_ENSURE_CAP(&res.res, 128, allocator);
+  PG_DYN_ENSURE_CAP(&res.value, 128, allocator);
 
   PgString file_path = PG_S("runtime_amd64_linux.o");
   PgStringResult res_read = pg_file_read_full_from_path(file_path, allocator);
@@ -22,7 +22,7 @@ pg_runtime_load_elf(Type **types, PgLogger *logger, PgAllocator *allocator) {
     return res;
   }
 
-  PgString runtime_bin = res_read.res;
+  PgString runtime_bin = res_read.value;
   PgElfResult res_elf = pg_elf_parse(runtime_bin, allocator);
   if (res_elf.err) {
     pg_log(logger, PG_LOG_LEVEL_ERROR, "failed to parse runtime file",
@@ -31,7 +31,7 @@ pg_runtime_load_elf(Type **types, PgLogger *logger, PgAllocator *allocator) {
     return res;
   }
 
-  PgElf elf = res_elf.res;
+  PgElf elf = res_elf.value;
 
   for (u64 i = 0; i < elf.symtab.len; i++) {
     PgElfSymbolTableEntry sym = PG_SLICE_AT(elf.symtab, i);
@@ -53,14 +53,14 @@ pg_runtime_load_elf(Type **types, PgLogger *logger, PgAllocator *allocator) {
       return res;
     }
 
-    Pgu8Slice text = res_text.res;
+    Pgu8Slice text = res_text.value;
 
     PgStringResult res_name = pg_elf_get_string_at(elf, sym.name);
     if (res_name.err) {
       res.err = res_name.err;
       return res;
     }
-    PgString name = res_name.res;
+    PgString name = res_name.value;
 
     // HACK: Should be function signatures somewhere in `runtime.unicorn`.
     if (pg_string_eq(name, PG_S("builtin.println_u64"))) {
@@ -70,7 +70,7 @@ pg_runtime_load_elf(Type **types, PgLogger *logger, PgAllocator *allocator) {
       ext_sym.type->kind = TYPE_KIND_FN_DEF;
       ext_sym.type->size = sizeof(void *);
 
-      *PG_DYN_PUSH(&res.res, allocator) = ext_sym;
+      *PG_DYN_PUSH(&res.value, allocator) = ext_sym;
 
       pg_log(logger, PG_LOG_LEVEL_DEBUG, "runtime: loaded external function",
              pg_log_c_s("name", name), pg_log_c_u64("text.len", text.len),

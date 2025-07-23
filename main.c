@@ -103,10 +103,11 @@ int main(int argc, char *argv[]) {
   }
   pg_log(&logger, PG_LOG_LEVEL_INFO, "read input file",
          pg_log_c_s("file_path", cli_opts.file_path),
-         pg_log_c_u64("count_bytes", file_read_res.res.len));
+         pg_log_c_u64("count_bytes", file_read_res.value.len));
 
   ErrorDyn errors = {0};
-  Lexer lexer = lex_make_lexer(cli_opts.file_path, file_read_res.res, &errors);
+  Lexer lexer =
+      lex_make_lexer(cli_opts.file_path, file_read_res.value, &errors);
   lex(&lexer, allocator);
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "lex tokens",
@@ -156,7 +157,7 @@ int main(int argc, char *argv[]) {
   if (res_ext_fns.err) {
     return 1;
   }
-  ExternalFnDyn ext_fns = res_ext_fns.res;
+  ExternalFnDyn ext_fns = res_ext_fns.value;
   PG_ASSERT(ext_fns.len);
 
   FnDefinitionDyn fn_defs =
