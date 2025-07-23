@@ -18,21 +18,21 @@ static CliOptions cli_options_parse(int argc, char *argv[],
   PgString description =
       PG_S("An experimental compiler to x86_64 Linux (for now)");
   PgString plain_arguments_description = PG_S("file.unicorn");
-  PgCliOptionDescription descs[] = {
-      {
-          .name_short = PG_S("v"),
-          .name_long = PG_S("verbose"),
-          .description = PG_S("Enable verbose mode"),
-      },
-      {
-          .name_short = PG_S("O"),
-          .name_long = PG_S("optimize"),
-          .description = PG_S("Enable optimizations (ignored for now)"),
-      },
-  };
-  PgCliOptionDescriptionSlice desc_slice = PG_SLICE_FROM_C(descs);
+  PgCliOptionDescriptionDyn descs = {0};
+  PG_DYN_ENSURE_CAP(&descs, 4, allocator);
 
-  PgCliParseResult res_parse = pg_cli_parse(desc_slice, argc, argv, allocator);
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&descs) = (PgCliOptionDescription){
+      .name_short = PG_S("v"),
+      .name_long = PG_S("verbose"),
+      .description = PG_S("Enable verbose mode"),
+  };
+  *PG_DYN_PUSH_WITHIN_CAPACITY(&descs) = (PgCliOptionDescription){
+      .name_short = PG_S("O"),
+      .name_long = PG_S("optimize"),
+      .description = PG_S("Enable optimizations (ignored for now)"),
+  };
+
+  PgCliParseResult res_parse = pg_cli_parse(&descs, argc, argv, allocator);
   if (0 != res_parse.err) {
     switch (res_parse.err) {
     case PG_ERR_CLI_MISSING_REQUIRED_OPTION:
@@ -84,7 +84,7 @@ static CliOptions cli_options_parse(int argc, char *argv[],
 
 die:
   fprintf(stderr, "\n\n");
-  PgString help = pg_cli_generate_help(desc_slice, exe, description,
+  PgString help = pg_cli_generate_help(descs, exe, description,
                                        plain_arguments_description, allocator);
   fprintf(stderr, "%.*s", (i32)help.len, help.data);
 
@@ -215,8 +215,8 @@ int main(int argc, char *argv[]) {
   return 0;
 
 err:
-  // Errors could have been found at various stages so we sort them by order of
-  // appearance in the file.
+  // Errors could have been found at various stages so we sort them by order
+  // of appearance in the file.
   qsort(errors.data, errors.len, sizeof(Error),
         err_compare_errors_by_origin_offset);
 
