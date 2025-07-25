@@ -328,7 +328,7 @@ static bool ast_parse_primary(AstParser *parser, PgAllocator *allocator) {
     AstNode node = {0};
     node.kind = AST_NODE_KIND_NUMBER;
     node.origin = first.origin;
-    PgParseNumberResult parse_res = pg_string_parse_u64(first.s);
+    PgParseNumberResult parse_res = pg_string_parse_u64(first.s, 10, true);
     PG_ASSERT(parse_res.present);
     PG_ASSERT(pg_string_is_empty(parse_res.remaining));
     node.u.n64 = parse_res.n;
