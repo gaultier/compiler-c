@@ -2,7 +2,6 @@
 #include "asm.h"
 #include "elf.h"
 #include "ir.h"
-#include "runtime.h"
 
 typedef struct {
   PgString file_path;
@@ -152,14 +151,6 @@ int main(int argc, char *argv[]) {
   }
 
   IrEmitter ir_emitter = {.errors = &errors, .src = lexer.src};
-  // TODO: Should probably be earlier.
-  ExternalFnDynResult res_ext_fns =
-      pg_runtime_load_elf(&ir_emitter.types, &logger, allocator);
-  if (res_ext_fns.err) {
-    return 1;
-  }
-  ExternalFnDyn ext_fns = res_ext_fns.value;
-  PG_ASSERT(ext_fns.len);
 
   FnDefinitionDyn fn_defs =
       ir_emit_from_ast(&ir_emitter, nodes_input, allocator);

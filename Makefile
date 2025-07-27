@@ -3,7 +3,7 @@
 
 LD = lld
 
-CFLAGS = -fpie -fno-omit-frame-pointer -gsplit-dwarf -march=native -fuse-ld=$(LD) -std=c23 -Wall -Wextra -Werror -Wno-cast-function-type-mismatch -Wpadded -g3
+CFLAGS = -fpie -fno-omit-frame-pointer -march=native -fuse-ld=$(LD) -std=c23 -Wall -Wextra -Werror -Wno-cast-function-type-mismatch -Wpadded -g3
 
 LDFLAGS = -flto
 
@@ -37,9 +37,6 @@ test_release.bin: $(TEST_C_FILES) main_release.bin
 
 test_release_sanitizer.bin: $(TEST_C_FILES) main_release.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) test.c -o $@ -O2 -flto -fsanitize=$(SANITIZERS) -Wno-unused
-
-runtime_amd64_linux.o: runtime_amd64_linux.c
-	$(CC) $(CFLAGS) $< -c -O2 -Wno-unused -Wno-unused-command-line-argument
 
 all: main_debug.bin main_debug_sanitizer.bin main_release.bin main_release_sanitizer.bin test_debug.bin test_debug_sanitizer.bin test_release.bin test_release_sanitizer.bin
 

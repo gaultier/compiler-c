@@ -303,6 +303,7 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
   if (!ast_parse_expr(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE,
                   token_colon_equal.origin, allocator);
+    pg_stack_trace_print_dwarf();
     return false;
   }
 
