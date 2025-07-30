@@ -60,7 +60,7 @@ static const Register amd64_register_allocator_gprs[] = {
     {AMD64_R15},
 };
 
-static const RegisterSlice amd64_register_allocator_gprs_slice = {
+static const PG_SLICE(Register) amd64_register_allocator_gprs_slice = {
     .data = (Register *)amd64_register_allocator_gprs,
     .len = PG_STATIC_ARRAY_LEN(amd64_register_allocator_gprs),
 };

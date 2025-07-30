@@ -5,15 +5,15 @@
 typedef struct {
   u32 indices_occupied_bitfield;
   PG_PAD(4);
-  RegisterSlice registers;
+  PG_SLICE(Register) registers;
 } GprSet;
 
 typedef struct {
-  RegisterSlice caller_saved;
-  RegisterSlice callee_saved;
-  RegisterSlice calling_convention;
-  RegisterSlice syscall_calling_convention;
-  RegisterSlice gprs;
+  PG_SLICE(Register) caller_saved;
+  PG_SLICE(Register) callee_saved;
+  PG_SLICE(Register) calling_convention;
+  PG_SLICE(Register) syscall_calling_convention;
+  PG_SLICE(Register) gprs;
   Register syscall_num;
   Register syscall_ret;
   Register return_value;
@@ -134,7 +134,7 @@ PG_DYN_DECL(LabelAddress);
 
 typedef struct {
   AsmCodeSectionDyn text;
-  AsmConstantDyn rodata;
+  PG_DYN(AsmConstant) rodata;
   u64 vm_start;
   LabelAddressDyn label_addresses;
   LabelAddressDyn jumps_to_backpatch;
