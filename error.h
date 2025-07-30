@@ -42,7 +42,7 @@ typedef struct {
   PgString src;
   PgString explanation;
 } Error;
-PG_DYN_DECL(Error) ErrorDyn;
+PG_DYN_DECL(Error);
 
 static void err_print_src_span(PgString src, PgString src_span, PgWriter *w,
                                PgAllocator *allocator) {

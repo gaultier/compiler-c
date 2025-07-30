@@ -46,7 +46,7 @@ typedef struct {
   bool addressable;
   PG_PAD(1);
 } VirtualRegister;
-PG_DYN_DECL(VirtualRegister) VirtualRegisterDyn;
+PG_DYN_DECL(VirtualRegister);
 
 typedef struct {
   IrOperandKind kind;
@@ -66,8 +66,8 @@ typedef struct {
 typedef struct {
   u8 value;
 } Register;
-PG_SLICE_DECL(Register) RegisterSlice;
-PG_DYN_DECL(Register) RegisterDyn;
+PG_SLICE_DECL(Register);
+PG_DYN_DECL(Register);
 
 typedef enum {
   MEMORY_LOCATION_KIND_NONE,
@@ -89,7 +89,7 @@ typedef struct {
 #endif
   } u;
 } MemoryLocation;
-PG_DYN_DECL(MemoryLocation) MemoryLocationDyn;
+PG_DYN_DECL(MemoryLocation);
 
 typedef struct {
   InstructionIndex lifetime_start, lifetime_end;
@@ -108,7 +108,7 @@ typedef struct {
   bool tombstone;
 #endif
 } Metadata;
-PG_DYN_DECL(Metadata) MetadataDyn;
+PG_DYN_DECL(Metadata);
 
 typedef struct {
   IrOperand lhs, rhs;
@@ -118,7 +118,7 @@ typedef struct {
   u16 flags;
   MetadataIndex meta_idx;
 } IrInstruction;
-PG_DYN_DECL(IrInstruction) IrInstructionDyn;
+PG_DYN_DECL(IrInstruction);
 
 typedef struct {
   u32 label_id;
@@ -147,7 +147,7 @@ typedef struct {
   u16 flags;
   PG_PAD(6); // TODO: Optimize.
 } FnDefinition;
-PG_DYN_DECL(FnDefinition) FnDefinitionDyn;
+PG_DYN_DECL(FnDefinition);
 
 typedef struct {
   AstNodeIndex node_idx;
@@ -156,7 +156,7 @@ typedef struct {
   u32 scope_depth;
   PG_PAD(4); // TODO: Optimize.
 } IrLocalVar;
-PG_DYN_DECL(IrLocalVar) IrLocalVarDyn;
+PG_DYN_DECL(IrLocalVar);
 
 [[nodiscard]] static MetadataIndex metadata_last_idx(MetadataDyn metadata) {
   PG_ASSERT(metadata.len > 0);

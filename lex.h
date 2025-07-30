@@ -32,7 +32,7 @@ typedef struct {
   LexTokenKind kind;
   PG_PAD(7); // TODO: Optimize.
 } LexToken;
-PG_DYN_DECL(LexToken) LexTokenDyn;
+PG_DYN_DECL(LexToken);
 
 typedef struct {
   PgString file_path;

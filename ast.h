@@ -51,12 +51,12 @@ typedef struct {
   AstNodeKind kind;
   PG_PAD(5); // TODO: Optimize.
 } AstNode;
-PG_DYN_DECL(AstNode) AstNodeDyn;
+PG_DYN_DECL(AstNode);
 
 typedef struct {
   u32 value;
 } AstNodeIndex;
-PG_DYN_DECL(AstNodeIndex) AstNodeIndexDyn;
+PG_DYN_DECL(AstNodeIndex);
 
 typedef struct {
   Lexer lexer;
@@ -74,7 +74,7 @@ typedef struct {
 typedef struct {
   u32 value;
 } MetadataIndex;
-PG_DYN_DECL(MetadataIndex) MetadataIndexDyn;
+PG_DYN_DECL(MetadataIndex);
 
 static void ast_advance_to_next_line_from_last_error(AstParser *parser) {
   // Already at EOF.
