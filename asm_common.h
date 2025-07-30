@@ -133,11 +133,11 @@ typedef struct {
 PG_DYN_DECL(LabelAddress);
 
 typedef struct {
-  PG_DYN(AmdCodeSection) text;
+  PG_DYN(AsmCodeSection) text;
   PG_DYN(AsmConstant) rodata;
   u64 vm_start;
-  LabelAddressDyn label_addresses;
-  LabelAddressDyn jumps_to_backpatch;
+  PG_DYN(LabelAddress) label_addresses;
+  PG_DYN(LabelAddress) jumps_to_backpatch;
 
   PgString file_path;
 } AsmProgram;
