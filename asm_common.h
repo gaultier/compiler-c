@@ -133,7 +133,7 @@ typedef struct {
 PG_DYN_DECL(LabelAddress);
 
 typedef struct {
-  AsmCodeSectionDyn text;
+  PG_DYN(AmdCodeSection) text;
   PG_DYN(AsmConstant) rodata;
   u64 vm_start;
   LabelAddressDyn label_addresses;
