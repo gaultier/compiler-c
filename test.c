@@ -849,7 +849,7 @@ static void test_asm() {
   gen_lea(&writer_asm_text, &instructions);
   gen_mov(&writer_asm_text, &instructions);
 
-  PgString asm_s = PG_DYN_SLICE(PgString, writer_asm_text.u.bytes);
+  PgString asm_s = PG_DYN_TO_SLICE(PgString, writer_asm_text.u.bytes);
   PgString expected = run_assembler(asm_s, allocator);
 
   Pgu8Dyn sb = {0};
@@ -866,7 +866,7 @@ static void test_asm() {
     *PG_DYN_PUSH_WITHIN_CAPACITY(&ins_offsets) = sb.len;
     amd64_encode_instruction(&program, &sb, ins, allocator);
   }
-  PgString actual = PG_DYN_SLICE(PgString, sb);
+  PgString actual = PG_DYN_TO_SLICE(PgString, sb);
 
   bool eq = pg_bytes_eq(actual, expected);
   if (eq) {
@@ -887,7 +887,7 @@ static void test_asm() {
   PG_ASSERT(first_differing_byte_idx >= 0);
 
   Pgu64RangeOption res_search_ins = pg_u64_range_search(
-      PG_DYN_SLICE(Pgu64Slice, ins_offsets), (u64)first_differing_byte_idx);
+      PG_DYN_TO_SLICE(Pgu64Slice, ins_offsets), (u64)first_differing_byte_idx);
   PG_ASSERT(res_search_ins.has_value);
   Pgu64Range range_ins = res_search_ins.value;
 

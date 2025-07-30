@@ -724,7 +724,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
                 emitter->src, node.origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
                 node.origin.file_offset_start + PG_S("assert(").len),
-            .explanation = PG_DYN_SLICE(PgString, sb),
+            .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
       }
@@ -772,7 +772,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
                 emitter->src, node.origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
                 node.origin.file_offset_start + PG_S("assert(").len),
-            .explanation = PG_DYN_SLICE(PgString, sb),
+            .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
       }
@@ -1074,7 +1074,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
                 emitter->src, node.origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
                 node.origin.file_offset_start + PG_S("assert(").len),
-            .explanation = PG_DYN_SLICE(PgString, sb),
+            .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
       }
@@ -1102,7 +1102,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
                 emitter->src, node.origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
                 node.origin.file_offset_start + PG_S("assert(").len),
-            .explanation = PG_DYN_SLICE(PgString, sb),
+            .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
       }

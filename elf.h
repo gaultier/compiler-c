@@ -241,7 +241,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
     PG_DYN_APPEND_SLICE(&sb, s, allocator);
   }
 
-  PgString sb_string = PG_DYN_SLICE(PgString, sb);
+  PgString sb_string = PG_DYN_TO_SLICE(PgString, sb);
 
   return pg_file_write_full_with_descriptor(file, sb_string);
 }

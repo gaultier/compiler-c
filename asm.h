@@ -112,7 +112,7 @@ static Pgu8Slice asm_encode_program_text(AsmEmitter *emitter,
 
   asm_section_resolve_jumps(&emitter->program, sb);
 
-  return PG_DYN_SLICE(Pgu8Slice, sb);
+  return PG_DYN_TO_SLICE(Pgu8Slice, sb);
 }
 
 static void asm_gpr_set_add_idx(GprSet *set, u32 idx) {
