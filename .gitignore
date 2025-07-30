@@ -9,3 +9,4 @@ test*
 !*.c
 !*.h
 *.dwo
+*.dSYM
