@@ -4,7 +4,7 @@
 typedef struct {
   u32 value;
 } InterferenceNodeIndex;
-PG_DYN(InterferenceNodeIndex) InterferenceNodeIndexDyn;
+PG_DYN_DECL(InterferenceNodeIndex) InterferenceNodeIndexDyn;
 
 [[nodiscard]]
 static InterferenceGraph reg_build_interference_graph(MetadataDyn metadata,

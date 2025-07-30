@@ -66,8 +66,8 @@ typedef struct {
     Label label;
   } u;
 } Amd64Operand;
-PG_SLICE(Amd64Operand) Amd64OperandSlice;
-PG_DYN(Amd64Operand) Amd64OperandDyn;
+PG_SLICE_DECL(Amd64Operand) Amd64OperandSlice;
+PG_DYN_DECL(Amd64Operand) Amd64OperandDyn;
 
 typedef enum : u16 {
   AMD64_INSTRUCTION_KIND_NONE,
@@ -95,8 +95,8 @@ typedef struct {
   Amd64Operand lhs, rhs;
   Origin origin;
 } Amd64Instruction;
-PG_SLICE(Amd64Instruction) Amd64InstructionSlice;
-PG_DYN(Amd64Instruction) Amd64InstructionDyn;
+PG_SLICE_DECL(Amd64Instruction) Amd64InstructionSlice;
+PG_DYN_DECL(Amd64Instruction) Amd64InstructionDyn;
 
 typedef struct {
   PgString name;
@@ -106,7 +106,7 @@ typedef struct {
     Amd64InstructionDyn amd64_instructions;
   } u;
 } AsmCodeSection;
-PG_DYN(AsmCodeSection) AsmCodeSectionDyn;
+PG_DYN_DECL(AsmCodeSection) AsmCodeSectionDyn;
 
 typedef enum {
   ASM_CONSTANT_KIND_NONE,
@@ -124,13 +124,13 @@ typedef struct {
     PgString bytes;
   } u;
 } AsmConstant;
-PG_DYN(AsmConstant) AsmConstantDyn;
+PG_DYN_DECL(AsmConstant) AsmConstantDyn;
 
 typedef struct {
   Label label;
   u64 code_address;
 } LabelAddress;
-PG_DYN(LabelAddress) LabelAddressDyn;
+PG_DYN_DECL(LabelAddress) LabelAddressDyn;
 
 typedef struct {
   AsmCodeSectionDyn text;
