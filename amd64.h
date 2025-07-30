@@ -1893,7 +1893,7 @@ static void amd64_encode_instruction(AsmProgram *program, Pgu8Dyn *sb,
 
 [[nodiscard]] static Amd64Operand
 amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
-                                               MetadataDyn metadata) {
+                                               PG_DYN(Metadata) metadata) {
   PG_ASSERT(meta_idx.value);
   Metadata meta = PG_SLICE_AT(metadata, meta_idx.value);
   MemoryLocation mem_loc = meta.memory_location;
@@ -1932,7 +1932,7 @@ amd64_convert_memory_location_to_amd64_operand(MetadataIndex meta_idx,
 
 [[nodiscard]] static Amd64Operand
 amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataIndex meta_idx,
-                                          MetadataDyn metadata) {
+                                          PG_DYN(Metadata) metadata) {
   if (IR_OPERAND_KIND_NUM == op.kind) {
     PG_ASSERT(meta_idx.value);
     Metadata meta = PG_SLICE_AT(metadata, meta_idx.value);

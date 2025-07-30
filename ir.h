@@ -123,7 +123,7 @@ PG_DYN_DECL(IrInstruction);
 typedef struct {
   u32 label_id;
   PG_PAD(4);
-  PG_DYN(Error) *errors;
+  PG_DYN(Error) * errors;
   PgString src;
   Type *types;
 } IrEmitter;
@@ -136,8 +136,8 @@ typedef PgAdjacencyMatrix InterferenceGraph;
 
 typedef struct {
   PgString name;
-  MetadataDyn metadata;
-  IrInstructionDyn instructions;
+  PG_DYN(Metadata) metadata;
+  PG_DYN(IrInstruction) instructions;
 
   u32 stack_base_pointer_offset;
   u32 stack_base_pointer_offset_max;
@@ -158,13 +158,14 @@ typedef struct {
 } IrLocalVar;
 PG_DYN_DECL(IrLocalVar);
 
-[[nodiscard]] static MetadataIndex metadata_last_idx(MetadataDyn metadata) {
+[[nodiscard]] static MetadataIndex metadata_last_idx(PG_DYN(Metadata)
+                                                         metadata) {
   PG_ASSERT(metadata.len > 0);
   return (MetadataIndex){(u32)metadata.len - 1};
 }
 
 [[nodiscard]]
-static MetadataIndex metadata_make(MetadataDyn *metadata, Type *type,
+static MetadataIndex metadata_make(PG_DYN(Metadata) * metadata, Type *type,
                                    PgAllocator *allocator) {
   Metadata res = {0};
   res.virtual_register.value = (u32)metadata->len;
@@ -175,14 +176,14 @@ static MetadataIndex metadata_make(MetadataDyn *metadata, Type *type,
   return metadata_last_idx(*metadata);
 }
 
-static void metadata_start_lifetime(MetadataDyn metadata,
+static void metadata_start_lifetime(PG_DYN(Metadata) metadata,
                                     MetadataIndex meta_idx,
                                     InstructionIndex ins_idx) {
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_start = ins_idx;
   PG_SLICE_AT(metadata, meta_idx.value).lifetime_end = ins_idx;
 }
 
-static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
+static void metadata_extend_lifetime_on_use(PG_DYN(Metadata) metadata,
                                             MetadataIndex meta_idx,
                                             InstructionIndex ins_idx) {
   PG_ASSERT(meta_idx.value);
@@ -195,7 +196,7 @@ static void metadata_extend_lifetime_on_use(MetadataDyn metadata,
   // TODO: Dataflow.
 }
 
-static void metadata_extend_operand_lifetime_on_use(MetadataDyn metadata,
+static void metadata_extend_operand_lifetime_on_use(PG_DYN(Metadata) metadata,
                                                     IrOperand op,
                                                     InstructionIndex ins_idx) {
   // No-op.
@@ -235,7 +236,7 @@ register_constraint_to_str(VirtualRegisterConstraint constraint) {
   }
 }
 
-static void ir_print_operand(IrOperand operand, MetadataDyn metadata,
+static void ir_print_operand(IrOperand operand, PG_DYN(Metadata) metadata,
                              PgWriter *w, PgAllocator *allocator) {
 
   switch (operand.kind) {
@@ -326,8 +327,8 @@ static void metadata_print_meta(Metadata meta, PgWriter *w,
   }
 }
 
-static void ir_print_instructions(IrInstructionDyn instructions,
-                                  MetadataDyn metadata, PgWriter *w,
+static void ir_print_instructions(PG_DYN(IrInstruction) instructions,
+                                  PG_DYN(Metadata) metadata, PgWriter *w,
                                   PgAllocator *allocator) {
   for (u32 i = 0; i < instructions.len; i++) {
     (void)pg_writer_write_full(w, PG_S("["), allocator);
@@ -501,7 +502,7 @@ static void ir_print_fn_def(FnDefinition fn_def, PgWriter *w,
   (void)pg_writer_write_full(w, PG_S("\n\n"), allocator);
 }
 
-static void ir_print_fn_defs(FnDefinitionDyn fn_defs, PgWriter *w,
+static void ir_print_fn_defs(PG_DYN(FnDefinition) fn_defs, PgWriter *w,
                              PgAllocator *allocator) {
   for (u32 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
@@ -565,15 +566,17 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
   }
 }
 
-static void ir_compute_fn_defs_lifetimes(FnDefinitionDyn fn_defs) {
+static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
   for (u64 i = 0; i < fn_defs.len; i++) {
     FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
     ir_compute_fn_def_lifetimes(fn_def);
   }
 }
 
-[[nodiscard]] static IrLocalVar *
-ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, PG_DYN(AstNode) nodes) {
+[[nodiscard]] static IrLocalVar *ir_local_vars_find(PG_DYN(IrLocalVar)
+                                                        local_vars,
+                                                    PgString name,
+                                                    PG_DYN(AstNode) nodes) {
   for (i64 i = (i64)local_vars.len - 1; i >= 0; i--) {
     IrLocalVar var = PG_SLICE_AT(local_vars, i);
     PgString identifier = PG_SLICE_AT(nodes, var.node_idx.value).u.s;
@@ -584,20 +587,21 @@ ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, PG_DYN(AstNode) node
   return nullptr;
 }
 
-[[nodiscard]] static FnDefinitionDyn
-ir_emit_from_ast(IrEmitter *emitter, PG_DYN(AstNode) nodes, PgAllocator *allocator) {
+[[nodiscard]] static PG_DYN(FnDefinition)
+    ir_emit_from_ast(IrEmitter *emitter, PG_DYN(AstNode) nodes,
+                     PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_FN_DEFINITION == PG_SLICE_AT(nodes, 0).kind);
 
   type_insert_builtin(&emitter->types, allocator);
 
-  FnDefinitionDyn fn_defs = {0};
+  PG_DYN(FnDefinition) fn_defs = {0};
   FnDefinition fn_def = {0};
 
   u32 scope_depth = 0;
-  IrLocalVarDyn local_vars = {0};
+  PG_DYN(IrLocalVar) local_vars = {0};
   PG_DYN_ENSURE_CAP(&local_vars, 256, allocator);
 
-  MetadataIndexDyn stack = {0};
+  PG_DYN(MetadataIndex) stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
   for (u32 i = 0; i < nodes.len; i++) {

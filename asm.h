@@ -156,7 +156,7 @@ static Register asm_gpr_pop_first_unset(GprSet *set) {
 }
 
 static void asm_sanity_check_interference_graph(InterferenceGraph graph,
-                                                MetadataDyn metadata,
+                                                PG_DYN(Metadata) metadata,
                                                 bool colored) {
   PG_ASSERT(metadata.len != 0);
   PG_ASSERT(metadata.len == graph.nodes_count);
@@ -199,7 +199,7 @@ static u32 asm_reserve_stack_slot(u32 *stack_base_pointer_offset,
 }
 
 [[nodiscard]]
-static bool asm_must_spill(AsmEmitter emitter, MetadataDyn metadata,
+static bool asm_must_spill(AsmEmitter emitter, PG_DYN(Metadata) metadata,
                            InterferenceNodeIndex node_idx,
                            u64 neighbors_count) {
   bool virt_reg_addressable =
@@ -211,7 +211,7 @@ static bool asm_must_spill(AsmEmitter emitter, MetadataDyn metadata,
   return needs_spill;
 }
 
-static void asm_spill_node(MetadataDyn metadata, FnDefinition *fn_def,
+static void asm_spill_node(PG_DYN(Metadata) metadata, FnDefinition *fn_def,
                            InterferenceNodeIndex node_idx) {
 
   Metadata *meta = PG_SLICE_AT_PTR(&metadata, node_idx.value);
@@ -232,8 +232,8 @@ static void asm_spill_node(MetadataDyn metadata, FnDefinition *fn_def,
 // For now we simply spill them all if they have more neighbors than there are
 // GPRs, on a 'first encounter' basis.
 static void asm_color_spill_remaining_nodes_in_graph(
-    AsmEmitter *emitter, FnDefinition *fn_def, InterferenceNodeIndexDyn *stack,
-    PgString nodes_tombstones_bitfield) {
+    AsmEmitter *emitter, FnDefinition *fn_def,
+    PG_DYN(InterferenceNodeIndex) * stack, PgString nodes_tombstones_bitfield) {
   for (u64 row = 0; row < fn_def->interference_graph.nodes_count; row++) {
     if (pg_bitfield_get(nodes_tombstones_bitfield, row)) {
       continue;
@@ -337,7 +337,7 @@ static void asm_color_do_precoloring(AsmEmitter *emitter, FnDefinition *fn_def,
 [[nodiscard]] static Register
 asm_color_assign_register(InterferenceGraph graph_clone,
                           InterferenceNodeIndex node_idx,
-                          GprSet gprs_precolored, MetadataDyn metadata) {
+                          GprSet gprs_precolored, PG_DYN(Metadata) metadata) {
   GprSet neighbor_colors = gprs_precolored;
 
   PgAdjacencyMatrixNeighborIterator it =
@@ -404,7 +404,7 @@ static void asm_color_interference_graph(AsmEmitter *emitter,
   asm_color_do_precoloring(emitter, fn_def, node_tombstones_bitfield,
                            &gprs_precolored);
 
-  InterferenceNodeIndexDyn stack = {0};
+  PG_DYN(InterferenceNodeIndex) stack = {0};
   PG_DYN_ENSURE_CAP(&stack, fn_def->interference_graph.nodes_count, allocator);
 
   for (u64 row = 0; row < fn_def->interference_graph.nodes_count; row++) {
@@ -543,7 +543,7 @@ static AsmCodeSection asm_emit_fn_definition(ArchitectureKind arch_kind,
   }
 }
 
-static void asm_emit(AsmEmitter *asm_emitter, FnDefinitionDyn fn_defs,
+static void asm_emit(AsmEmitter *asm_emitter, PG_DYN(FnDefinition) fn_defs,
                      PgLogger *logger, PgAllocator *allocator) {
 
   for (u32 i = 0; i < fn_defs.len; i++) {

@@ -12,9 +12,9 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   // The program text is also padded to the next page size.
   // Afterwards comes the .rodata (not padded).
 
-  PgFileDescriptorResult res_file =
-      pg_file_open(asm_emitter->program.file_path, PG_FILE_ACCESS_WRITE, 0700,
-                   true, allocator);
+  PG_RESULT(PgFileDescriptor)
+  res_file = pg_file_open(asm_emitter->program.file_path, PG_FILE_ACCESS_WRITE,
+                          0700, true, allocator);
   if (res_file.err) {
     return res_file.err;
   }
@@ -76,7 +76,8 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
       PG_S(".rodata"),
       PG_S(".data"),
   };
-  PgStringSlice elf_strings_slice = {
+  PG_SLICE(PgString)
+  elf_strings_slice = {
       .data = elf_strings,
       .len = PG_STATIC_ARRAY_LEN(elf_strings),
   };

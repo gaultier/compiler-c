@@ -18,7 +18,7 @@ static CliOptions cli_options_parse(int argc, char *argv[],
   PgString description =
       PG_S("An experimental compiler targeting x86_64 Linux");
   PgString plain_arguments_description = PG_S("file.unicorn");
-  PgCliOptionDescriptionDyn descs = {0};
+  PG_DYN(PgCliOptionDescription) descs = {0};
   PG_DYN_ENSURE_CAP(&descs, 4, allocator);
 
   *PG_DYN_PUSH_WITHIN_CAPACITY(&descs) = (PgCliOptionDescription){
@@ -93,8 +93,8 @@ int main(int argc, char *argv[]) {
                                         pg_os_stdout(), 4 * PG_KiB, allocator)
                                   : pg_writer_make_noop();
 
-  PgStringResult file_read_res =
-      pg_file_read_full_from_path(cli_opts.file_path, allocator);
+  PG_RESULT(PgString)
+  file_read_res = pg_file_read_full_from_path(cli_opts.file_path, allocator);
   if (file_read_res.err) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read file",
            pg_log_c_err("err", file_read_res.err),
@@ -152,8 +152,8 @@ int main(int argc, char *argv[]) {
 
   IrEmitter ir_emitter = {.errors = &errors, .src = lexer.src};
 
-  FnDefinitionDyn fn_defs =
-      ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
+  PG_DYN(FnDefinition)
+  fn_defs = ir_emit_from_ast(&ir_emitter, nodes_input, allocator);
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "IR",
          pg_log_c_u64("fn_defs_count", fn_defs.len));
   ir_print_fn_defs(fn_defs, &writer_internals, allocator);
