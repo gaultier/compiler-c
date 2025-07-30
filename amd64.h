@@ -452,7 +452,7 @@ static PgString amd64_instruction_to_string_human_readable(
   return PG_DYN_SLICE(PgString, w.u.bytes);
 }
 
-static void amd64_print_instructions(Amd64InstructionDyn instructions,
+static void amd64_print_instructions(PG_DYN(Amd64Instruction) instructions,
                                      PgWriter *w, PgAllocator *allocator) {
   for (u64 i = 0; i < instructions.len; i++) {
     (void)pg_writer_write_full(w, PG_S("["), allocator);

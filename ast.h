@@ -61,8 +61,8 @@ PG_DYN_DECL(AstNodeIndex);
 typedef struct {
   Lexer lexer;
   u64 tokens_consumed;
-  ErrorDyn *errors;
-  AstNodeDyn nodes;
+  PG_DYN(Error) *errors;
+  PG_DYN(AstNode) nodes;
 
   // Gets incremented.
   u32 label_id;
@@ -218,7 +218,7 @@ static void ast_print_node(AstNode node, PgWriter *w, PgAllocator *allocator) {
   }
 }
 
-static void ast_print_nodes(AstNodeDyn nodes, PgWriter *w,
+static void ast_print_nodes(PG_DYN(AstNode) nodes, PgWriter *w,
                             PgAllocator *allocator) {
   for (u32 i = 0; i < nodes.len; i++) {
     (void)pg_writer_write_full(w, PG_S("["), allocator);
@@ -896,10 +896,10 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_emit_program_epilog(parser, allocator);
 }
 
-static void ast_constant_fold(AstNodeDyn nodes_before, AstNodeDyn *nodes_after,
+static void ast_constant_fold(PG_DYN(AstNode) nodes_before, PG_DYN(AstNode) *nodes_after,
                               PgAllocator *allocator) {
 
-  AstNodeDyn stack = {0};
+  PG_DYN(AstNode) stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
   for (u32 i = 0; i < nodes_before.len; i++) {

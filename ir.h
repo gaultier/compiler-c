@@ -123,7 +123,7 @@ PG_DYN_DECL(IrInstruction);
 typedef struct {
   u32 label_id;
   PG_PAD(4);
-  ErrorDyn *errors;
+  PG_DYN(Error) *errors;
   PgString src;
   Type *types;
 } IrEmitter;
@@ -573,7 +573,7 @@ static void ir_compute_fn_defs_lifetimes(FnDefinitionDyn fn_defs) {
 }
 
 [[nodiscard]] static IrLocalVar *
-ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, AstNodeDyn nodes) {
+ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, PG_DYN(AstNode) nodes) {
   for (i64 i = (i64)local_vars.len - 1; i >= 0; i--) {
     IrLocalVar var = PG_SLICE_AT(local_vars, i);
     PgString identifier = PG_SLICE_AT(nodes, var.node_idx.value).u.s;
@@ -585,7 +585,7 @@ ir_local_vars_find(IrLocalVarDyn local_vars, PgString name, AstNodeDyn nodes) {
 }
 
 [[nodiscard]] static FnDefinitionDyn
-ir_emit_from_ast(IrEmitter *emitter, AstNodeDyn nodes, PgAllocator *allocator) {
+ir_emit_from_ast(IrEmitter *emitter, PG_DYN(AstNode) nodes, PgAllocator *allocator) {
   PG_ASSERT(AST_NODE_KIND_FN_DEFINITION == PG_SLICE_AT(nodes, 0).kind);
 
   type_insert_builtin(&emitter->types, allocator);

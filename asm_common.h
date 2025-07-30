@@ -103,7 +103,7 @@ typedef struct {
   u16 flags;
   PG_PAD(6);
   union {
-    Amd64InstructionDyn amd64_instructions;
+    PG_DYN(Amd64Instruction) amd64_instructions;
   } u;
 } AsmCodeSection;
 PG_DYN_DECL(AsmCodeSection);

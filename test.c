@@ -290,7 +290,7 @@ static PgString run_assembler(PgString in, PgAllocator *allocator) {
 }
 
 static void gen_lea(PgWriter *writer_asm_text,
-                    Amd64InstructionDyn *instructions) {
+                    PG_DYN(Amd64Instruction) *instructions) {
   // Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -338,7 +338,7 @@ static void gen_lea(PgWriter *writer_asm_text,
 }
 
 static void gen_mov(PgWriter *writer_asm_text,
-                    Amd64InstructionDyn *instructions) {
+                    PG_DYN(Amd64Instruction) *instructions) {
   // Reg/mem-Reg and Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -457,7 +457,7 @@ static void gen_mov(PgWriter *writer_asm_text,
 }
 
 static void gen_add(PgWriter *writer_asm_text,
-                    Amd64InstructionDyn *instructions) {
+                    PG_DYN(Amd64Instruction) *instructions) {
   // Reg/mem-Reg and Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -581,7 +581,7 @@ static void gen_add(PgWriter *writer_asm_text,
 }
 
 static void gen_sub(PgWriter *writer_asm_text,
-                    Amd64InstructionDyn *instructions) {
+                    PG_DYN(Amd64Instruction) *instructions) {
   // Reg/mem-Reg and Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -705,7 +705,7 @@ static void gen_sub(PgWriter *writer_asm_text,
 }
 
 static void gen_cmp(PgWriter *writer_asm_text,
-                    Amd64InstructionDyn *instructions) {
+                    PG_DYN(Amd64Instruction) *instructions) {
   // Reg/mem-Reg and Reg-Reg/mem.
   // TODO: Scale, index.
   for (u8 i = 1; i < 14; i++) {
@@ -836,7 +836,7 @@ static void test_asm() {
   PgWriter writer_asm_text =
       pg_writer_make_string_builder(4 * PG_MiB, allocator);
 
-  Amd64InstructionDyn instructions = {0};
+  PG_DYN(Amd64Instruction) instructions = {0};
   PG_DYN_ENSURE_CAP(&instructions, 64'000, allocator);
 
   PG_ASSERT(0 == pg_writer_write_full(&writer_asm_text,

@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
          pg_log_c_s("file_path", cli_opts.file_path),
          pg_log_c_u64("count_bytes", file_read_res.value.len));
 
-  ErrorDyn errors = {0};
+  PG_DYN(Error) errors = {0};
   Lexer lexer =
       lex_make_lexer(cli_opts.file_path, file_read_res.value, &errors);
   lex(&lexer, allocator);
@@ -121,8 +121,8 @@ int main(int argc, char *argv[]) {
   };
   ast_emit(&parser, allocator);
 
-  AstNodeDyn nodes_input = parser.nodes;
-  AstNodeDyn nodes_output = {0};
+  PG_DYN(AstNode) nodes_input = parser.nodes;
+  PG_DYN(AstNode) nodes_output = {0};
   PG_DYN_ENSURE_CAP(&nodes_output, nodes_input.len, allocator);
 
   // Constant folding.

@@ -12,10 +12,10 @@ typedef struct {
   ArchitectureKind arch_kind;
   PG_PAD(4);
   Architecture arch;
-  AstNodeDyn nodes;
+  PG_DYN(AstNode) nodes;
   AsmProgram program;
   union {
-    Amd64InstructionDyn amd64_instructions;
+    PG_DYN(Amd64Instruction) amd64_instructions;
   } u;
 } AsmEmitter;
 
