@@ -61,7 +61,7 @@ PG_DYN_DECL(AstNodeIndex);
 typedef struct {
   Lexer lexer;
   u64 tokens_consumed;
-  PG_DYN(Error) *errors;
+  PG_DYN(Error) * errors;
   PG_DYN(AstNode) nodes;
 
   // Gets incremented.
@@ -303,7 +303,6 @@ static bool ast_parse_var_decl(AstParser *parser, PgAllocator *allocator) {
   if (!ast_parse_expr(parser, allocator)) {
     ast_add_error(parser, ERROR_KIND_PARSE_VAR_DECL_MISSING_VALUE,
                   token_colon_equal.origin, allocator);
-    pg_stack_trace_print_dwarf(1);
     return false;
   }
 
@@ -896,7 +895,8 @@ static void ast_emit(AstParser *parser, PgAllocator *allocator) {
   ast_emit_program_epilog(parser, allocator);
 }
 
-static void ast_constant_fold(PG_DYN(AstNode) nodes_before, PG_DYN(AstNode) *nodes_after,
+static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
+                              PG_DYN(AstNode) * nodes_after,
                               PgAllocator *allocator) {
 
   PG_DYN(AstNode) stack = {0};
