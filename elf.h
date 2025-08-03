@@ -12,13 +12,11 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   // The program text is also padded to the next page size.
   // Afterwards comes the .rodata (not padded).
 
-  PG_RESULT(PgFileDescriptor)
+  PG_RESULT(PgFileDescriptor, PgError)
   res_file = pg_file_open(asm_emitter->program.file_path, PG_FILE_ACCESS_WRITE,
                           0700, true, allocator);
-  if (res_file.err) {
-    return res_file.err;
-  }
-  PgFileDescriptor file = res_file.value;
+  PG_IF_LET_ERR(err, res_file) { return err; }
+  PgFileDescriptor file = PG_UNWRAP(res_file);
 
   u64 page_size = 0x1000;
   u64 elf_header_size = 64;

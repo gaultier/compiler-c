@@ -93,21 +93,20 @@ int main(int argc, char *argv[]) {
                                         pg_os_stdout(), 4 * PG_KiB, allocator)
                                   : pg_writer_make_noop();
 
-  PG_RESULT(PgString)
+  PG_RESULT(PgString, PgError)
   file_read_res = pg_file_read_full_from_path(cli_opts.file_path, allocator);
-  if (file_read_res.err) {
+  PG_IF_LET_ERR(err, file_read_res) {
     pg_log(&logger, PG_LOG_LEVEL_ERROR, "failed to read file",
-           pg_log_c_err("err", file_read_res.err),
-           pg_log_c_s("path", cli_opts.file_path));
+           pg_log_c_err("err", err), pg_log_c_s("path", cli_opts.file_path));
     return 1;
   }
+  PgString file_content = PG_UNWRAP(file_read_res);
   pg_log(&logger, PG_LOG_LEVEL_INFO, "read input file",
          pg_log_c_s("file_path", cli_opts.file_path),
-         pg_log_c_u64("count_bytes", file_read_res.value.len));
+         pg_log_c_u64("count_bytes", file_content.len));
 
   PG_DYN(Error) errors = {0};
-  Lexer lexer =
-      lex_make_lexer(cli_opts.file_path, file_read_res.value, &errors);
+  Lexer lexer = lex_make_lexer(cli_opts.file_path, file_content, &errors);
   lex(&lexer, allocator);
 
   pg_log(&logger, PG_LOG_LEVEL_DEBUG, "lex tokens",
