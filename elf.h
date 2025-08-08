@@ -25,8 +25,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
 
   u64 rodata_size = 0;
   {
-    for (u64 i = 0; i < asm_emitter->program.rodata.len; i++) {
-      AsmConstant constant = PG_SLICE_AT(asm_emitter->program.rodata, i);
+    PG_EACH(constant, asm_emitter->program.rodata) {
       switch (constant.kind) {
       case ASM_CONSTANT_KIND_NONE:
         PG_ASSERT(0);
@@ -81,8 +80,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   };
   u64 strings_size = 1;
 
-  for (u64 i = 0; i < elf_strings_slice.len; i++) {
-    PgString elf_string = PG_SLICE_AT(elf_strings_slice, i);
+  PG_EACH(elf_string, elf_strings_slice) {
     strings_size += elf_string.len + 1 /* Null terminator */;
   }
 
@@ -209,8 +207,7 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   }
 
   // Rodata.
-  for (u64 i = 0; i < asm_emitter->program.rodata.len; i++) {
-    AsmConstant constant = PG_SLICE_AT(asm_emitter->program.rodata, i);
+  PG_EACH(constant, asm_emitter->program.rodata) {
     switch (constant.kind) {
     case ASM_CONSTANT_KIND_NONE:
       PG_ASSERT(0);

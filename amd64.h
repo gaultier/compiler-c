@@ -256,7 +256,7 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
               .size = ASM_OPERAND_SIZE_8,
           },
   };
-  PG_DYN_PUSH(&section->u.amd64_instructions, ins_push, allocator) ;
+  PG_DYN_PUSH(&section->u.amd64_instructions, ins_push, allocator);
 
   Amd64Instruction ins_mov = {
       .kind = AMD64_INSTRUCTION_KIND_MOV,
@@ -273,7 +273,7 @@ static void amd64_emit_prolog(AsmCodeSection *section, PgAllocator *allocator) {
               .size = ASM_OPERAND_SIZE_8,
           },
   };
-  PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator) ;
+  PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator);
 }
 
 // TODO: If any of the callee-saved registers were used by the register
@@ -292,7 +292,7 @@ static void amd64_emit_epilog(AsmCodeSection *section, PgAllocator *allocator) {
               .size = ASM_OPERAND_SIZE_8,
           },
   };
-  PG_DYN_PUSH(&section->u.amd64_instructions, ins_pop, allocator) ;
+  PG_DYN_PUSH(&section->u.amd64_instructions, ins_pop, allocator);
 }
 
 static void amd64_print_operand(Amd64Operand op, bool with_op_size, PgWriter *w,
@@ -523,15 +523,15 @@ static const u8 AMD64_SIB_BASE_DISP32 = 0b101;
 
 static void amd64_encode_instruction_ud2(Pgu8Dyn *sb, PgAllocator *allocator) {
   u8 opcode1 = 0x0f;
-  PG_DYN_PUSH(sb, opcode1, allocator) ;
+  PG_DYN_PUSH(sb, opcode1, allocator);
   u8 opcode2 = 0x0b;
-  PG_DYN_PUSH(sb, opcode2, allocator) ;
+  PG_DYN_PUSH(sb, opcode2, allocator);
 }
 
 static void amd64_encode_16bits_prefix(Pgu8Dyn *sb, Amd64Operand op,
                                        PgAllocator *allocator) {
   if (ASM_OPERAND_SIZE_2 == op.size) {
-    PG_DYN_PUSH(sb, 0x66, allocator) ;
+    PG_DYN_PUSH(sb, 0x66, allocator);
   }
 }
 
@@ -1445,7 +1445,7 @@ static void amd64_encode_instruction_sub(Pgu8Dyn *sb, Amd64Instruction ins,
                      ins.rhs, allocator);
 
     u8 opcode = 0x81;
-    PG_DYN_PUSH(sb, opcode, allocator) ;
+    PG_DYN_PUSH(sb, opcode, allocator);
 
     amd64_encode_modrm(sb, AMD64_MODRM_ENCODING_RULE_SLASH_5, ins.lhs, ins.rhs,
                        allocator);
@@ -1818,7 +1818,7 @@ static void amd64_encode_instruction_sete(Pgu8Dyn *sb,
   u8 modrm = (0b11 << 6) |
 
              (u8)(amd64_encode_register_value(reg) & 0b111);
-  PG_DYN_PUSH(sb, modrm, allocator) ;
+  PG_DYN_PUSH(sb, modrm, allocator);
 }
 
 static void amd64_encode_instruction(AsmProgram *program, Pgu8Dyn *sb,
@@ -1860,10 +1860,12 @@ static void amd64_encode_instruction(AsmProgram *program, Pgu8Dyn *sb,
   case AMD64_INSTRUCTION_KIND_LABEL_DEFINITION:
     PG_ASSERT(ins.lhs.u.label.value.len);
 
-    PG_DYN_PUSH(&program->label_addresses,( (LabelAddress){
-        .label = ins.lhs.u.label,
-        .code_address = sb->len,
-    }),allocator);
+    PG_DYN_PUSH(&program->label_addresses,
+                ((LabelAddress){
+                    .label = ins.lhs.u.label,
+                    .code_address = sb->len,
+                }),
+                allocator);
     break;
 
   case AMD64_INSTRUCTION_KIND_JMP_IF_EQ:
@@ -1964,9 +1966,7 @@ amd64_convert_ir_operand_to_amd64_operand(IrOperand op, MetadataIndex meta_idx,
 }
 
 static void amd64_sanity_check_section(AsmCodeSection section) {
-  for (u64 i = 0; i < section.u.amd64_instructions.len; i++) {
-    Amd64Instruction ins = PG_SLICE_AT(section.u.amd64_instructions, i);
-
+  PG_EACH(ins, section.u.amd64_instructions) {
     // Prohibited by amd64 rules.
     PG_ASSERT(!(AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.lhs.kind &&
                 AMD64_OPERAND_KIND_EFFECTIVE_ADDRESS == ins.rhs.kind));
@@ -1993,9 +1993,7 @@ static void amd64_sanity_check_section(AsmCodeSection section) {
 static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
                                PgAllocator *allocator) {
 
-  for (u32 i = 0; i < fn_def.instructions.len; i++) {
-    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
-
+  PG_EACH(ins, fn_def.instructions) {
     switch (ins.kind) {
     case IR_INSTRUCTION_KIND_MOV: {
       PG_ASSERT(ins.meta_idx.value);
@@ -2007,7 +2005,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               ins.rhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator);
 
     } break;
 
@@ -2024,7 +2022,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               ins.rhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_cmp, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_cmp, allocator);
 
       Amd64Instruction ins_sete = {
           .kind = AMD64_INSTRUCTION_KIND_SET_IF_EQ,
@@ -2032,7 +2030,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_sete, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_sete, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_ADD: {
@@ -2048,7 +2046,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               ins.lhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator);
 
       Amd64Instruction ins_add = {
           .kind = AMD64_INSTRUCTION_KIND_ADD,
@@ -2058,7 +2056,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               ins.rhs, ins.meta_idx, fn_def.metadata),
           .origin = ins.origin,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_add, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_add, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_TRAP: {
@@ -2066,7 +2064,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
           .kind = AMD64_INSTRUCTION_KIND_UD2,
           .origin = ins.origin,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_ud2, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_ud2, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_JUMP: {
@@ -2078,7 +2076,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
           .lhs = amd64_convert_ir_operand_to_amd64_operand(
               ins.lhs, ins.meta_idx, fn_def.metadata),
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_jmp, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_jmp, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_SYSCALL: {
@@ -2086,7 +2084,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
           .kind = AMD64_INSTRUCTION_KIND_SYSCALL,
           .origin = ins.origin,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_sys, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_sys, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS: {
@@ -2098,7 +2096,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
           .rhs = amd64_convert_ir_operand_to_amd64_operand(
               ins.rhs, ins.meta_idx, fn_def.metadata),
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_lea, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_lea, allocator);
 
       Amd64Instruction ins_mov = {
           .kind = AMD64_INSTRUCTION_KIND_MOV,
@@ -2107,7 +2105,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
               ins.meta_idx, fn_def.metadata),
           .rhs = ins_lea.lhs,
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_mov, allocator);
 
     } break;
 
@@ -2124,7 +2122,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
                   .size = ASM_OPERAND_SIZE_4,
               },
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_label_def, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_label_def, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_JUMP_IF_FALSE: {
@@ -2143,7 +2141,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
                   .size = ASM_OPERAND_SIZE_1,
               },
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_cmp, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_cmp, allocator);
 
       Amd64Instruction ins_je = {
           .kind = AMD64_INSTRUCTION_KIND_JMP_IF_NOT_EQ,
@@ -2155,7 +2153,7 @@ static void amd64_emit_fn_body(AsmCodeSection *section, FnDefinition fn_def,
                   .size = ASM_OPERAND_SIZE_4,
               },
       };
-      PG_DYN_PUSH(&section->u.amd64_instructions, ins_je, allocator) ;
+      PG_DYN_PUSH(&section->u.amd64_instructions, ins_je, allocator);
     } break;
 
     case IR_INSTRUCTION_KIND_NONE:
@@ -2221,7 +2219,7 @@ static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
                 .size = ASM_OPERAND_SIZE_8,
             },
     };
-    PG_DYN_PUSH(&section.u.amd64_instructions, stack_sub, allocator) ;
+    PG_DYN_PUSH(&section.u.amd64_instructions, stack_sub, allocator);
   }
   u64 stack_sub_instruction_idx_maybe = section.u.amd64_instructions.len - 1;
 
@@ -2251,7 +2249,7 @@ static AsmCodeSection amd64_emit_fn_definition(FnDefinition fn_def,
             },
     };
 
-    PG_DYN_PUSH(&section.u.amd64_instructions, stack_add, allocator) ;
+    PG_DYN_PUSH(&section.u.amd64_instructions, stack_add, allocator);
   }
   amd64_emit_epilog(&section, allocator);
 

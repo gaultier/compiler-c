@@ -902,9 +902,7 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
   PG_DYN(AstNode) stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
-  for (u32 i = 0; i < nodes_before.len; i++) {
-    AstNode node = PG_SLICE_AT(nodes_before, i);
-
+  PG_EACH(node, nodes_before) {
     switch (node.kind) {
     case AST_NODE_KIND_LABEL:
     case AST_NODE_KIND_LABEL_DEFINITION:

@@ -504,10 +504,7 @@ static void ir_print_fn_def(FnDefinition fn_def, PgWriter *w,
 
 static void ir_print_fn_defs(PG_DYN(FnDefinition) fn_defs, PgWriter *w,
                              PgAllocator *allocator) {
-  for (u32 i = 0; i < fn_defs.len; i++) {
-    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    ir_print_fn_def(fn_def, w, allocator);
-  }
+  PG_EACH(fn_def, fn_defs) { ir_print_fn_def(fn_def, w, allocator); }
 }
 
 [[nodiscard]] static IrOperand ir_make_synth_label(u32 *label_current,
@@ -520,8 +517,7 @@ static void ir_print_fn_defs(PG_DYN(FnDefinition) fn_defs, PgWriter *w,
 }
 
 static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
-  for (u32 i = 0; i < fn_def.instructions.len; i++) {
-    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
+  PG_EACH_I(ins, i, fn_def.instructions) {
     InstructionIndex ins_idx = {i};
 
     switch (ins.kind) {
@@ -553,8 +549,7 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
   }
 
   // Sanity check.
-  for (u32 i = 0; i < fn_def.instructions.len; i++) {
-    IrInstruction ins = PG_SLICE_AT(fn_def.instructions, i);
+  PG_EACH(ins, fn_def.instructions) {
     InstructionIndex start =
         PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value).lifetime_start;
     InstructionIndex end =
@@ -567,10 +562,7 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
 }
 
 static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
-  for (u64 i = 0; i < fn_defs.len; i++) {
-    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-    ir_compute_fn_def_lifetimes(fn_def);
-  }
+  PG_EACH(fn_def, fn_defs) { ir_compute_fn_def_lifetimes(fn_def); }
 }
 
 [[nodiscard]] static IrLocalVar *ir_local_vars_find(PG_DYN(IrLocalVar)
@@ -604,9 +596,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
   PG_DYN(MetadataIndex) stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
-  for (u32 i = 0; i < nodes.len; i++) {
-    AstNode node = PG_SLICE_AT(nodes, i);
-
+  PG_EACH_I(node, i, nodes) {
     switch (node.kind) {
     case AST_NODE_KIND_BOOL: {
       Type *type = type_upsert(&emitter->types, PG_S("bool"), nullptr);

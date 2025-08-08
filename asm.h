@@ -34,8 +34,7 @@ static void asm_print_section(ArchitectureKind arch_kind,
 
 static void asm_print_program(AsmEmitter emitter, PgWriter *w,
                               PgAllocator *allocator) {
-  for (u64 i = 0; i < emitter.program.text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(emitter.program.text, i);
+  PG_EACH(section, emitter.program.text) {
     asm_print_section(emitter.arch_kind, section, w, allocator);
     (void)pg_writer_write_full(w, PG_S("\n"), allocator);
   }
@@ -51,8 +50,7 @@ static void asm_section_resolve_jumps(AsmProgram *program, Pgu8Dyn sb) {
     PG_ASSERT(jump_to_backpatch.code_address <= sb.len - 1);
 
     LabelAddress label = {0};
-    for (u64 j = 0; j < program->label_addresses.len; j++) {
-      label = PG_SLICE_AT(program->label_addresses, j);
+    PG_EACH(label, program->label_addresses) {
       PG_ASSERT(label.label.value.len);
       PG_ASSERT(label.code_address <= sb.len - 1);
 
@@ -87,8 +85,7 @@ static void asm_encode_section(ArchitectureKind arch_kind, AsmProgram *program,
 
   switch (arch_kind) {
   case ARCH_KIND_AMD64: {
-    for (u64 i = 0; i < section.u.amd64_instructions.len; i++) {
-      Amd64Instruction ins = PG_SLICE_AT(section.u.amd64_instructions, i);
+    PG_EACH(ins, section.u.amd64_instructions) {
       amd64_encode_instruction(program, sb, ins, allocator);
     }
   } break;
@@ -104,8 +101,7 @@ static Pgu8Slice asm_encode_program_text(AsmEmitter *emitter,
   Pgu8Dyn sb = {0};
   PG_DYN_ENSURE_CAP(&sb, 4 * PG_KiB, allocator);
 
-  for (u64 i = 0; i < emitter->program.text.len; i++) {
-    AsmCodeSection section = PG_SLICE_AT(emitter->program.text, i);
+  PG_EACH(section, emitter->program.text) {
     asm_encode_section(emitter->arch_kind, &emitter->program, &sb, section,
                        allocator);
   }
@@ -123,9 +119,7 @@ static void asm_gpr_set_add_idx(GprSet *set, u32 idx) {
 }
 
 static void asm_gpr_set_add(GprSet *set, Register elem) {
-  Register reg = {0};
-  for (u32 i = 0; i < set->registers.len; i++) {
-    reg = PG_SLICE_AT(set->registers, i);
+  PG_EACH_I(reg, i, set->registers) {
     if (reg.value == elem.value) {
       asm_gpr_set_add_idx(set, i);
       return;
@@ -546,9 +540,7 @@ static AsmCodeSection asm_emit_fn_definition(ArchitectureKind arch_kind,
 static void asm_emit(AsmEmitter *asm_emitter, PG_DYN(FnDefinition) fn_defs,
                      PgLogger *logger, PgAllocator *allocator) {
 
-  for (u32 i = 0; i < fn_defs.len; i++) {
-    FnDefinition fn_def = PG_SLICE_AT(fn_defs, i);
-
+  PG_EACH(fn_def, fn_defs) {
     fn_def.interference_graph =
         reg_build_interference_graph(fn_def.metadata, allocator);
 

@@ -37,7 +37,7 @@ PG_DYN_DECL(LexToken);
 typedef struct {
   PgString file_path;
   PgString src;
-  PG_DYN(Error) *errors;
+  PG_DYN(Error) * errors;
   u32 line, column;
   PG_DYN(LexToken) tokens;
   PgUtf8Iterator it;
@@ -390,7 +390,7 @@ static void lex_literal_number(Lexer *lexer, PgAllocator *allocator) {
 
 [[nodiscard]]
 static Lexer lex_make_lexer(PgString file_path, PgString src,
-                            PG_DYN(Error) *errors) {
+                            PG_DYN(Error) * errors) {
   Lexer lexer = {0};
   lexer.file_path = file_path;
   lexer.src = src;
@@ -531,9 +531,7 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
 
 static void lex_tokens_print(PG_DYN(LexToken) tokens, PgWriter *w,
                              PgAllocator *allocator) {
-  for (u64 i = 0; i < tokens.len; i++) {
-    LexToken token = PG_SLICE_AT(tokens, i);
-
+  PG_EACH_I(token, i, tokens) {
     (void)pg_writer_write_full(w, PG_S("["), allocator);
     (void)pg_writer_write_u64_as_string(w, i, allocator);
     (void)pg_writer_write_full(w, PG_S("]"), allocator);
@@ -614,9 +612,8 @@ static void lex_tokens_print(PG_DYN(LexToken) tokens, PgWriter *w,
   (void)pg_writer_flush(w, allocator);
 }
 
-static void lex_trim_comments(PG_DYN(LexToken) *tokens) {
-  for (u64 i = 0; i < tokens->len;) {
-    LexToken token = PG_SLICE_AT(*tokens, i);
+static void lex_trim_comments(PG_DYN(LexToken) * tokens) {
+  PG_EACH_I(token, i, *tokens) {
     if (LEX_TOKEN_KIND_SLASH_SLASH == token.kind) {
       PG_SLICE_REMOVE_AT(tokens, i);
     } else {

@@ -49,9 +49,7 @@ static CliOptions cli_options_parse(int argc, char *argv[],
   CliOptions res = {0};
   res.file_path = PG_SLICE_AT(res_parse.plain_arguments, 0);
 
-  for (u64 i = 0; i < res_parse.options.len; i++) {
-    PgCliOption opt = PG_SLICE_AT(res_parse.options, i);
-
+  PG_EACH(opt, res_parse.options) {
     if (pg_string_eq(opt.description.name_long, PG_S("verbose"))) {
       res.verbose = true;
     } else if (pg_string_eq(opt.description.name_long, PG_S("optimize"))) {
@@ -200,8 +198,7 @@ err:
   PgWriter writer_errors = pg_writer_make_from_file_descriptor(
       pg_os_stderr(), 4 * PG_KiB, allocator);
 
-  for (u64 i = 0; i < errors.len; i++) {
-    Error err = PG_SLICE_AT(errors, i);
+  PG_EACH(err, errors) {
     origin_write(&writer_errors, err.origin, allocator);
     (void)pg_writer_write_full(&writer_errors, PG_S(" Error: "), allocator);
     error_print(err, &writer_errors, allocator);
