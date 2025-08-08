@@ -902,14 +902,14 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
   PG_DYN(AstNode) stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
-  PG_EACH(node, nodes_before) {
-    switch (node.kind) {
+  PG_EACH_PTR(node, &nodes_before) {
+    switch (node->kind) {
     case AST_NODE_KIND_LABEL:
     case AST_NODE_KIND_LABEL_DEFINITION:
     case AST_NODE_KIND_IDENTIFIER:
     case AST_NODE_KIND_BOOL:
     case AST_NODE_KIND_NUMBER: {
-      PG_DYN_PUSH(&stack, node, allocator);
+      PG_DYN_PUSH(&stack, *node, allocator);
     } break;
 
     case AST_NODE_KIND_ADD: {
@@ -928,7 +928,7 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
         PG_DYN_PUSH(&stack, folded, allocator);
         continue;
       }
-      PG_DYN_PUSH(&stack, node, allocator);
+      PG_DYN_PUSH(&stack, *node, allocator);
     } break;
 
     case AST_NODE_KIND_COMPARISON: {
@@ -938,7 +938,7 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
       if (AST_NODE_KIND_NUMBER == lhs.kind &&
           AST_NODE_KIND_NUMBER == rhs.kind) {
         // TODO: !=
-        PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node.token_kind);
+        PG_ASSERT(LEX_TOKEN_KIND_EQUAL_EQUAL == node->token_kind);
 
         AstNode folded = lhs;
         folded.kind = AST_NODE_KIND_BOOL;
@@ -951,7 +951,7 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
         PG_DYN_PUSH(&stack, folded, allocator);
         continue;
       }
-      PG_DYN_PUSH(&stack, node, allocator);
+      PG_DYN_PUSH(&stack, *node, allocator);
     } break;
 
     case AST_NODE_KIND_FN_DEFINITION: {
@@ -967,7 +967,7 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
 
     case AST_NODE_KIND_ADDRESS_OF: {
       PG_DYN_POP(&stack);
-      PG_DYN_PUSH(&stack, node, allocator);
+      PG_DYN_PUSH(&stack, *node, allocator);
     } break;
 
     case AST_NODE_KIND_BRANCH: {
@@ -978,7 +978,7 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
 
     case AST_NODE_KIND_BLOCK:
     case AST_NODE_KIND_SYSCALL: {
-      for (u64 k = 0; k < node.u.stack_args_count; k++) {
+      for (u64 k = 0; k < node->u.stack_args_count; k++) {
         PG_DYN_POP(&stack);
       }
     } break;
@@ -990,6 +990,6 @@ static void ast_constant_fold(PG_DYN(AstNode) nodes_before,
     default:
       PG_ASSERT(0);
     }
-    PG_DYN_PUSH(nodes_after, node, allocator);
+    PG_DYN_PUSH(nodes_after, *node, allocator);
   }
 }

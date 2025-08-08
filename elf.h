@@ -25,15 +25,15 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
 
   u64 rodata_size = 0;
   {
-    PG_EACH(constant, asm_emitter->program.rodata) {
-      switch (constant.kind) {
+    PG_EACH_PTR(constant, &asm_emitter->program.rodata) {
+      switch (constant->kind) {
       case ASM_CONSTANT_KIND_NONE:
         PG_ASSERT(0);
       case ASM_CONSTANT_KIND_U64:
         rodata_size += sizeof(u64);
         break;
       case ASM_CONSTANT_KIND_BYTES:
-        rodata_size += constant.u.bytes.len;
+        rodata_size += constant->u.bytes.len;
         break;
       default:
         PG_ASSERT(0);
@@ -80,8 +80,8 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   };
   u64 strings_size = 1;
 
-  PG_EACH(elf_string, elf_strings_slice) {
-    strings_size += elf_string.len + 1 /* Null terminator */;
+  PG_EACH_PTR(elf_string, &elf_strings_slice) {
+    strings_size += elf_string->len + 1 /* Null terminator */;
   }
 
   PgElfSectionHeader section_headers[] = {
@@ -207,15 +207,15 @@ static PgError elf_write_exe(AsmEmitter *asm_emitter, PgAllocator *allocator) {
   }
 
   // Rodata.
-  PG_EACH(constant, asm_emitter->program.rodata) {
-    switch (constant.kind) {
+  PG_EACH_PTR(constant, &asm_emitter->program.rodata) {
+    switch (constant->kind) {
     case ASM_CONSTANT_KIND_NONE:
       PG_ASSERT(0);
     case ASM_CONSTANT_KIND_U64:
-      pg_byte_buffer_append_u64_within_capacity(&sb, constant.u.n64);
+      pg_byte_buffer_append_u64_within_capacity(&sb, constant->u.n64);
       break;
     case ASM_CONSTANT_KIND_BYTES:
-      PG_DYN_APPEND_SLICE(&sb, constant.u.bytes, allocator);
+      PG_DYN_APPEND_SLICE(&sb, constant->u.bytes, allocator);
       break;
     default:
       PG_ASSERT(0);

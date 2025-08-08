@@ -531,20 +531,21 @@ static void lex(Lexer *lexer, PgAllocator *allocator) {
 
 static void lex_tokens_print(PG_DYN(LexToken) tokens, PgWriter *w,
                              PgAllocator *allocator) {
-  PG_EACH_I(token, i, tokens) {
+  PG_EACH_PTR(token, &tokens) {
     (void)pg_writer_write_full(w, PG_S("["), allocator);
-    (void)pg_writer_write_u64_as_string(w, i, allocator);
+    (void)pg_writer_write_u64_as_string(w, PG_SLICE_PTR_TO_INDEX(token, tokens),
+                                        allocator);
     (void)pg_writer_write_full(w, PG_S("]"), allocator);
 
-    origin_write(w, token.origin, allocator);
+    origin_write(w, token->origin, allocator);
     (void)pg_writer_write_full(w, PG_S(": "), allocator);
 
-    switch (token.kind) {
+    switch (token->kind) {
     case LEX_TOKEN_KIND_NONE:
       PG_ASSERT(0);
     case LEX_TOKEN_KIND_LITERAL_NUMBER:
       (void)pg_writer_write_full(w, PG_S("LiteralU64 "), allocator);
-      (void)pg_writer_write_full(w, token.s, allocator);
+      (void)pg_writer_write_full(w, token->s, allocator);
       break;
     case LEX_TOKEN_KIND_PLUS:
       (void)pg_writer_write_full(w, PG_S("+"), allocator);
@@ -599,7 +600,7 @@ static void lex_tokens_print(PG_DYN(LexToken) tokens, PgWriter *w,
       break;
     case LEX_TOKEN_KIND_IDENTIFIER:
       (void)pg_writer_write_full(w, PG_S("Identifier "), allocator);
-      (void)pg_writer_write_full(w, token.s, allocator);
+      (void)pg_writer_write_full(w, token->s, allocator);
       break;
     case LEX_TOKEN_KIND_EOF:
       (void)pg_writer_write_full(w, PG_S("EOF"), allocator);
@@ -613,7 +614,8 @@ static void lex_tokens_print(PG_DYN(LexToken) tokens, PgWriter *w,
 }
 
 static void lex_trim_comments(PG_DYN(LexToken) * tokens) {
-  PG_EACH_I(token, i, *tokens) {
+  for (u64 i = 0; i < tokens->len;) {
+    LexToken token = PG_SLICE_AT(*tokens, i);
     if (LEX_TOKEN_KIND_SLASH_SLASH == token.kind) {
       PG_SLICE_REMOVE_AT(tokens, i);
     } else {

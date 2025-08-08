@@ -504,7 +504,7 @@ static void ir_print_fn_def(FnDefinition fn_def, PgWriter *w,
 
 static void ir_print_fn_defs(PG_DYN(FnDefinition) fn_defs, PgWriter *w,
                              PgAllocator *allocator) {
-  PG_EACH(fn_def, fn_defs) { ir_print_fn_def(fn_def, w, allocator); }
+  PG_EACH_PTR(fn_def, &fn_defs) { ir_print_fn_def(*fn_def, w, allocator); }
 }
 
 [[nodiscard]] static IrOperand ir_make_synth_label(u32 *label_current,
@@ -517,10 +517,11 @@ static void ir_print_fn_defs(PG_DYN(FnDefinition) fn_defs, PgWriter *w,
 }
 
 static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
-  PG_EACH_I(ins, i, fn_def.instructions) {
-    InstructionIndex ins_idx = {i};
+  PG_EACH_PTR(ins, &fn_def.instructions) {
+    InstructionIndex ins_idx = {
+        PG_SLICE_PTR_TO_INDEX(ins, fn_def.instructions)};
 
-    switch (ins.kind) {
+    switch (ins->kind) {
     case IR_INSTRUCTION_KIND_ADD:
     case IR_INSTRUCTION_KIND_MOV:
     case IR_INSTRUCTION_KIND_LOAD_ADDRESS:
@@ -528,12 +529,12 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
     case IR_INSTRUCTION_KIND_COMPARISON:
     case IR_INSTRUCTION_KIND_LABEL_DEFINITION:
     case IR_INSTRUCTION_KIND_SYSCALL: {
-      if (ins.meta_idx.value) {
-        metadata_start_lifetime(fn_def.metadata, ins.meta_idx, ins_idx);
+      if (ins->meta_idx.value) {
+        metadata_start_lifetime(fn_def.metadata, ins->meta_idx, ins_idx);
       }
-      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins.lhs,
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->lhs,
                                               ins_idx);
-      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins.rhs,
+      metadata_extend_operand_lifetime_on_use(fn_def.metadata, ins->rhs,
                                               ins_idx);
     } break;
 
@@ -549,11 +550,11 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
   }
 
   // Sanity check.
-  PG_EACH(ins, fn_def.instructions) {
+  PG_EACH_PTR(ins, &fn_def.instructions) {
     InstructionIndex start =
-        PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value).lifetime_start;
+        PG_SLICE_AT(fn_def.metadata, ins->meta_idx.value).lifetime_start;
     InstructionIndex end =
-        PG_SLICE_AT(fn_def.metadata, ins.meta_idx.value).lifetime_end;
+        PG_SLICE_AT(fn_def.metadata, ins->meta_idx.value).lifetime_end;
 
     PG_ASSERT(start.value < fn_def.instructions.len);
     PG_ASSERT(end.value < fn_def.instructions.len);
@@ -562,7 +563,7 @@ static void ir_compute_fn_def_lifetimes(FnDefinition fn_def) {
 }
 
 static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
-  PG_EACH(fn_def, fn_defs) { ir_compute_fn_def_lifetimes(fn_def); }
+  PG_EACH_PTR(fn_def, &fn_defs) { ir_compute_fn_def_lifetimes(*fn_def); }
 }
 
 [[nodiscard]] static IrLocalVar *ir_local_vars_find(PG_DYN(IrLocalVar)
@@ -596,15 +597,16 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
   PG_DYN(MetadataIndex) stack = {0};
   PG_DYN_ENSURE_CAP(&stack, 512, allocator);
 
-  PG_EACH_I(node, i, nodes) {
-    switch (node.kind) {
+  PG_EACH_PTR(node, &nodes) {
+    u64 i = PG_SLICE_PTR_TO_INDEX(node, nodes);
+    switch (node->kind) {
     case AST_NODE_KIND_BOOL: {
       Type *type = type_upsert(&emitter->types, PG_S("bool"), nullptr);
       PG_ASSERT(type);
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_MOV;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -612,7 +614,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
       };
       ins.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_NUM,
-          .u.u64 = node.u.n64,
+          .u.u64 = node->u.n64,
       };
       PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
@@ -627,7 +629,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_MOV;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
@@ -635,7 +637,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
       };
       ins.rhs = (IrOperand){
           .kind = IR_OPERAND_KIND_NUM,
-          .u.u64 = node.u.n64,
+          .u.u64 = node->u.n64,
       };
       PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
 
@@ -643,18 +645,18 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
     } break;
 
     case AST_NODE_KIND_IDENTIFIER: {
-      PgString name = node.u.s;
+      PgString name = node->u.s;
       PG_ASSERT(name.len);
 
       IrLocalVar *var = ir_local_vars_find(local_vars, name, nodes);
       if (!var) {
         Error err = {
             .kind = ERROR_KIND_VAR_UNDEFINED,
-            .origin = node.origin,
+            .origin = node->origin,
             .src = emitter->src,
             .src_span =
-                PG_SLICE_RANGE(emitter->src, node.origin.file_offset_start,
-                               node.origin.file_offset_start + node.u.s.len),
+                PG_SLICE_RANGE(emitter->src, node->origin.file_offset_start,
+                               node->origin.file_offset_start + node->u.s.len),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
 
@@ -672,7 +674,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_MOV;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, var->type, allocator);
       PG_SLICE_LAST(fn_def.metadata).virtual_register.addressable = true;
 
@@ -708,12 +710,12 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
         Error err = {
             .kind = ERROR_KIND_TYPE_MISMATCH,
-            .origin = node.origin,
+            .origin = node->origin,
             .src = emitter->src,
             .src_span = PG_SLICE_RANGE(
-                emitter->src, node.origin.file_offset_start,
+                emitter->src, node->origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
-                node.origin.file_offset_start + PG_S("assert(").len),
+                node->origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
@@ -721,7 +723,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_ADD;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, lhs_type, allocator);
 
       ins.lhs = (IrOperand){
@@ -756,12 +758,12 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
         Error err = {
             .kind = ERROR_KIND_TYPE_MISMATCH,
-            .origin = node.origin,
+            .origin = node->origin,
             .src = emitter->src,
             .src_span = PG_SLICE_RANGE(
-                emitter->src, node.origin.file_offset_start,
+                emitter->src, node->origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
-                node.origin.file_offset_start + PG_S("assert(").len),
+                node->origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
@@ -772,7 +774,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_COMPARISON;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
 
       ins.lhs = (IrOperand){
@@ -795,18 +797,18 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
     case AST_NODE_KIND_VAR_DEFINITION: {
       PG_ASSERT(fn_def.instructions.len > 0);
-      PgString name = node.u.s;
+      PgString name = node->u.s;
       PG_ASSERT(name.len);
 
       IrLocalVar *var = ir_local_vars_find(local_vars, name, nodes);
       if (var) {
         Error err = {
             .kind = ERROR_KIND_VAR_SHADOWING,
-            .origin = node.origin,
+            .origin = node->origin,
             .src = emitter->src,
             .src_span =
-                PG_SLICE_RANGE(emitter->src, node.origin.file_offset_start,
-                               node.origin.file_offset_start + node.u.s.len),
+                PG_SLICE_RANGE(emitter->src, node->origin.file_offset_start,
+                               node->origin.file_offset_start + node->u.s.len),
         };
         // TODO: Include `var` in the error!
         PG_DYN_PUSH(emitter->errors, err, allocator);
@@ -821,7 +823,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_MOV;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->identifier = name;
 
@@ -857,12 +859,12 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
       if (!op_meta.virtual_register.addressable) {
         Error err = {
             .kind = ERROR_KIND_ADDRESS_OF_RHS_NOT_ADDRESSABLE,
-            .origin = node.origin,
+            .origin = node->origin,
             .src = emitter->src,
             .src_span =
-                PG_SLICE_RANGE(emitter->src, node.origin.file_offset_start,
+                PG_SLICE_RANGE(emitter->src, node->origin.file_offset_start,
                                // FIXME: origin should have a src_span directly.
-                               node.origin.file_offset_start + 1),
+                               node->origin.file_offset_start + 1),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
       }
@@ -881,7 +883,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LOAD_ADDRESS;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       PG_SLICE_LAST(fn_def.metadata).virtual_register.addressable = true;
 
@@ -906,7 +908,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins_jmp_else = {0};
       ins_jmp_else.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
-      ins_jmp_else.origin = node.origin;
+      ins_jmp_else.origin = node->origin;
 
       MetadataIndex cond_meta_idx = PG_DYN_POP(&stack);
       Type *cond_type = PG_SLICE_AT(fn_def.metadata, cond_meta_idx.value).type;
@@ -944,7 +946,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_JUMP;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_LABEL,
           .u.label = op.u.label,
@@ -959,7 +961,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
     case AST_NODE_KIND_BUILTIN_TRAP: {
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_TRAP;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       PG_DYN_PUSH(&fn_def.instructions, ins, allocator);
     } break;
 
@@ -971,11 +973,11 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
       local_vars.len = 0;
       stack.len = 0;
 
-      PgString name = node.u.s;
+      PgString name = node->u.s;
       PG_ASSERT(name.len);
 
       fn_def = (FnDefinition){
-          .origin = node.origin,
+          .origin = node->origin,
           .name = name,
       };
       PG_DYN_ENSURE_CAP(&fn_def.instructions, nodes.len * 2, allocator);
@@ -983,7 +985,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
       // Dummy.
       PG_DYN_PUSH(&fn_def.metadata, (Metadata){0}, allocator);
 
-      if (node.flags & AST_NODE_FLAG_GLOBAL) {
+      if (node->flags & AST_NODE_FLAG_GLOBAL) {
         fn_def.flags = IR_FLAG_GLOBAL;
       }
 
@@ -995,11 +997,11 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
     } break;
 
     case AST_NODE_KIND_SYSCALL: {
-      PG_ASSERT(node.u.stack_args_count > 0);
-      PG_ASSERT(node.u.stack_args_count <= max_syscall_args_count);
+      PG_ASSERT(node->u.stack_args_count > 0);
+      PG_ASSERT(node->u.stack_args_count <= max_syscall_args_count);
 
       // TODO: Set constraint on args vregs.
-      for (i64 j = node.u.stack_args_count - 1; j >= 0; j--) {
+      for (i64 j = node->u.stack_args_count - 1; j >= 0; j--) {
         MetadataIndex arg_meta_idx = PG_DYN_POP(&stack);
         PG_SLICE_AT_PTR(&fn_def.metadata, arg_meta_idx.value)
             ->virtual_register.constraint =
@@ -1011,8 +1013,8 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_SYSCALL;
-      ins.origin = node.origin;
-      ins.args_count = (u8)node.u.stack_args_count;
+      ins.origin = node->origin;
+      ins.args_count = (u8)node->u.stack_args_count;
       ins.meta_idx = metadata_make(&fn_def.metadata, type, allocator);
       PG_SLICE_LAST_PTR(&fn_def.metadata)->virtual_register.constraint =
           VREG_CONSTRAINT_SYSCALL_RET;
@@ -1025,14 +1027,14 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
     case AST_NODE_KIND_LABEL_DEFINITION: {
       // TODO: Support labels with names predefined in the source.
-      PG_ASSERT(node.u.label.value.len);
+      PG_ASSERT(node->u.label.value.len);
 
       IrInstruction ins = {0};
       ins.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
-      ins.origin = node.origin;
+      ins.origin = node->origin;
       ins.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_LABEL,
-          .u.label = node.u.label,
+          .u.label = node->u.label,
       };
 #if 0
       ins.meta_idx = metadata_make(&fn_def.metadata, allocator);
@@ -1058,12 +1060,12 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
         Error err = {
             .kind = ERROR_KIND_TYPE_MISMATCH,
-            .origin = node.origin,
+            .origin = node->origin,
             .src = emitter->src,
             .src_span = PG_SLICE_RANGE(
-                emitter->src, node.origin.file_offset_start,
+                emitter->src, node->origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
-                node.origin.file_offset_start + PG_S("assert(").len),
+                node->origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
@@ -1086,12 +1088,12 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
         Error err = {
             .kind = ERROR_KIND_TYPE_MISMATCH,
-            .origin = node.origin,
+            .origin = node->origin,
             .src = emitter->src,
             .src_span = PG_SLICE_RANGE(
-                emitter->src, node.origin.file_offset_start,
+                emitter->src, node->origin.file_offset_start,
                 // FIXME: origin should have a src_span directly.
-                node.origin.file_offset_start + PG_S("assert(").len),
+                node->origin.file_offset_start + PG_S("assert(").len),
             .explanation = PG_DYN_TO_SLICE(PgString, sb),
         };
         PG_DYN_PUSH(emitter->errors, err, allocator);
@@ -1102,7 +1104,7 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins_jmp = {0};
       ins_jmp.kind = IR_INSTRUCTION_KIND_JUMP_IF_FALSE;
-      ins_jmp.origin = node.origin;
+      ins_jmp.origin = node->origin;
       ins_jmp.lhs = (IrOperand){
           .kind = IR_OPERAND_KIND_VREG,
           .u.vreg_meta_idx = cond_meta_idx,
@@ -1113,12 +1115,12 @@ static void ir_compute_fn_defs_lifetimes(PG_DYN(FnDefinition) fn_defs) {
 
       IrInstruction ins_trap = {0};
       ins_trap.kind = IR_INSTRUCTION_KIND_TRAP;
-      ins_trap.origin = node.origin;
+      ins_trap.origin = node->origin;
       PG_DYN_PUSH(&fn_def.instructions, ins_trap, allocator);
 
       IrInstruction ins_if_end_label = {0};
       ins_if_end_label.kind = IR_INSTRUCTION_KIND_LABEL_DEFINITION;
-      ins_if_end_label.origin = node.origin;
+      ins_if_end_label.origin = node->origin;
       ins_if_end_label.lhs = if_end_target;
       PG_DYN_PUSH(&fn_def.instructions, ins_if_end_label, allocator);
     } break;

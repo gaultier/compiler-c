@@ -49,12 +49,12 @@ static CliOptions cli_options_parse(int argc, char *argv[],
   CliOptions res = {0};
   res.file_path = PG_SLICE_AT(res_parse.plain_arguments, 0);
 
-  PG_EACH(opt, res_parse.options) {
-    if (pg_string_eq(opt.description.name_long, PG_S("verbose"))) {
+  PG_EACH_PTR(opt, &res_parse.options) {
+    if (pg_string_eq(opt->description.name_long, PG_S("verbose"))) {
       res.verbose = true;
-    } else if (pg_string_eq(opt.description.name_long, PG_S("optimize"))) {
+    } else if (pg_string_eq(opt->description.name_long, PG_S("optimize"))) {
       res.optimize = true;
-    } else if (pg_string_eq(opt.description.name_long, PG_S("help"))) {
+    } else if (pg_string_eq(opt->description.name_long, PG_S("help"))) {
       PgString help = pg_cli_generate_help(
           descs, exe, description, plain_arguments_description, allocator);
       printf("%.*s", (i32)help.len, help.data);
@@ -198,10 +198,10 @@ err:
   PgWriter writer_errors = pg_writer_make_from_file_descriptor(
       pg_os_stderr(), 4 * PG_KiB, allocator);
 
-  PG_EACH(err, errors) {
-    origin_write(&writer_errors, err.origin, allocator);
+  PG_EACH_PTR(err, &errors) {
+    origin_write(&writer_errors, err->origin, allocator);
     (void)pg_writer_write_full(&writer_errors, PG_S(" Error: "), allocator);
-    error_print(err, &writer_errors, allocator);
+    error_print(*err, &writer_errors, allocator);
   }
   (void)pg_writer_flush(&writer_errors, allocator);
 
