@@ -48,11 +48,12 @@ static void asm_section_resolve_jumps(AsmProgram *program, Pgu8Dyn sb) {
     PG_ASSERT(jump_to_backpatch->code_address <= sb.len - 1);
 
     LabelAddress label = {0};
-    PG_EACH_PTR(label, &program->label_addresses) {
-      PG_ASSERT(label->label.value.len);
-      PG_ASSERT(label->code_address <= sb.len - 1);
+    PG_EACH_PTR(label_it, &program->label_addresses) {
+      label = *label_it;
+      PG_ASSERT(label_it->label.value.len);
+      PG_ASSERT(label_it->code_address <= sb.len - 1);
 
-      if (pg_string_eq(label->label.value, jump_to_backpatch->label.value)) {
+      if (pg_string_eq(label_it->label.value, jump_to_backpatch->label.value)) {
         break;
       }
     }
