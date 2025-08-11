@@ -12,8 +12,8 @@
 - [ ] constant fold/optimization: use equivalence classes with union-dataset structures
 - [ ] control flow graph
 - [ ] cstd: Windows implementation of sub-process spawning and waiting
-- [ ] cstd: cross-platform API for files listing in directory
-- [ ] cstd: cross-platform CLI options parse API (short/long form, not cursed API, Unix-style options even on Windows, data-oriented)
+- [x] cstd: cross-platform API for files listing in directory
+- [x] cstd: cross-platform CLI options parse API (short/long form, not cursed API, Unix-style options even on Windows, data-oriented)
 - [ ] data flow analysis (track r/w var uses including pointer aliasing)
 - [ ] generate dwarf debug information
 - [ ] ir: optimization: use union-set data structure to ease troubleshooting
