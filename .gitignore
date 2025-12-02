@@ -2,7 +2,6 @@
 *.bin
 !*.nasm
 a.out
-test*
 !test.s
 !*.sh
 !.next
