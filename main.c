@@ -122,6 +122,7 @@ int main(int argc, char *argv[]) {
   PG_DYN(AstNode) nodes_output = {0};
   PG_DYN_ENSURE_CAP(&nodes_output, nodes_input.len, allocator);
 
+#if 0
   // Constant folding.
   {
     u32 iterations_max = 10;
@@ -146,6 +147,7 @@ int main(int argc, char *argv[]) {
       ast_print_nodes(nodes_input, &writer_internals, allocator);
     }
   }
+#endif
 
   IrEmitter ir_emitter = {.errors = &errors, .src = lexer.src};
 
